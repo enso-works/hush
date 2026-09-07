@@ -8,6 +8,7 @@ export const CATALOG = {
     'session_started',
     'screen_viewed',
     'onboarding_completed',
+    'intent_selected',
     'breathing_session_started',
     'breathing_session_completed',
     'paywall_viewed',
