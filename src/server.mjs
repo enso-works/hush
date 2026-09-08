@@ -13,6 +13,7 @@ import { clientKey, isUuid, json, rateLimiter, readJson, router, str } from './h
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { migrate } from './migrate.mjs';
+import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
 import { adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, KINDS, parseTicket, ticketsForInstall } from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
@@ -78,6 +79,15 @@ r.get('/admin/apps/:app/breakdown', async (_req, res, { url, params }) => {
   const prop = str(url.searchParams.get('prop'), 40);
   if (!event || !prop) return json(res, 400, { error: 'event and prop are required' });
   return json(res, 200, { rows: await breakdown({ app: params.app, env: envOf(url), days: days(url), event, prop }) });
+});
+
+// RevenueCat, refreshed by the act of looking: opening the page updates a
+// stale cache, `refresh=1` (the button) forces one, and the answer always
+// comes out of Postgres. Nothing else in the fleet calls RevenueCat.
+r.get('/admin/revenue', async (_req, res, { url }) => {
+  const app = str(url.searchParams.get('app'), 40);
+  await ensureFresh({ app, force: url.searchParams.get('refresh') === '1' });
+  return json(res, 200, await revenue({ app, days: days(url) }));
 });
 
 r.get('/admin/tickets', async (_req, res, { url }) => {
@@ -151,7 +161,7 @@ async function sweep() {
 
 migrate()
   .then(() => {
-    server.listen(cfg.port, '0.0.0.0', () => log.info('telemetry listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off' }));
+    server.listen(cfg.port, '0.0.0.0', () => log.info('telemetry listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off' }));
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
     setTimeout(sweep, 60_000).unref();
   })

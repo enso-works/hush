@@ -18,6 +18,7 @@ dependency tree.
 | `GET /v1/tickets?install=<uuid>` | phones — the install's own tickets |
 | `GET /healthz` | Caddy, the deploy smoke check, `scripts/healthcheck.sh` |
 | `GET /admin/apps`, `/admin/apps/:app`, `/admin/apps/:app/breakdown` | Cockpit — `Authorization: Bearer $TELEMETRY_ADMIN_TOKEN` |
+| `GET /admin/revenue` | Cockpit — the cached RevenueCat answer, same token |
 | `GET /admin/tickets`, `/admin/tickets/:id`, `POST /admin/tickets/:id/{reply,status}` | Cockpit — same token |
 
 `/admin/*` is answered with 404 by Caddy: it exists only on the docker
@@ -67,6 +68,48 @@ must be (it is sourced by bash during deploys):
 | `TELEMETRY_MAIL_FROM` | default `Bavrk Support <support@bavrk.com>` |
 | `TELEMETRY_ALERT_EMAIL` | where new tickets land, default `ensar.bavrk@gmail.com` |
 | `TELEMETRY_RETENTION_DAYS` | default 180 |
+| `TELEMETRY_RC_API_KEY` | RevenueCat v2 **secret** key; without it the money block says so and nothing else changes |
+| `TELEMETRY_RC_PROJECTS` | `braele=projabc,invoit=projdef`; only needed when a project's name is not the app's slug or display name |
+| `TELEMETRY_RC_CURRENCY` | default `USD` — what RevenueCat converts to |
+| `TELEMETRY_RC_STALE_MINUTES` | default 10 — opening the Apps page refreshes a cache older than this |
+| `TELEMETRY_RC_FLOOR_SECONDS` | default 30 — how soon the refresh button may ask again |
+
+## RevenueCat
+
+Money is not derived from events: the Apps page shows RevenueCat's own numbers,
+fetched by this service and cached in Postgres. There is no poller — one person
+reads this dashboard, so a timer would spend ninety-odd pulls a day to be ready
+for the two that get read. Opening the page refreshes a cache older than
+`RC_STALE_MINUTES`, the page's refresh button forces one (no sooner than
+`RC_FLOOR_SECONDS`), and concurrent requests share a single in-flight pull.
+
+It is still the service that calls RevenueCat and never the browser. Nothing
+else in the fleet holds the key, and Charts & Metrics allows 25 requests a
+minute — a page fetching directly on every render would spend that in an
+afternoon.
+
+The key is created in RevenueCat under **Project settings → API keys → v2
+secret key**, with `charts_metrics:overview:read`, `charts_metrics:charts:read`
+and `project_configuration:projects:read`. It can read customers, so it is a
+real secret: `/opt/bavrk/.env` only.
+
+```bash
+docker compose exec telemetry node src/cli.mjs rc:projects   # what the key can see
+docker compose exec telemetry node src/cli.mjs rc:sync       # link by name
+docker compose exec telemetry node src/cli.mjs rc:link braele projabc123
+docker compose exec telemetry node src/cli.mjs rc:poll       # pull now, print the result
+```
+
+Each pull stores the overview metrics (a row only when a number changed) and
+the daily `revenue`, `new_customers`, `active_subscriptions` and `active_trials`
+charts. Charts a project does not have are skipped, not fatal. The revenue
+chart's scale is not documented upstream, so it is calibrated on every pull
+against `/metrics/revenue` for the same window rather than assumed — that is
+the difference between $18 and $1,800 on the dashboard.
+
+A refresh waits at most twelve seconds for RevenueCat. Past that the page is
+answered from the cache and the pull keeps going in the background, so a slow
+upstream shows stale numbers with a timestamp rather than a hanging dashboard.
 
 ## Running it locally
 
