@@ -25,7 +25,11 @@ export const cfg = {
   // How old the cache may be before opening the page refreshes it, and how
   // soon the refresh button is allowed to ask again.
   rcStaleMinutes: Math.max(Number(env('RC_STALE_MINUTES', '10')) || 10, 1),
-  rcFloorSeconds: Math.max(Number(env('RC_FLOOR_SECONDS', '30')) || 30, 5),
+  // A full pull is a dozen-odd requests, so the floor is a minute: two pulls
+  // inside one rate window would queue behind the limiter below.
+  rcFloorSeconds: Math.max(Number(env('RC_FLOOR_SECONDS', '60')) || 60, 5),
+  // RevenueCat allows 25 Charts & Metrics requests a minute per key.
+  rcRatePerMinute: Math.max(Number(env('RC_RATE_PER_MINUTE', '20')) || 20, 1),
 };
 
 export const log = {

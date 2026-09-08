@@ -166,8 +166,8 @@ Charts are small inline SVG (bars and sparklines); no chart library.
 
 **Apps** (portfolio, then one app):
 - Range picker: 7 / 30 / 90 days, environment prod/dev.
-- Money block above the table: RevenueCat's overview cards per app, and the
-  daily series once an app is opened (section 8).
+- Money block above the table: RevenueCat's overview cards per app, and every
+  daily series the project answers for once an app is opened (section 8).
 - Portfolio table: app, installs (new / total), DAU / WAU / MAU, sessions,
   sessions per active install, 28-day revenue, open tickets. Trials and paid
   counts live in the cards rather than the table: a lifetime purchase has
@@ -200,7 +200,7 @@ else in the fleet holds the key.
 **No poller** (Ensar, 2026-09-08). One person reads this dashboard, so a timer
 would spend ninety-odd pulls a day to be ready for the two that get read.
 Opening the Apps page refreshes a cache older than `RC_STALE_MINUTES` (10), the
-page's refresh button forces one no sooner than `RC_FLOOR_SECONDS` (30), and
+page's refresh button forces one no sooner than `RC_FLOOR_SECONDS` (60), and
 concurrent requests share one in-flight pull. A refresh waits at most twelve
 seconds: past that the page is answered from the cache while the pull finishes
 writing, because a dashboard that hangs on a slow upstream is worse than one
@@ -212,9 +212,23 @@ showing an hour-old number next to the time it was fetched.
   `{id, name, unit, period, value}` — so a metric added upstream appears
   without a migration or a UI change.
 - **Charts** (`/v2/projects/{id}/charts/{name}`, resolution `day`) give the
-  daily series. The chart schema does not state whether money is in units or
-  minor units, so the revenue series is calibrated on every pull against
-  `/v2/projects/{id}/metrics/revenue` for the same window instead of assumed.
+  daily series: `revenue`, `customers_active`, `customers_new`, `actives`,
+  `trials`, `non_subscription_purchases`, `mrr`, `churn`,
+  `initial_conversion`, `ltv_per_customer`, `refund_rate`. Those names come
+  from the API reference's enum; the dashboard's labels (`new_customers`,
+  `active_subscriptions`) are not chart names and 404. What a project actually
+  answers for is discovered once and remembered in `rc_charts`, rechecked
+  weekly, so an app with no subscriptions stops being asked about `mrr` and a
+  new app discovers its own list. The page draws what came back, labelled by
+  RevenueCat's `display_name`, and hides a series that is flat at zero.
+- **Money scale.** The chart schema does not state whether money is in units
+  or minor units, so the revenue series is calibrated on every pull against
+  `/v2/projects/{id}/metrics/revenue` for the same window instead of assumed,
+  and the factor learned there is applied to `mrr` and `ltv_per_customer`,
+  which have nothing of their own to calibrate against.
+- **Rate.** Charts & Metrics allows 25 requests a minute and a full pull is a
+  dozen-odd, so the client holds a sliding window (20/min) and the refresh
+  floor is a minute. Waiting is safe because every caller has a budget.
 - **Linking**: projects are matched to apps by name, overridable with
   `RC_PROJECTS` or `cli.mjs rc:link`. An unmatched project is left alone rather
   than guessed at — a wrong link puts another app's money on this app's page.

@@ -16,9 +16,52 @@ import { q } from './db.mjs';
 
 const API = 'https://api.revenuecat.com/v2';
 
-// Counts, so no unit ambiguity. Money is handled separately (see `pullApp`).
-const COUNT_CHARTS = ['new_customers', 'active_subscriptions', 'active_trials'];
+// Chart names come from the API reference's own enum, not from guessing: the
+// first version of this file used new_customers / active_subscriptions /
+// active_trials, which are the dashboard's labels and 404 as chart names.
+//
+// These are the ones that describe customers and money over time. Left out on
+// purpose: the *_movement charts and subscription_status (several series in
+// one, not a bar chart), cohort_explorer / prediction_explorer /
+// subscription_retention (cohort grids), and the ad_* family (not used).
+// `revenue` is first because the money scale is learned from it.
+const CHARTS = [
+  'revenue',
+  'customers_active',
+  'customers_new',
+  'actives',
+  'trials',
+  'non_subscription_purchases',
+  'mrr',
+  'churn',
+  'initial_conversion',
+  'ltv_per_customer',
+  'refund_rate',
+];
+
+/** Which of those are money, and so subject to the scale learned from revenue. */
+const MONEY = /revenue|mrr|arr|ltv|proceed/i;
+
+// A chart RevenueCat does not have for this project is remembered as absent,
+// and asked about again a week later in case the plan changed.
+const RECHECK_DAYS = 7;
 const WINDOW_DAYS = 90;
+
+// Charts & Metrics allows 25 requests a minute per key. Staying under it is
+// this module's job, not the caller's: a full pull is a dozen requests, and
+// two apps refreshing at once must queue rather than earn a 429. Waiting here
+// is safe because every caller has a budget (see `ensureFresh`).
+const RATE_WINDOW = 60_000;
+const recent = [];
+
+async function slot() {
+  for (;;) {
+    const now = Date.now();
+    while (recent.length && now - recent[0] > RATE_WINDOW) recent.shift();
+    if (recent.length < cfg.rcRatePerMinute) return void recent.push(now);
+    await sleep(RATE_WINDOW - (now - recent[0]) + 50);
+  }
+}
 
 export const rcConfigured = () => Boolean(cfg.rcApiKey);
 
@@ -28,6 +71,7 @@ const ymd = (d) => d.toISOString().slice(0, 10);
 async function rc(path, params = {}) {
   const url = new URL(API + path);
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  await slot();
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${cfg.rcApiKey}`, Accept: 'application/json' },
     signal: AbortSignal.timeout(10_000),
@@ -37,9 +81,6 @@ async function rc(path, params = {}) {
     const detail = body?.message ?? body?.error ?? `HTTP ${res.status}`;
     throw Object.assign(new Error(`revenuecat ${path}: ${detail}`), { status: res.status });
   }
-  // Serialised calls with a small gap: five requests per app per poll stays
-  // an order of magnitude under the limit, and a burst never starts.
-  await sleep(200);
   return body;
 }
 
@@ -175,10 +216,32 @@ async function writeOverview(app, currency, metrics) {
   return rowCount > 0;
 }
 
+async function markChart(app, chart, { supported, displayName = null, money = false, note = null }) {
+  await q(
+    `INSERT INTO rc_charts (app, chart, supported, display_name, money, checked_at, note)
+     VALUES ($1, $2, $3, $4, $5, now(), $6)
+     ON CONFLICT (app, chart) DO UPDATE
+       SET supported = EXCLUDED.supported, display_name = COALESCE(EXCLUDED.display_name, rc_charts.display_name),
+           money = EXCLUDED.money, checked_at = now(), note = EXCLUDED.note`,
+    [app, chart, supported, displayName, money, note],
+  );
+}
+
+/** The charts worth asking for this time: everything known to work, plus anything not asked about in the last week. */
+async function chartsToPull(app) {
+  const known = new Map((await q('SELECT chart, supported, checked_at FROM rc_charts WHERE app = $1', [app])).rows.map((r) => [r.chart, r]));
+  return CHARTS.filter((chart) => {
+    const row = known.get(chart);
+    if (!row) return true;
+    return row.supported || Date.now() - Date.parse(row.checked_at) > RECHECK_DAYS * 86400_000;
+  });
+}
+
 async function pullApp({ app, project_id: projectId }) {
   const end = new Date();
   const start = new Date(end.getTime() - (WINDOW_DAYS - 1) * 86400_000);
   const currency = cfg.rcCurrency;
+  const range = { resolution: 'day', start_date: ymd(start), end_date: ymd(end), currency };
 
   const overview = await rc(`/projects/${projectId}/metrics/overview`, { currency });
   const metrics = (Array.isArray(overview?.metrics) ? overview.metrics : []).map((m) => ({
@@ -193,27 +256,46 @@ async function pullApp({ app, project_id: projectId }) {
   if (metrics.length === 0) throw new Error('overview returned no metrics');
   await writeOverview(app, overview?.currency ?? currency, metrics);
 
-  for (const chart of COUNT_CHARTS) {
-    try {
-      const data = await rc(`/projects/${projectId}/charts/${chart}`, { resolution: 'day', start_date: ymd(start), end_date: ymd(end), currency });
-      await writeSeries(app, chart, normalizeChart(data?.values, chart));
-    } catch (err) {
-      // A chart the project does not have is a 404, not a broken poll.
-      log.warn('rc chart skipped', { app, chart, err: String(err?.message ?? err) });
-    }
-  }
-
-  // Revenue last: its scale is decided by the authoritative total for the
-  // same window, so the two calls belong together.
+  // The authoritative 28-day total, which is what the revenue chart is
+  // calibrated against; also the only money number that is certain.
+  let authoritative = null;
   try {
     const total = await rc(`/projects/${projectId}/metrics/revenue`, { start_date: ymd(start), end_date: ymd(end), currency });
-    const data = await rc(`/projects/${projectId}/charts/revenue`, { resolution: 'day', start_date: ymd(start), end_date: ymd(end), currency });
-    const points = normalizeChart(data?.values, 'revenue');
-    const scale = scaleFor(points.reduce((a, p) => a + p.value, 0), Number(total?.value));
-    if (scale !== 1) log.info('rc revenue chart is in minor units', { app, scale });
-    await writeSeries(app, 'revenue', points.map((p) => ({ day: p.day, value: p.value * scale })));
+    authoritative = Number(total?.value);
   } catch (err) {
-    log.warn('rc revenue skipped', { app, err: String(err?.message ?? err) });
+    log.warn('rc revenue total skipped', { app, err: String(err?.message ?? err) });
+  }
+
+  let scale = Number((await q('SELECT money_scale FROM rc_projects WHERE app = $1', [app])).rows[0]?.money_scale ?? 1);
+
+  for (const chart of await chartsToPull(app)) {
+    const money = MONEY.test(chart);
+    try {
+      const data = await rc(`/projects/${projectId}/charts/${chart}`, range);
+      const points = normalizeChart(data?.values, chart);
+      // `revenue` comes first in CHARTS, so every other money chart is scaled
+      // by what it taught us.
+      if (chart === 'revenue' && authoritative !== null) {
+        const learned = scaleFor(points.reduce((a, p) => a + p.value, 0), authoritative);
+        if (learned !== scale) {
+          log.info('rc money scale learned', { app, scale: learned });
+          await q('UPDATE rc_projects SET money_scale = $2 WHERE app = $1', [app, learned]);
+        }
+        scale = learned;
+      }
+      await writeSeries(app, chart, money ? points.map((p) => ({ day: p.day, value: p.value * scale })) : points);
+      await markChart(app, chart, { supported: true, displayName: data?.display_name ?? null, money });
+    } catch (err) {
+      const message = String(err?.message ?? err);
+      // A chart this project does not have is a 404: remembered as absent, and
+      // asked about again in a week. A rate limit is not an answer about the
+      // chart, so it ends the pull instead of marking anything.
+      if (err?.status === 429) throw err;
+      if (err?.status === 404 || err?.status === 400) {
+        await markChart(app, chart, { supported: false, money, note: message.slice(0, 200) });
+      }
+      log.warn('rc chart skipped', { app, chart, err: message });
+    }
   }
 }
 
@@ -302,18 +384,28 @@ export async function revenue({ app = null, days = 30 }) {
      ORDER BY p.app`,
   )).rows;
 
-  let series = {};
+  // Every chart the project answered for, in the order CHARTS lists them, each
+  // labelled the way RevenueCat labels it. The page draws what it is given
+  // rather than naming charts itself, so a chart added here needs no UI change.
+  const series = [];
   if (app) {
     const { rows } = await q(
-      `SELECT chart, to_char(day, 'YYYY-MM-DD') AS day, value::float8 AS value
-       FROM rc_series WHERE app = $1 AND day >= (current_date - make_interval(days => $2 - 1))
-       ORDER BY chart, day`,
+      `SELECT s.chart, c.display_name, c.money, to_char(s.day, 'YYYY-MM-DD') AS day, s.value::float8 AS value
+       FROM rc_series s LEFT JOIN rc_charts c ON c.app = s.app AND c.chart = s.chart
+       WHERE s.app = $1 AND s.day >= (current_date - make_interval(days => $2 - 1))
+       ORDER BY s.chart, s.day`,
       [app, days],
     );
     // The date is formatted in SQL for the same reason the events queries do
     // it: a `date` comes back through node-postgres as local midnight and
     // shifts a day when it crosses JSON.
-    for (const r of rows) (series[r.chart] ??= []).push({ day: r.day, value: r.value });
+    const byChart = new Map();
+    for (const r of rows) {
+      if (!byChart.has(r.chart)) byChart.set(r.chart, { chart: r.chart, name: r.display_name ?? r.chart.replace(/_/g, ' '), money: r.money ?? false, points: [] });
+      byChart.get(r.chart).points.push({ day: r.day, value: r.value });
+    }
+    for (const chart of CHARTS) if (byChart.has(chart)) series.push(byChart.get(chart));
+    for (const [chart, s] of byChart) if (!CHARTS.includes(chart)) series.push(s);
   }
 
   return { configured: rcConfigured(), apps: projects, series };

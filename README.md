@@ -72,7 +72,8 @@ must be (it is sourced by bash during deploys):
 | `TELEMETRY_RC_PROJECTS` | `braele=projabc,invoit=projdef`; only needed when a project's name is not the app's slug or display name |
 | `TELEMETRY_RC_CURRENCY` | default `USD` — what RevenueCat converts to |
 | `TELEMETRY_RC_STALE_MINUTES` | default 10 — opening the Apps page refreshes a cache older than this |
-| `TELEMETRY_RC_FLOOR_SECONDS` | default 30 — how soon the refresh button may ask again |
+| `TELEMETRY_RC_FLOOR_SECONDS` | default 60 — how soon the refresh button may ask again |
+| `TELEMETRY_RC_RATE_PER_MINUTE` | default 20; RevenueCat allows 25 |
 
 ## RevenueCat
 
@@ -97,15 +98,37 @@ real secret: `/opt/bavrk/.env` only.
 docker compose exec telemetry node src/cli.mjs rc:projects   # what the key can see
 docker compose exec telemetry node src/cli.mjs rc:sync       # link by name
 docker compose exec telemetry node src/cli.mjs rc:link braele projabc123
+docker compose exec telemetry node src/cli.mjs rc:charts     # which charts this project answers for
 docker compose exec telemetry node src/cli.mjs rc:poll       # pull now, print the result
 ```
 
 Each pull stores the overview metrics (a row only when a number changed) and
-the daily `revenue`, `new_customers`, `active_subscriptions` and `active_trials`
-charts. Charts a project does not have are skipped, not fatal. The revenue
-chart's scale is not documented upstream, so it is calibrated on every pull
-against `/metrics/revenue` for the same window rather than assumed — that is
-the difference between $18 and $1,800 on the dashboard.
+the daily series for every chart the project answers for:
+
+```
+revenue  customers_active  customers_new  actives  trials
+non_subscription_purchases  mrr  churn  initial_conversion
+ltv_per_customer  refund_rate
+```
+
+Those are chart *names* from the API's own enum, not the dashboard's labels —
+`customers_new`, not `new_customers`. A project without subscriptions answers
+404 for `mrr` and `trials`; that is remembered in `rc_charts` and asked about
+again a week later, so the fleet's next app gets its own list without a code
+change. The Apps page draws whatever came back, labelled the way RevenueCat
+labels it, and hides a chart that is flat at zero.
+
+Money charts are scaled by what the `revenue` chart taught us: its scale is not
+documented upstream, so it is calibrated on every pull against
+`/metrics/revenue` for the same window rather than assumed — the difference
+between $18 and $1,800 on the dashboard — and the same factor is applied to
+`mrr` and `ltv_per_customer`, which have nothing to calibrate against.
+
+Not pulled, and available if wanted: the `*_movement` charts and
+`subscription_status` (several series in one), `cohort_explorer`,
+`prediction_explorer` and `subscription_retention` (cohort grids), the `ad_*`
+family, and the `segment` parameter, which slices any chart by country, store,
+product or offering.
 
 A refresh waits at most twelve seconds for RevenueCat. Past that the page is
 answered from the cache and the pull keeps going in the background, so a slow

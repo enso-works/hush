@@ -10,6 +10,9 @@ CREATE TABLE rc_projects (
     project_id     text NOT NULL UNIQUE,
     name           text,
     linked_at      timestamptz NOT NULL DEFAULT now(),
+    -- 1 or 0.01, learned by comparing the revenue chart with the authoritative
+    -- 28-day total: the chart schema does not say which unit money is in.
+    money_scale    numeric NOT NULL DEFAULT 1,
     -- Freshness and failure belong next to the link: the dashboard says
     -- "as of 6 minutes ago", and a key that stopped working is visible
     -- there rather than only in the container log.
@@ -30,8 +33,22 @@ CREATE TABLE rc_overview (
     PRIMARY KEY (app, fetched_at)
 );
 
--- Daily points from the charts API (revenue, new customers, active
--- subscriptions, active trials). Re-pulled on every poll and upserted, so a
+-- Which charts this project actually answers for. RevenueCat's chart list
+-- depends on the project and the plan, and asking for one it does not have is
+-- a 404, so the answer is remembered rather than rediscovered on every pull.
+-- `display_name` is RevenueCat's own label, which is what the dashboard shows.
+CREATE TABLE rc_charts (
+    app          text NOT NULL REFERENCES apps(slug) ON DELETE CASCADE,
+    chart        text NOT NULL,
+    supported    boolean NOT NULL,
+    display_name text,
+    money        boolean NOT NULL DEFAULT false,
+    checked_at   timestamptz NOT NULL DEFAULT now(),
+    note         text,
+    PRIMARY KEY (app, chart)
+);
+
+-- Daily points per chart. Re-pulled on every pull and upserted, so a
 -- late-settling day corrects itself instead of freezing at its first value.
 CREATE TABLE rc_series (
     app     text NOT NULL REFERENCES apps(slug) ON DELETE CASCADE,

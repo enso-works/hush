@@ -69,6 +69,12 @@ const commands = {
     console.log(linked.length ? linked.map((l) => `${l.app} → ${l.project} (${l.id})`).join('\n') : 'no project name matched an app; use rc:projects then rc:link');
   },
 
+  // Which charts this project answered for, and which it does not have.
+  async 'rc:charts'() {
+    const { rows } = await q('SELECT app, chart, supported, display_name, note FROM rc_charts ORDER BY app, supported DESC, chart');
+    for (const r of rows) console.log(`${r.app}\t${r.chart}\t${r.supported ? (r.display_name ?? 'ok') : `ABSENT ${r.note ?? ''}`}`);
+  },
+
   async 'rc:poll'() {
     if (!rcConfigured()) throw new Error('RC_API_KEY is not set');
     await poll();
