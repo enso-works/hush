@@ -212,20 +212,23 @@ showing an hour-old number next to the time it was fetched.
   `{id, name, unit, period, value}` — so a metric added upstream appears
   without a migration or a UI change.
 - **Charts** (`/v2/projects/{id}/charts/{name}`, resolution `day`) give the
-  daily series: `revenue`, `customers_active`, `customers_new`, `actives`,
-  `trials`, `non_subscription_purchases`, `mrr`, `churn`,
-  `initial_conversion`, `ltv_per_customer`, `refund_rate`. Those names come
-  from the API reference's enum; the dashboard's labels (`new_customers`,
-  `active_subscriptions`) are not chart names and 404. What a project actually
-  answers for is discovered once and remembered in `rc_charts`, rechecked
-  weekly, so an app with no subscriptions stops being asked about `mrr` and a
-  new app discovers its own list. The page draws what came back, labelled by
-  RevenueCat's `display_name`, and hides a series that is flat at zero.
-- **Money scale.** The chart schema does not state whether money is in units
-  or minor units, so the revenue series is calibrated on every pull against
-  `/v2/projects/{id}/metrics/revenue` for the same window instead of assumed,
-  and the factor learned there is applied to `mrr` and `ltv_per_customer`,
-  which have nothing of their own to calibrate against.
+  daily series: `revenue`, `customers_active`, `customers_new`,
+  `non-subscription_purchases`, `actives`, `trials`, `mrr`, `churn`,
+  `initial_conversion`, `conversion_to_paying`, `ltv_per_customer`,
+  `refund_rate`. Those are the API's spellings, which are not the dashboard's
+  labels and not, for the hyphenated one, what the docs page says; an invalid
+  name returns a 400 listing the whole enum. A chart is several series
+  (`revenue` also returns Transactions and Ad Impressions), each point is
+  `{cohort, measure, value}`, and the `measures` array is stored verbatim so
+  the page can label and format from RevenueCat's own metadata. What a project
+  answers for is discovered once, remembered in `rc_charts` and rechecked
+  weekly. The page draws what came back, hides series flat at zero, and folds
+  together the ones that repeat across charts.
+- **Money scale.** Whether a series is money is its measure's `unit`, not the
+  chart's name. The live project returns whole currency units, but RevenueCat
+  does not document that, so the revenue chart is still calibrated against
+  `/v2/projects/{id}/metrics/revenue` each pull and the factor it learns scales
+  `mrr` and the LTV measures, which have nothing of their own to check against.
 - **Rate.** Charts & Metrics allows 25 requests a minute and a full pull is a
   dozen-odd, so the client holds a sliding window (20/min) and the refresh
   floor is a minute. Waiting is safe because every caller has a budget.

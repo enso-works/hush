@@ -106,23 +106,38 @@ Each pull stores the overview metrics (a row only when a number changed) and
 the daily series for every chart the project answers for:
 
 ```
-revenue  customers_active  customers_new  actives  trials
-non_subscription_purchases  mrr  churn  initial_conversion
+revenue  customers_active  customers_new  non-subscription_purchases
+actives  trials  mrr  churn  initial_conversion  conversion_to_paying
 ltv_per_customer  refund_rate
 ```
 
-Those are chart *names* from the API's own enum, not the dashboard's labels —
-`customers_new`, not `new_customers`. A project without subscriptions answers
-404 for `mrr` and `trials`; that is remembered in `rc_charts` and asked about
-again a week later, so the fleet's next app gets its own list without a code
-change. The Apps page draws whatever came back, labelled the way RevenueCat
-labels it, and hides a chart that is flat at zero.
+Those are chart *names* as the API spells them, which is neither the
+dashboard's labels nor, in one case, what the docs say: `customers_new`, not
+`new_customers`; `non-subscription_purchases` with a hyphen. A name outside the
+enum comes back as a 400 whose message lists every valid one, which is the
+quickest way to check a new one.
 
-Money charts are scaled by what the `revenue` chart taught us: its scale is not
-documented upstream, so it is calibrated on every pull against
-`/metrics/revenue` for the same window rather than assumed — the difference
-between $18 and $1,800 on the dashboard — and the same factor is applied to
-`mrr` and `ltv_per_customer`, which have nothing to calibrate against.
+A chart is several series. `revenue` returns Revenue, Transactions and Ad
+Impressions; `conversion_to_paying` returns New Customers, Paying Customers and
+the rate. Each point is `{cohort, measure, value}` — cohort in epoch seconds,
+measure an index into the chart's `measures` array — so one row is stored per
+chart, measure and day, and the measure array is kept verbatim for its label,
+unit and precision. Whether a series is money is its measure's `unit`, not a
+guess from the chart's name.
+
+Charts a project does not have are remembered in `rc_charts` and asked about
+again a week later, so an app without subscriptions stops being asked about
+`mrr` and the fleet's next app finds its own list without a code change. The
+page draws whatever came back, labelled the way RevenueCat labels it, hides a
+series that is flat at zero, and folds together series that repeat across
+charts (four of these charts return the same New Customers column).
+
+Money values come back in whole currency units, not cents — verified against
+the live project, where the revenue chart sums to the same $18.38 the
+authoritative endpoint reports. The calibration stays anyway: it is one
+comparison per pull, RevenueCat does not document the unit, and the factor it
+learns is what scales `mrr` and the LTV measures, which have nothing of their
+own to check against.
 
 Not pulled, and available if wanted: the `*_movement` charts and
 `subscription_status` (several series in one), `cohort_explorer`,

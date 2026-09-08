@@ -16,31 +16,32 @@ import { q } from './db.mjs';
 
 const API = 'https://api.revenuecat.com/v2';
 
-// Chart names come from the API reference's own enum, not from guessing: the
-// first version of this file used new_customers / active_subscriptions /
-// active_trials, which are the dashboard's labels and 404 as chart names.
+// Chart names as the API spells them, which is neither what the dashboard
+// calls them nor, in one case, what the docs say: `customers_new`, not
+// `new_customers`; `non-subscription_purchases` with a hyphen. Asking for a
+// name outside the enum is a 400 whose message lists every valid one, which is
+// where this list was checked against.
 //
 // These are the ones that describe customers and money over time. Left out on
-// purpose: the *_movement charts and subscription_status (several series in
-// one, not a bar chart), cohort_explorer / prediction_explorer /
-// subscription_retention (cohort grids), and the ad_* family (not used).
+// purpose: the *_movement charts and subscription_status (stacked states, not
+// a bar), cohort_explorer / prediction_explorer / subscription_retention
+// (cohort grids), the ad_* family, and arr / ltv_per_paying_customer /
+// trial_conversion_rate (each a restatement of one already here).
 // `revenue` is first because the money scale is learned from it.
 const CHARTS = [
   'revenue',
   'customers_active',
   'customers_new',
+  'non-subscription_purchases',
   'actives',
   'trials',
-  'non_subscription_purchases',
   'mrr',
   'churn',
   'initial_conversion',
+  'conversion_to_paying',
   'ltv_per_customer',
   'refund_rate',
 ];
-
-/** Which of those are money, and so subject to the scale learned from revenue. */
-const MONEY = /revenue|mrr|arr|ltv|proceed/i;
 
 // A chart RevenueCat does not have for this project is remembered as absent,
 // and asked about again a week later in case the plan changed.
@@ -130,51 +131,36 @@ export async function syncProjects() {
 }
 
 /**
- * A chart's `values` shape depends on the chart, and the API reference says so
- * rather than pinning one. Both documented shapes are read here — rows of
- * `[period, …numbers]` and objects keyed by period and value — and anything
- * else is logged with a sample instead of being silently charted wrong.
+ * A chart's points, flattened into one row per measure and day.
+ *
+ * RevenueCat returns `{cohort, measure, value, incomplete}` — the cohort is the
+ * period start in epoch seconds, the measure is an index into the chart's
+ * `measures` array, and every measure of every period is its own entry. So a
+ * 30-day revenue chart is 90 entries: Revenue, Transactions and Ad Impressions
+ * for each day. `incomplete` marks the period still being filled in (today),
+ * whose value is kept and corrected by the next pull.
+ *
+ * Anything that is not that shape is logged with a sample rather than charted
+ * as something it isn't.
  */
-export function normalizeChart(values, chart) {
+export function normalizeChart(values, measures, chart) {
   if (!Array.isArray(values) || values.length === 0) return [];
   const out = [];
   let complained = false;
   for (const entry of values) {
-    let period;
-    let value;
-    if (Array.isArray(entry)) {
-      period = entry[0];
-      // The last finite number in the row: single-series charts put it at [1],
-      // and a total column, where one exists, is the rightmost.
-      for (const v of entry.slice(1)) if (Number.isFinite(Number(v))) value = Number(v);
-    } else if (entry && typeof entry === 'object') {
-      period = entry.period ?? entry.date ?? entry.start_date ?? entry.time ?? entry.x;
-      for (const key of ['value', 'total', 'amount', 'y']) {
-        if (Number.isFinite(Number(entry[key]))) { value = Number(entry[key]); break; }
-      }
-    }
-    const day = toDay(period);
-    if (day === null || value === undefined) {
+    const measure = measures?.[entry?.measure]?.display_name;
+    const value = Number(entry?.value);
+    const day = Number.isFinite(entry?.cohort) ? ymd(new Date(entry.cohort * 1000)) : null;
+    if (day === null || !measure || !Number.isFinite(value)) {
       if (!complained) {
         complained = true;
         log.warn('rc chart shape unrecognised', { chart, sample: JSON.stringify(entry).slice(0, 200) });
       }
       continue;
     }
-    out.push({ day, value });
+    out.push({ measure, day, value });
   }
   return out;
-}
-
-/** A chart period as a UTC calendar day: ISO string, epoch seconds or epoch milliseconds. */
-function toDay(period) {
-  if (typeof period === 'string') {
-    if (/^\d{4}-\d{2}-\d{2}/.test(period)) return period.slice(0, 10);
-    const t = Date.parse(period);
-    return Number.isNaN(t) ? null : ymd(new Date(t));
-  }
-  if (Number.isFinite(period)) return ymd(new Date(period < 1e12 ? period * 1000 : period));
-  return null;
 }
 
 /**
@@ -191,10 +177,10 @@ export function scaleFor(sum, authoritative) {
 async function writeSeries(app, chart, points) {
   if (points.length === 0) return;
   await q(
-    `INSERT INTO rc_series (app, chart, day, value)
-     SELECT $1, $2, d::date, v FROM unnest($3::text[], $4::numeric[]) AS t(d, v)
-     ON CONFLICT (app, chart, day) DO UPDATE SET value = EXCLUDED.value`,
-    [app, chart, points.map((p) => p.day), points.map((p) => p.value)],
+    `INSERT INTO rc_series (app, chart, measure, day, value)
+     SELECT $1, $2, m, d::date, v FROM unnest($3::text[], $4::text[], $5::numeric[]) AS t(m, d, v)
+     ON CONFLICT (app, chart, measure, day) DO UPDATE SET value = EXCLUDED.value`,
+    [app, chart, points.map((p) => p.measure), points.map((p) => p.day), points.map((p) => p.value)],
   );
 }
 
@@ -216,14 +202,15 @@ async function writeOverview(app, currency, metrics) {
   return rowCount > 0;
 }
 
-async function markChart(app, chart, { supported, displayName = null, money = false, note = null }) {
+async function markChart(app, chart, { supported, displayName = null, measures = [], note = null }) {
   await q(
-    `INSERT INTO rc_charts (app, chart, supported, display_name, money, checked_at, note)
-     VALUES ($1, $2, $3, $4, $5, now(), $6)
+    `INSERT INTO rc_charts (app, chart, supported, display_name, measures, checked_at, note)
+     VALUES ($1, $2, $3, $4, $5::jsonb, now(), $6)
      ON CONFLICT (app, chart) DO UPDATE
        SET supported = EXCLUDED.supported, display_name = COALESCE(EXCLUDED.display_name, rc_charts.display_name),
-           money = EXCLUDED.money, checked_at = now(), note = EXCLUDED.note`,
-    [app, chart, supported, displayName, money, note],
+           measures = CASE WHEN EXCLUDED.measures = '[]'::jsonb THEN rc_charts.measures ELSE EXCLUDED.measures END,
+           checked_at = now(), note = EXCLUDED.note`,
+    [app, chart, supported, displayName, JSON.stringify(measures), note],
   );
 }
 
@@ -268,35 +255,54 @@ async function pullApp({ app, project_id: projectId }) {
 
   let scale = Number((await q('SELECT money_scale FROM rc_projects WHERE app = $1', [app])).rows[0]?.money_scale ?? 1);
 
-  for (const chart of await chartsToPull(app)) {
-    const money = MONEY.test(chart);
+  const pullChart = async (chart) => {
     try {
       const data = await rc(`/projects/${projectId}/charts/${chart}`, range);
-      const points = normalizeChart(data?.values, chart);
-      // `revenue` comes first in CHARTS, so every other money chart is scaled
-      // by what it taught us.
+      const measures = Array.isArray(data?.measures) ? data.measures : [];
+      const points = normalizeChart(data?.values, measures, chart);
+      // Whether a measure is money is the measure's own `unit`, not a guess
+      // from the chart's name: the revenue chart returns dollars *and* a
+      // transaction count, and `conversion_to_paying` returns two counts and a
+      // percentage.
+      const money = new Set(measures.filter((m) => m.unit === '$').map((m) => m.display_name));
+
+      // `revenue` comes first in CHARTS, so every money measure everywhere is
+      // scaled by what its own dollars taught us.
       if (chart === 'revenue' && authoritative !== null) {
-        const learned = scaleFor(points.reduce((a, p) => a + p.value, 0), authoritative);
+        const dollars = points.filter((p) => money.has(p.measure)).reduce((a, p) => a + p.value, 0);
+        const learned = scaleFor(dollars, authoritative);
         if (learned !== scale) {
           log.info('rc money scale learned', { app, scale: learned });
           await q('UPDATE rc_projects SET money_scale = $2 WHERE app = $1', [app, learned]);
         }
         scale = learned;
       }
-      await writeSeries(app, chart, money ? points.map((p) => ({ day: p.day, value: p.value * scale })) : points);
-      await markChart(app, chart, { supported: true, displayName: data?.display_name ?? null, money });
+
+      await writeSeries(app, chart, scale === 1 ? points : points.map((p) => (money.has(p.measure) ? { ...p, value: p.value * scale } : p)));
+      await markChart(app, chart, { supported: true, displayName: data?.display_name ?? null, measures });
     } catch (err) {
       const message = String(err?.message ?? err);
-      // A chart this project does not have is a 404: remembered as absent, and
-      // asked about again in a week. A rate limit is not an answer about the
-      // chart, so it ends the pull instead of marking anything.
+      // A chart this project does not have is a 404, and a name outside the
+      // API's enum is a 400: both are remembered and asked about again in a
+      // week. A rate limit says nothing about the chart, so it ends the pull
+      // instead of marking anything.
       if (err?.status === 429) throw err;
       if (err?.status === 404 || err?.status === 400) {
-        await markChart(app, chart, { supported: false, money, note: message.slice(0, 200) });
+        await markChart(app, chart, { supported: false, note: message.slice(0, 200) });
       }
       log.warn('rc chart skipped', { app, chart, err: message });
     }
-  }
+  };
+
+  // Revenue alone first, because every other money measure is scaled by what
+  // it teaches. The rest go four at a time: RevenueCat answers a chart in
+  // about three quarters of a second, so a dozen in series is ten seconds and
+  // a page that gives up waiting. The limiter, not the loop, is what keeps
+  // this inside the rate.
+  const wanted = await chartsToPull(app);
+  if (wanted.includes('revenue')) await pullChart('revenue');
+  const rest = wanted.filter((c) => c !== 'revenue');
+  for (let i = 0; i < rest.length; i += 4) await Promise.all(rest.slice(i, i + 4).map(pullChart));
 }
 
 // One pull per app at a time. Two people opening the page, or one opening it
@@ -384,28 +390,65 @@ export async function revenue({ app = null, days = 30 }) {
      ORDER BY p.app`,
   )).rows;
 
-  // Every chart the project answered for, in the order CHARTS lists them, each
-  // labelled the way RevenueCat labels it. The page draws what it is given
-  // rather than naming charts itself, so a chart added here needs no UI change.
+  // One series per chart and measure, in the order CHARTS lists them, each
+  // carrying RevenueCat's own label and unit. The page draws what it is given
+  // and formats by the unit, so a chart added here needs no UI change.
   const series = [];
   if (app) {
     const { rows } = await q(
-      `SELECT s.chart, c.display_name, c.money, to_char(s.day, 'YYYY-MM-DD') AS day, s.value::float8 AS value
+      `SELECT s.chart, s.measure, c.display_name AS chart_name, c.measures,
+              to_char(s.day, 'YYYY-MM-DD') AS day, s.value::float8 AS value
        FROM rc_series s LEFT JOIN rc_charts c ON c.app = s.app AND c.chart = s.chart
        WHERE s.app = $1 AND s.day >= (current_date - make_interval(days => $2 - 1))
-       ORDER BY s.chart, s.day`,
+       ORDER BY s.chart, s.measure, s.day`,
       [app, days],
     );
     // The date is formatted in SQL for the same reason the events queries do
     // it: a `date` comes back through node-postgres as local midnight and
     // shifts a day when it crosses JSON.
-    const byChart = new Map();
+    const found = new Map();
     for (const r of rows) {
-      if (!byChart.has(r.chart)) byChart.set(r.chart, { chart: r.chart, name: r.display_name ?? r.chart.replace(/_/g, ' '), money: r.money ?? false, points: [] });
-      byChart.get(r.chart).points.push({ day: r.day, value: r.value });
+      const key = `${r.chart} ${r.measure}`;
+      if (!found.has(key)) {
+        const measures = r.measures ?? [];
+        const meta = measures.find((m) => m.display_name === r.measure);
+        const chartName = r.chart_name ?? r.chart.replace(/[-_]/g, ' ');
+        found.set(key, {
+          chart: r.chart,
+          chartName,
+          measure: r.measure,
+          // A chart with one measure is better named by the chart: the
+          // `actives` chart's measure is called "Actives", the chart is called
+          // "Active Subscriptions", and the second is the one worth reading.
+          name: measures.length === 1 ? chartName : r.measure,
+          unit: meta?.unit ?? '#',
+          position: meta ? measures.indexOf(meta) : 99,
+          points: [],
+        });
+      }
+      found.get(key).points.push({ day: r.day, value: r.value });
     }
-    for (const chart of CHARTS) if (byChart.has(chart)) series.push(byChart.get(chart));
-    for (const [chart, s] of byChart) if (!CHARTS.includes(chart)) series.push(s);
+
+    const order = (s) => {
+      const i = CHARTS.indexOf(s.chart);
+      return (i === -1 ? CHARTS.length : i) * 100 + s.position;
+    };
+    const ordered = [...found.values()].sort((a, b) => order(a) - order(b));
+
+    // Charts share measures: "New Customers" is a column of `customers_new`,
+    // `initial_conversion`, `conversion_to_paying` and `ltv_per_customer`
+    // alike, with the same numbers in each. Same name and same numbers is one
+    // series, kept where CHARTS puts it first; same name and different numbers
+    // keeps both, told apart by the chart each came from.
+    const seen = new Set();
+    for (const s of ordered) {
+      const fingerprint = `${s.name}|${s.points.map((p) => p.day + ':' + p.value).join(',')}`;
+      if (seen.has(fingerprint)) continue;
+      seen.add(fingerprint);
+      series.push(s);
+    }
+    const clash = new Set(series.filter((s, i) => series.findIndex((o) => o.name === s.name) !== i).map((s) => s.name));
+    for (const s of series) if (clash.has(s.name) && s.name !== s.chartName) s.name = `${s.name} · ${s.chartName}`;
   }
 
   return { configured: rcConfigured(), apps: projects, series };

@@ -33,27 +33,35 @@ CREATE TABLE rc_overview (
     PRIMARY KEY (app, fetched_at)
 );
 
--- Which charts this project actually answers for. RevenueCat's chart list
--- depends on the project and the plan, and asking for one it does not have is
--- a 404, so the answer is remembered rather than rediscovered on every pull.
--- `display_name` is RevenueCat's own label, which is what the dashboard shows.
+-- Which charts this project answers for, and what each one measures. A chart
+-- is several series: `revenue` returns Revenue, Transactions and Ad
+-- Impressions; `conversion_to_paying` returns New Customers, Paying Customers
+-- and the rate. `measures` is RevenueCat's own array, kept verbatim
+-- ({display_name, unit, decimal_precision, chartable}), so the dashboard can
+-- label and format a series without this service knowing what any chart means.
+--
+-- Support is discovered, not assumed: an unknown name is a 400 and a chart the
+-- project does not have is a 404, so the answer is remembered rather than
+-- asked again on every pull.
 CREATE TABLE rc_charts (
     app          text NOT NULL REFERENCES apps(slug) ON DELETE CASCADE,
     chart        text NOT NULL,
     supported    boolean NOT NULL,
     display_name text,
-    money        boolean NOT NULL DEFAULT false,
+    measures     jsonb NOT NULL DEFAULT '[]'::jsonb,
     checked_at   timestamptz NOT NULL DEFAULT now(),
     note         text,
     PRIMARY KEY (app, chart)
 );
 
--- Daily points per chart. Re-pulled on every pull and upserted, so a
--- late-settling day corrects itself instead of freezing at its first value.
+-- Daily points, one row per chart, measure and day. Re-pulled on every pull and
+-- upserted, so the current day (which RevenueCat marks `incomplete`) and any
+-- late-settling revenue correct themselves instead of freezing at first value.
 CREATE TABLE rc_series (
     app     text NOT NULL REFERENCES apps(slug) ON DELETE CASCADE,
     chart   text NOT NULL,
+    measure text NOT NULL,
     day     date NOT NULL,
     value   numeric NOT NULL,
-    PRIMARY KEY (app, chart, day)
+    PRIMARY KEY (app, chart, measure, day)
 );
