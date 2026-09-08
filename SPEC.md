@@ -1,10 +1,11 @@
 # Telemetry: app analytics, support tickets, and the Apps pages in Cockpit
 
-Status: 2026-09-07 — **phase 1 (the service) is built** and verified locally
-against a throwaway Postgres: ingestion with dedupe, ticket create/list/reply,
-the admin queries, rate limits, quotas and body caps. Phases 2-4 (SDK + Braele,
-Cockpit pages, RevenueCat webhooks) are still plan only. See
-[README.md](README.md) for how the built service is operated.
+Status: 2026-09-08 — **phases 1-3 are built** (the service, the SDK and Braele's
+events, the Apps and Tickets pages) and phase 4 is built as a *pull*: the Apps
+page shows RevenueCat's own numbers, fetched on open and cached (section 8). The
+webhook receiver, and with it a transaction list and the `rc_id` funnel join,
+is the one piece still outstanding. See [README.md](README.md) for how the
+service is operated.
 
 Two deviations from the plan below, both made while writing it: the service
 uses `node:http` and hand-rolled validation instead of Fastify + zod, and a
@@ -165,9 +166,12 @@ Charts are small inline SVG (bars and sparklines); no chart library.
 
 **Apps** (portfolio, then one app):
 - Range picker: 7 / 30 / 90 days, environment prod/dev.
+- Money block above the table: RevenueCat's overview cards per app, and the
+  daily series once an app is opened (section 8).
 - Portfolio table: app, installs (new / total), DAU / WAU / MAU, sessions,
-  sessions per active install, open tickets, RevenueCat trials/paid (once
-  section 8 exists).
+  sessions per active install, 28-day revenue, open tickets. Trials and paid
+  counts live in the cards rather than the table: a lifetime purchase has
+  neither, and two zero columns would say less than nothing.
 - App page: daily active installs and sessions (bars), version split, top
   events, paywall funnel (`paywall_viewed` → `purchase_started` →
   `purchase_result=purchased` → RC purchase), app-specific block (Braele:
@@ -180,17 +184,50 @@ Charts are small inline SVG (bars and sparklines); no chart library.
 diagnostics, reply box, status buttons. New tickets also appear as a count on
 the Overview page.
 
-## 8. RevenueCat (phase 4, after the rest works)
+## 8. RevenueCat (phase 4)
 
-Webhook receiver `POST /v1/rc/<app>` with the Authorization header RevenueCat
-sends, raw events stored by RC event id (idempotent), then derived per app:
-active trials, active paid, new trials, conversions, cancellations, renewals,
-refunds, and the funnel join by `rc_id`. Revenue numbers link out to the
-RevenueCat dashboard rather than being recomputed. The Charts API cache from
-the original plan is deferred until the counts above are not enough.
+**Built 2026-09-08, pull half only.** The plan below was a webhook receiver;
+what shipped is the opposite direction, because the question in front of us was
+"what does ops show *today*" and 1.4.0 has not shipped, so the events tables are
+empty and RevenueCat is the only real data there is. A webhook only fires on the
+next purchase; the v2 read API answers for the last 28 days now.
 
-Needs confirmation first: that the current RevenueCat plan offers webhooks
-(the dashboard's Integrations page shows it) and which project each app is in.
+`telemetry/src/revenuecat.mjs` reads RevenueCat's Charts & Metrics API and
+caches the answer in Postgres (`rc_projects`, `rc_overview`, `rc_series`,
+migration `003`). Cockpit reads the cache through `/admin/revenue`; nothing
+else in the fleet holds the key.
+
+**No poller** (Ensar, 2026-09-08). One person reads this dashboard, so a timer
+would spend ninety-odd pulls a day to be ready for the two that get read.
+Opening the Apps page refreshes a cache older than `RC_STALE_MINUTES` (10), the
+page's refresh button forces one no sooner than `RC_FLOOR_SECONDS` (30), and
+concurrent requests share one in-flight pull. A refresh waits at most twelve
+seconds: past that the page is answered from the cache while the pull finishes
+writing, because a dashboard that hangs on a slow upstream is worse than one
+showing an hour-old number next to the time it was fetched.
+
+- **Overview** (`/v2/projects/{id}/metrics/overview`) is the card row on the
+  Apps page: revenue and new/active customers over 28 days, active
+  subscriptions, active trials, MRR. Stored as RevenueCat returns it —
+  `{id, name, unit, period, value}` — so a metric added upstream appears
+  without a migration or a UI change.
+- **Charts** (`/v2/projects/{id}/charts/{name}`, resolution `day`) give the
+  daily series. The chart schema does not state whether money is in units or
+  minor units, so the revenue series is calibrated on every pull against
+  `/v2/projects/{id}/metrics/revenue` for the same window instead of assumed.
+- **Linking**: projects are matched to apps by name, overridable with
+  `RC_PROJECTS` or `cli.mjs rc:link`. An unmatched project is left alone rather
+  than guessed at — a wrong link puts another app's money on this app's page.
+- The key is a v2 *secret* key (`charts_metrics:*:read`,
+  `project_configuration:projects:read`). It never reaches a phone or a
+  browser, and the service is the only caller — Charts & Metrics allows 25
+  requests a minute, which a page fetching directly would exhaust.
+
+Still not built, and still worth building: the webhook receiver
+`POST /v1/rc/<app>`, raw events by RC event id, for the two things a pull
+cannot give — a transaction list, and the `rc_id` join that turns the
+client-side paywall funnel into a real one. Needs confirmation that the current
+plan offers webhooks (the dashboard's Integrations page shows it).
 
 ## 9. Growth path (not built now)
 
@@ -209,7 +246,8 @@ audit log when support needs it; Mindsaid joins when it moves to the template.
    (bavrk.com repo, owned by the other session, so a note for it). About one
    session. Ships as Braele 1.4.0; 1.3.0 (build 9) is already in review.
 3. **Cockpit pages**: Apps and Tickets. About one session.
-4. **RevenueCat webhooks**: half a session once plan support is confirmed.
+4. **RevenueCat**: (done) the pull, cached and on the Apps page. The webhook
+   receiver is half a session once plan support is confirmed.
 
 Order 1 → 2 → 3 lets the first real Braele data land before the pages are
 drawn against it. Each step is its own PR.
@@ -220,5 +258,8 @@ drawn against it. Each step is its own PR.
 2. (decided) No consent UI; anonymous by construction, policy paragraph only.
 3. (built) Support mail sender `support@bavrk.com`, replies mailed to the user when they gave an email, new tickets mailed to Ensar with the diagnostics.
 4. (built) Raw event retention 180 days, swept in-process every six hours.
-5. RevenueCat webhooks: confirm availability on the current plan before phase 4.
+5. (built) RevenueCat is read from the v2 API on demand, not by webhook: it answers
+   for the 28 days that already happened, which is what an empty telemetry
+   database needs. Webhooks stay open for the transaction list and the funnel
+   join; confirm availability on the current plan first.
 6. (done) 1.3.0 build 9 submitted 2026-09-06; app work targets 1.4.0.
