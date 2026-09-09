@@ -159,7 +159,11 @@ out — records the success and names what did not update, instead of reporting 
 clean run.
 
 Relinking an app to a *different* project drops its cached overview, series and
-charts in the same transaction, and resets the money scale. Everything cached
+charts in the same transaction, resets the money scale, and cannot be undone by
+a pull that was already in flight: every cache write carries the project it was
+fetched from and applies only while the app is still linked to it. The CLI
+relinks from a different process, so the in-process single-flight guard cannot
+see a running pull — the database has to be the one enforcing it. Everything cached
 belongs to the project it came from, and a later pull only upserts what it
 fetches, so a measure the new project lacks would otherwise sit there for good
 under the new name. Relinking to the same project keeps the cache.

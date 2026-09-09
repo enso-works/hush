@@ -201,17 +201,32 @@ export function scaleFor(sum, authoritative) {
   return Math.abs(sum / 100 - authoritative) < Math.abs(sum - authoritative) ? 0.01 : 1;
 }
 
-async function writeSeries(app, chart, points) {
+/**
+ * Every cache write carries the project it was fetched from and applies only
+ * while the app is still linked to it.
+ *
+ * A pull holds the project id it started with and then spends seconds on the
+ * network. A relink in that window — from the CLI, which is a different
+ * process and so cannot be seen by the in-process single-flight guard — empties
+ * the cache underneath it, and without this guard the pull would then write the
+ * former project's numbers back and mark them fresh. The dashboard would label
+ * one project's revenue as another's, which is the worst thing this service
+ * could do quietly.
+ */
+const LINKED = 'EXISTS (SELECT 1 FROM rc_projects p WHERE p.app = $1 AND p.project_id = ';
+
+async function writeSeries(app, projectId, chart, points) {
   if (points.length === 0) return;
   await q(
     `INSERT INTO rc_series (app, chart, measure, day, value)
      SELECT $1, $2, m, d::date, v FROM unnest($3::text[], $4::text[], $5::numeric[]) AS t(m, d, v)
+     WHERE ${LINKED}$6)
      ON CONFLICT (app, chart, measure, day) DO UPDATE SET value = EXCLUDED.value`,
-    [app, chart, points.map((p) => p.measure), points.map((p) => p.day), points.map((p) => p.value)],
+    [app, chart, points.map((p) => p.measure), points.map((p) => p.day), points.map((p) => p.value), projectId],
   );
 }
 
-async function writeOverview(app, currency, metrics) {
+async function writeOverview(app, projectId, currency, metrics) {
   // One row per change, not per poll: the numbers move a few times a day, and
   // a snapshot every quarter hour would be 35k near-identical rows a year.
   // The comparison is jsonb's, not JavaScript's — jsonb stores keys in its own
@@ -219,25 +234,26 @@ async function writeOverview(app, currency, metrics) {
   const { rowCount } = await q(
     `INSERT INTO rc_overview (app, currency, metrics)
      SELECT $1, $2, $3::jsonb
-     WHERE NOT EXISTS (
-       SELECT 1 FROM rc_overview o
-       WHERE o.app = $1 AND o.currency = $2 AND o.metrics = $3::jsonb
-         AND o.fetched_at = (SELECT max(fetched_at) FROM rc_overview WHERE app = $1)
-     )`,
-    [app, currency, JSON.stringify(metrics)],
+     WHERE ${LINKED}$4)
+       AND NOT EXISTS (
+         SELECT 1 FROM rc_overview o
+         WHERE o.app = $1 AND o.currency = $2 AND o.metrics = $3::jsonb
+           AND o.fetched_at = (SELECT max(fetched_at) FROM rc_overview WHERE app = $1)
+       )`,
+    [app, currency, JSON.stringify(metrics), projectId],
   );
   return rowCount > 0;
 }
 
-async function markChart(app, chart, { supported, displayName = null, measures = [], note = null }) {
+async function markChart(app, projectId, chart, { supported, displayName = null, measures = [], note = null }) {
   await q(
     `INSERT INTO rc_charts (app, chart, supported, display_name, measures, checked_at, note)
-     VALUES ($1, $2, $3, $4, $5::jsonb, now(), $6)
+     SELECT $1, $2, $3, $4, $5::jsonb, now(), $6 WHERE ${LINKED}$7)
      ON CONFLICT (app, chart) DO UPDATE
        SET supported = EXCLUDED.supported, display_name = COALESCE(EXCLUDED.display_name, rc_charts.display_name),
            measures = CASE WHEN EXCLUDED.measures = '[]'::jsonb THEN rc_charts.measures ELSE EXCLUDED.measures END,
            checked_at = now(), note = EXCLUDED.note`,
-    [app, chart, supported, displayName, JSON.stringify(measures), note],
+    [app, chart, supported, displayName, JSON.stringify(measures), note, projectId],
   );
 }
 
@@ -268,7 +284,7 @@ async function pullApp({ app, project_id: projectId }) {
     last_updated_at: m.last_updated_at_iso8601 ?? null,
   }));
   if (metrics.length === 0) throw new Error('overview returned no metrics');
-  await writeOverview(app, overview?.currency ?? currency, metrics);
+  await writeOverview(app, projectId, overview?.currency ?? currency, metrics);
 
   // The authoritative 28-day total, which is what the revenue chart is
   // calibrated against; also the only money number that is certain.
@@ -304,13 +320,13 @@ async function pullApp({ app, project_id: projectId }) {
         const learned = scaleFor(dollars, authoritative);
         if (learned !== scale) {
           log.info('rc money scale learned', { app, scale: learned });
-          await q('UPDATE rc_projects SET money_scale = $2 WHERE app = $1', [app, learned]);
+          await q('UPDATE rc_projects SET money_scale = $2 WHERE app = $1 AND project_id = $3', [app, learned, projectId]);
         }
         scale = learned;
       }
 
-      await writeSeries(app, chart, scale === 1 ? points : points.map((p) => (money.has(p.measure) ? { ...p, value: p.value * scale } : p)));
-      await markChart(app, chart, { supported: true, displayName: data?.display_name ?? null, measures });
+      await writeSeries(app, projectId, chart, scale === 1 ? points : points.map((p) => (money.has(p.measure) ? { ...p, value: p.value * scale } : p)));
+      await markChart(app, projectId, chart, { supported: true, displayName: data?.display_name ?? null, measures });
     } catch (err) {
       const message = String(err?.message ?? err);
       // A chart this project does not have is a 404, and a name outside the
@@ -319,7 +335,7 @@ async function pullApp({ app, project_id: projectId }) {
       // instead of marking anything.
       if (err?.status === 429) throw err;
       if (err?.status === 404 || err?.status === 400) {
-        await markChart(app, chart, { supported: false, note: message.slice(0, 200) });
+        await markChart(app, projectId, chart, { supported: false, note: message.slice(0, 200) });
       } else {
         // A timeout or a 500 says nothing about the chart; it says this pull
         // did not finish, and the caller has to know that.
@@ -358,6 +374,10 @@ function once(key, fn) {
 
 async function pullOne(row) {
   return once(row.app, async () => {
+    // Every write below is also conditioned on this, so a pull that finishes
+    // after the app was relinked neither stores the former project's numbers
+    // nor reports itself as this project's fresh answer.
+    const linked = ' AND project_id = $3';
     try {
       // A pull can half-work: the overview lands and three charts time out.
       // That is not a success to report silently — the cards would be new
@@ -367,14 +387,22 @@ async function pullOne(row) {
       const note = failed.length
         ? `not updated: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}`
         : null;
-      await q('UPDATE rc_projects SET last_polled_at = now(), last_success_at = now(), last_error = $2 WHERE app = $1', [row.app, note]);
+      const { rowCount } = await q(
+        `UPDATE rc_projects SET last_polled_at = now(), last_success_at = now(), last_error = $2 WHERE app = $1${linked}`,
+        [row.app, note, row.project_id],
+      );
+      if (!rowCount) return log.info('rc pull discarded, app was relinked mid-pull', { app: row.app, project: row.project_id });
       if (note) log.warn('rc pull partial', { app: row.app, failed });
     } catch (err) {
       const message = String(err?.message ?? err);
       // The attempt is recorded so the staleness check backs off, but
       // last_success_at is left alone: the data is as old as it ever was, and
       // the dashboard says so rather than calling it just-checked.
-      await q('UPDATE rc_projects SET last_polled_at = now(), last_error = $2 WHERE app = $1', [row.app, message.slice(0, 300)]);
+      await q(`UPDATE rc_projects SET last_polled_at = now(), last_error = $2 WHERE app = $1${linked}`, [
+        row.app,
+        message.slice(0, 300),
+        row.project_id,
+      ]);
       log.warn('rc pull failed', { app: row.app, err: message });
     }
   });
