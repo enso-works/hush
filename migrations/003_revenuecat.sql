@@ -16,8 +16,15 @@ CREATE TABLE rc_projects (
     -- Freshness and failure belong next to the link: the dashboard says
     -- "as of 6 minutes ago", and a key that stopped working is visible
     -- there rather than only in the container log.
-    last_polled_at timestamptz,
-    last_error     text
+    --
+    -- Attempts and successes are separate columns on purpose. Every attempt
+    -- moves `last_polled_at`, because that is what the staleness check reads
+    -- and a failing upstream must not be retried on every page open. Only data
+    -- actually landing moves `last_success_at`. Collapsing the two would let a
+    -- run of failures report hour-old money as freshly checked.
+    last_polled_at  timestamptz,
+    last_success_at timestamptz,
+    last_error      text
 );
 
 -- The overview cards, exactly as RevenueCat returns them: a metric is an

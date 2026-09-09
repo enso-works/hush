@@ -12,7 +12,7 @@
 // requests a minute, which a page that fetched directly on every render would
 // spend on one impatient afternoon.
 import { cfg, log } from './config.mjs';
-import { q } from './db.mjs';
+import { q, tx } from './db.mjs';
 
 const API = 'https://api.revenuecat.com/v2';
 
@@ -100,12 +100,39 @@ export async function listProjects() {
   return (Array.isArray(body?.items) ? body.items : []).map((p) => ({ id: p.id, name: p.name ?? '' }));
 }
 
+/**
+ * Point an app at a RevenueCat project.
+ *
+ * Pointing it at a *different* project throws the cache away in the same
+ * transaction. Everything cached — the overview snapshot, the daily series,
+ * which charts exist, the money scale — belongs to the project it came from,
+ * and a later pull only upserts what it fetches, so a measure the new project
+ * does not have would sit there under the new name indefinitely. Between the
+ * two, the dashboard would show one project's money labelled as another's.
+ * Relinking to the same project keeps everything.
+ */
 export async function link(app, projectId, name) {
-  await q(
-    `INSERT INTO rc_projects (app, project_id, name) VALUES ($1, $2, $3)
-     ON CONFLICT (app) DO UPDATE SET project_id = EXCLUDED.project_id, name = EXCLUDED.name, linked_at = now()`,
-    [app, projectId, name ?? null],
-  );
+  await tx(async (client) => {
+    const prev = (await client.query('SELECT project_id FROM rc_projects WHERE app = $1', [app])).rows[0];
+    if (prev && prev.project_id !== projectId) {
+      for (const table of ['rc_overview', 'rc_series', 'rc_charts']) {
+        await client.query(`DELETE FROM ${table} WHERE app = $1`, [app]);
+      }
+      log.info('rc project changed, cache dropped', { app, from: prev.project_id, to: projectId });
+    }
+    await client.query(
+      `INSERT INTO rc_projects (app, project_id, name) VALUES ($1, $2, $3)
+       ON CONFLICT (app) DO UPDATE SET
+         project_id = EXCLUDED.project_id,
+         name = EXCLUDED.name,
+         linked_at = now(),
+         money_scale     = CASE WHEN rc_projects.project_id = EXCLUDED.project_id THEN rc_projects.money_scale ELSE 1 END,
+         last_polled_at  = CASE WHEN rc_projects.project_id = EXCLUDED.project_id THEN rc_projects.last_polled_at ELSE NULL END,
+         last_success_at = CASE WHEN rc_projects.project_id = EXCLUDED.project_id THEN rc_projects.last_success_at ELSE NULL END,
+         last_error      = CASE WHEN rc_projects.project_id = EXCLUDED.project_id THEN rc_projects.last_error ELSE NULL END`,
+      [app, projectId, name ?? null],
+    );
+  });
 }
 
 /**
@@ -255,6 +282,10 @@ async function pullApp({ app, project_id: projectId }) {
 
   let scale = Number((await q('SELECT money_scale FROM rc_projects WHERE app = $1', [app])).rows[0]?.money_scale ?? 1);
 
+  // Charts that answered with something other than "I do not exist". Those are
+  // the ones whose absence from the page would otherwise be invisible.
+  const failed = [];
+
   const pullChart = async (chart) => {
     try {
       const data = await rc(`/projects/${projectId}/charts/${chart}`, range);
@@ -289,6 +320,10 @@ async function pullApp({ app, project_id: projectId }) {
       if (err?.status === 429) throw err;
       if (err?.status === 404 || err?.status === 400) {
         await markChart(app, chart, { supported: false, note: message.slice(0, 200) });
+      } else {
+        // A timeout or a 500 says nothing about the chart; it says this pull
+        // did not finish, and the caller has to know that.
+        failed.push(chart);
       }
       log.warn('rc chart skipped', { app, chart, err: message });
     }
@@ -303,6 +338,10 @@ async function pullApp({ app, project_id: projectId }) {
   if (wanted.includes('revenue')) await pullChart('revenue');
   const rest = wanted.filter((c) => c !== 'revenue');
   for (let i = 0; i < rest.length; i += 4) await Promise.all(rest.slice(i, i + 4).map(pullChart));
+
+  // The revenue total is money on the cards, so its failure counts too.
+  if (authoritative === null) failed.push('revenue total');
+  return { failed };
 }
 
 // One pull per app at a time. Two people opening the page, or one opening it
@@ -320,10 +359,21 @@ function once(key, fn) {
 async function pullOne(row) {
   return once(row.app, async () => {
     try {
-      await pullApp(row);
-      await q('UPDATE rc_projects SET last_polled_at = now(), last_error = NULL WHERE app = $1', [row.app]);
+      // A pull can half-work: the overview lands and three charts time out.
+      // That is not a success to report silently — the cards would be new
+      // beside charts that are hours old and say nothing about it.
+      const { failed } = await pullApp(row);
+      // Named, but not all twelve of them: this is one line on a dashboard.
+      const note = failed.length
+        ? `not updated: ${failed.slice(0, 3).join(', ')}${failed.length > 3 ? ` and ${failed.length - 3} more` : ''}`
+        : null;
+      await q('UPDATE rc_projects SET last_polled_at = now(), last_success_at = now(), last_error = $2 WHERE app = $1', [row.app, note]);
+      if (note) log.warn('rc pull partial', { app: row.app, failed });
     } catch (err) {
       const message = String(err?.message ?? err);
+      // The attempt is recorded so the staleness check backs off, but
+      // last_success_at is left alone: the data is as old as it ever was, and
+      // the dashboard says so rather than calling it just-checked.
       await q('UPDATE rc_projects SET last_polled_at = now(), last_error = $2 WHERE app = $1', [row.app, message.slice(0, 300)]);
       log.warn('rc pull failed', { app: row.app, err: message });
     }
@@ -380,7 +430,7 @@ export async function ensureFresh({ app = null, force = false, budgetMs = 12_000
 /** Read side for Cockpit: the cards for every linked app, and one app's daily series. */
 export async function revenue({ app = null, days = 30 }) {
   const projects = (await q(
-    `SELECT p.app, p.name, p.project_id, p.last_polled_at, p.last_error,
+    `SELECT p.app, p.name, p.project_id, p.last_polled_at, p.last_success_at, p.last_error,
             o.currency, o.metrics, o.fetched_at
      FROM rc_projects p
      LEFT JOIN LATERAL (

@@ -149,6 +149,21 @@ A refresh waits at most twelve seconds for RevenueCat. Past that the page is
 answered from the cache and the pull keeps going in the background, so a slow
 upstream shows stale numbers with a timestamp rather than a hanging dashboard.
 
+Attempts and successes are recorded separately. Every attempt moves
+`last_polled_at`, because that is what the staleness check reads and a failing
+key must not be retried on every page open; only data actually landing moves
+`last_success_at`. The page reads its age from the second and says "that
+attempt failed, so these are from an hour ago" rather than calling old money
+freshly checked. A pull that half-works — the overview lands, three charts time
+out — records the success and names what did not update, instead of reporting a
+clean run.
+
+Relinking an app to a *different* project drops its cached overview, series and
+charts in the same transaction, and resets the money scale. Everything cached
+belongs to the project it came from, and a later pull only upserts what it
+fetches, so a measure the new project lacks would otherwise sit there for good
+under the new name. Relinking to the same project keeps the cache.
+
 ## Running it locally
 
 ```bash
