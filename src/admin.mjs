@@ -78,8 +78,62 @@ export async function appDetail({ app, days, env }) {
 
   const unknown = events.filter((e) => !e.known).map((e) => ({ name: e.name, n: e.n }));
 
+  // The same window, one window earlier, so the page can say "up 12%" and
+  // mean something. Sessions and new installs are counts; active is the
+  // distinct installs seen at all, which is what a small app's "audience" is.
+  const period = async (from, to) =>
+    (await q(
+      `SELECT
+         (SELECT count(*)::int FROM installs i WHERE i.app = $1 AND i.env = $2
+            AND i.first_seen >= now() - make_interval(days => $3) AND i.first_seen < now() - make_interval(days => $4)) AS new_installs,
+         (SELECT count(DISTINCT e.session)::int FROM events e WHERE e.app = $1 AND e.env = $2
+            AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS sessions,
+         (SELECT count(DISTINCT e.install)::int FROM events e WHERE e.app = $1 AND e.env = $2
+            AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS active,
+         (SELECT count(*)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND e.name = 'breathing_session_completed'
+            AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS breaths,
+         (SELECT count(*)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND e.name = 'breathing_session_completed'
+            AND e.props->>'completed' = 'true'
+            AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS breaths_done`,
+      [app, env, from, to],
+    )).rows[0];
+  const current = await period(days, 0);
+  const prior = await period(days * 2, days);
+
+  // Retention as "came back N or more days after the first open", counted
+  // over installs old enough to have had the chance. Day-exact retention
+  // (active on day 7 precisely) is the textbook number and is nearly always
+  // zero at this volume; "still around a week later" is the question asked.
+  const retention = (await q(
+    `SELECT
+       count(*) FILTER (WHERE i.first_seen < now() - interval '1 day')::int AS d1_cohort,
+       count(*) FILTER (WHERE i.first_seen < now() - interval '1 day'
+         AND EXISTS (SELECT 1 FROM events e WHERE e.install = i.id AND e.at >= i.first_seen + interval '1 day'))::int AS d1,
+       count(*) FILTER (WHERE i.first_seen < now() - interval '7 days')::int AS d7_cohort,
+       count(*) FILTER (WHERE i.first_seen < now() - interval '7 days'
+         AND EXISTS (SELECT 1 FROM events e WHERE e.install = i.id AND e.at >= i.first_seen + interval '7 days'))::int AS d7,
+       count(*) FILTER (WHERE i.first_seen < now() - interval '30 days')::int AS d30_cohort,
+       count(*) FILTER (WHERE i.first_seen < now() - interval '30 days'
+         AND EXISTS (SELECT 1 FROM events e WHERE e.install = i.id AND e.at >= i.first_seen + interval '30 days'))::int AS d30
+     FROM installs i WHERE i.app = $1 AND i.env = $2 AND i.first_seen >= now() - make_interval(days => $3)`,
+    args,
+  )).rows[0];
+
+  const todayActive = (await q(
+    `SELECT count(DISTINCT install)::int AS n FROM events WHERE app = $1 AND env = $2 AND at >= date_trunc('day', now())`,
+    [app, env],
+  )).rows[0].n;
+
   return {
     app,
+    current,
+    prior,
+    retention: {
+      d1: { cohort: retention.d1_cohort, retained: retention.d1 },
+      d7: { cohort: retention.d7_cohort, retained: retention.d7 },
+      d30: { cohort: retention.d30_cohort, retained: retention.d30 },
+    },
+    todayActive,
     daily,
     versions,
     events,
