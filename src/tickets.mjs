@@ -4,6 +4,8 @@ import { flatObject, str } from './http.mjs';
 import { sendMail } from './mail.mjs';
 
 const MAX_PER_DAY = 5;
+// Replies on one thread in a day. Generous: a conversation, not a form.
+const MAX_REPLIES_PER_DAY = 20;
 const EMAIL = /^[^@\s]+@[^@\s.]+\.[^@\s]+$/;
 export const KINDS = ['issue', 'feature', 'love'];
 
@@ -64,6 +66,46 @@ export async function createTicket({ app, install, email, subject, message, diag
     text: `${message}\n\n--\ninstall: ${install}\ncustomer: ${rcId ?? '(no RevenueCat id)'}\nemail: ${email ?? '(none given)'}\n${diagLines}\n\nReply from ops.bavrk.com → Tickets.`,
   });
   return ticket;
+}
+
+/**
+ * A reply from the person who opened the ticket, so a thread can go back and
+ * forth until someone on the ops side closes it.
+ *
+ * Reopens the ticket: an answered thread the user has written back on needs
+ * looking at again, and `open` is what the inbox sorts to the top. A closed
+ * ticket stays closed; the app offers a new message instead, so "closed" keeps
+ * meaning what the operator meant by it. Returns the reply row, or a string
+ * naming why it was refused.
+ */
+export async function userReply({ id, install, app, body }) {
+  const { rows } = await q('SELECT id, status, subject, email FROM tickets WHERE id = $1 AND install = $2 AND app = $3', [id, install, app]);
+  const ticket = rows[0];
+  if (!ticket) return 'not_found';
+  if (ticket.status === 'closed') return 'closed';
+  const { rows: countRows } = await q(
+    "SELECT count(*)::int AS n FROM ticket_replies WHERE ticket_id = $1 AND author = 'user' AND created_at > now() - interval '1 day'",
+    [id],
+  );
+  if (countRows[0].n >= MAX_REPLIES_PER_DAY) return 'too_many';
+
+  const reply = await tx(async (client) => {
+    const { rows: r } = await client.query(
+      "INSERT INTO ticket_replies (ticket_id, author, body, emailed) VALUES ($1, 'user', $2, false) RETURNING id, created_at",
+      [id, body],
+    );
+    await client.query("UPDATE tickets SET status = 'open', updated_at = now() WHERE id = $1", [id]);
+    return r[0];
+  });
+
+  // Same fire-and-forget as a new ticket: stored first, announced after.
+  void sendMail({
+    to: cfg.alertEmail,
+    subject: `[${app}] Reply on #${id}${ticket.subject ? ` — ${ticket.subject}` : ''}`,
+    replyTo: ticket.email ?? undefined,
+    text: `${body}\n\n--\nticket: #${id}\ninstall: ${install}\n\nReply from ops.bavrk.com → Tickets.`,
+  });
+  return reply;
 }
 
 /** True when this install id already belongs to a different app — a spoofed id, since an install only ever talks to one app. */

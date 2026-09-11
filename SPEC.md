@@ -105,6 +105,7 @@ Environment: `dev` keys and `prod` keys; the dashboard shows prod by default.
 ```
 POST /v1/tickets   { install, email?, subject?, message, diag: { version, build, os, device, locale, pro } }
 GET  /v1/tickets?install=<uuid>   → the install's tickets with status and replies
+POST /v1/tickets/:id/reply   { install, body }   → 201; sets status back to open. 409 once closed.
 ```
 
 - On a new ticket the service mails Ensar (subject `[braele] #123 …`, the

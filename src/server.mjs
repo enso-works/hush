@@ -14,7 +14,7 @@ import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { migrate } from './migrate.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
-import { adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, KINDS, parseTicket, ticketsForInstall } from './tickets.mjs';
+import { adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, KINDS, parseTicket, ticketsForInstall, userReply } from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
 const ingestLimit = rateLimiter(60);
@@ -54,6 +54,24 @@ r.post('/v1/tickets', async (req, res, { key }) => {
   const ticket = await createTicket({ app: key.app, install: body.install, ...parsed });
   if (!ticket) return json(res, 429, { error: 'too many tickets today' });
   return json(res, 201, { id: ticket.id, created_at: ticket.created_at, status: 'open' });
+});
+
+r.post('/v1/tickets/:id/reply', async (req, res, { key, params }) => {
+  if (!ticketLimit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
+  const body = await readJson(req, MAX_BODY);
+  if (!isUuid(body?.install)) return json(res, 400, { error: 'invalid install' });
+  const text = str(body.body, 4000);
+  if (!text) return json(res, 400, { error: 'invalid body' });
+  const id = Number(params.id);
+  if (!Number.isInteger(id) || id <= 0) return json(res, 404, { error: 'not found' });
+  // The ticket must belong to this install and this app: the query inside
+  // userReply checks both, so a key for another app cannot write into a
+  // thread by guessing its id.
+  const out = await userReply({ id, install: body.install, app: key.app, body: text });
+  if (out === 'not_found') return json(res, 404, { error: 'not found' });
+  if (out === 'closed') return json(res, 409, { error: 'closed' });
+  if (out === 'too_many') return json(res, 429, { error: 'too many replies today' });
+  return json(res, 201, { id: out.id, created_at: out.created_at, status: 'open' });
 });
 
 r.get('/v1/tickets', async (_req, res, { url, key }) => {

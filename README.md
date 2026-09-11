@@ -16,6 +16,7 @@ dependency tree.
 | `POST /v1/events` | phones — `Authorization: Key <write key>` |
 | `POST /v1/tickets` | phones — same key |
 | `GET /v1/tickets?install=<uuid>` | phones — the install's own tickets |
+| `POST /v1/tickets/:id/reply` | phones — a reply on one of the install's own tickets; reopens it, refused once closed |
 | `GET /healthz` | Caddy, the deploy smoke check, `scripts/healthcheck.sh` |
 | `GET /admin/apps`, `/admin/apps/:app`, `/admin/apps/:app/breakdown` | Cockpit — `Authorization: Bearer $TELEMETRY_ADMIN_TOKEN` |
 | `GET /admin/revenue` | Cockpit — the cached RevenueCat answer, same token |
