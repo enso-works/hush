@@ -1,0 +1,9 @@
+# The image needs package*.json, src/ (with the built dashboard) and
+# migrations/ only.
+.git
+.github
+node_modules
+dashboard
+examples
+sdk
+test

@@ -39,6 +39,26 @@ jobs:
           node-version: 22
       - run: npx -y -p typescript@5.6 tsc --noEmit -p sdk/tsconfig.json
 
+  dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+        working-directory: dashboard
+      - run: npm run build
+        working-directory: dashboard
+      # src/dashboard/ is committed so running hush needs no build step; it
+      # must be exactly what the source builds to.
+      - name: The committed build matches its source
+        run: |
+          git status --porcelain src/dashboard
+          test -z "$(git status --porcelain src/dashboard)"
+
   image:
     runs-on: ubuntu-latest
     steps:

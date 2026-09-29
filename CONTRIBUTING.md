@@ -18,6 +18,25 @@ it (default `postgresql://test:test@127.0.0.1:55432/postgres`).
 
 The SDK is type-checked on its own: `cd sdk && npx tsc --noEmit -p tsconfig.json`.
 
+## The dashboard
+
+The dashboard's source is `dashboard/` (React, Tailwind, shadcn and Magic UI,
+built with Vite). It builds into `src/dashboard/`, which is committed: running
+hush never needs a build step or anything beyond `pg`. After changing it,
+rebuild and commit both; CI fails when the two disagree.
+
+```bash
+cd dashboard && npm ci
+# against a local DEMO=1 server: DATABASE_URL=... DEMO=1 PORT=3055 node src/server.mjs
+npm run dev              # http://127.0.0.1:5173/, /admin proxied to HUSH_URL (default :3055)
+npm run build            # writes ../src/dashboard/
+```
+
+The page is served with a strict CSP (scripts, styles and fonts from 'self'
+only), so nothing may inject a `<style>` element or an inline script:
+components that do (next-themes, the upstream shadcn chart) were adapted.
+Style props set from JavaScript are fine.
+
 ## The /v1 contract is frozen
 
 `test/compat.test.mjs` replays a fixed script against `/v1` and compares every
@@ -35,4 +54,5 @@ are applied in order, by file name, each in a transaction, at every boot.
 
 ## Style
 
-Plain Node, no framework, one runtime dependency. Comments say why, not what.
+The server: plain Node, no framework, one runtime dependency. Comments say
+why, not what.

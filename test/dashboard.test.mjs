@@ -1,4 +1,5 @@
-// The dashboard is served by the container itself: three files, by name only.
+// The dashboard is served by the container itself: the prebuilt files in
+// src/dashboard/, by exact name only, under a strict CSP.
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 
@@ -14,22 +15,33 @@ after(async () => {
   await db?.drop();
 });
 
-test('the page, its script and its styles, with a strict CSP', async () => {
+test('the page and its built assets, with a strict CSP', async () => {
   const page = await fetch(`${srv.base}/dashboard/`);
   assert.equal(page.status, 200);
   assert.match(page.headers.get('content-type'), /text\/html/);
-  assert.match(page.headers.get('content-security-policy'), /script-src 'self'/);
-  assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
-  assert.match(await page.text(), /<script type="module" src="\.\/app\.js">/);
-  assert.equal((await fetch(`${srv.base}/dashboard/app.js`)).headers.get('content-type'), 'text/javascript; charset=utf-8');
-  assert.equal((await fetch(`${srv.base}/dashboard/style.css`)).status, 200);
+  const csp = page.headers.get('content-security-policy');
+  assert.match(csp, /script-src 'self'/);
+  assert.match(csp, /style-src 'self'(;|$)/, 'no inline styles');
+  assert.match(csp, /frame-ancestors 'none'/);
+  assert.equal(page.headers.get('cache-control'), 'no-cache');
+  const html = await page.text();
+  // Relative asset URLs, so the page also works behind a proxy prefix.
+  const script = html.match(/<script type="module" crossorigin src="\.\/(assets\/[^"]+\.js)">/)?.[1];
+  const style = html.match(/<link rel="stylesheet" crossorigin href="\.\/(assets\/[^"]+\.css)">/)?.[1];
+  assert.ok(script && style, 'a hashed script and stylesheet');
+  assert.doesNotMatch(html.replace(/<script type="module"[^>]*><\/script>/, ''), /<script|<style|style=/, 'nothing inline');
+  const js = await fetch(`${srv.base}/dashboard/${script}`);
+  assert.equal(js.headers.get('content-type'), 'text/javascript; charset=utf-8');
+  assert.match(js.headers.get('cache-control'), /immutable/);
+  assert.equal((await fetch(`${srv.base}/dashboard/${style}`)).status, 200);
+  assert.equal((await fetch(`${srv.base}/dashboard/favicon.svg`)).headers.get('content-type'), 'image/svg+xml');
 });
 
-test('/dashboard redirects to the page; anything else under it is 404', async () => {
+test('/dashboard redirects to the page, relatively; anything else under it is 404', async () => {
   const r = await fetch(`${srv.base}/dashboard`, { redirect: 'manual' });
   assert.equal(r.status, 301);
-  assert.equal(r.headers.get('location'), '/dashboard/');
-  for (const path of ['/dashboard/server.mjs', '/dashboard/..%2Fserver.mjs', '/dashboard/%2e%2e/config.mjs', '/dashboard/nope.js']) {
+  assert.equal(r.headers.get('location'), 'dashboard/');
+  for (const path of ['/dashboard/server.mjs', '/dashboard/..%2Fserver.mjs', '/dashboard/%2e%2e/config.mjs', '/dashboard/nope.js', '/dashboard/assets/']) {
     assert.equal((await fetch(`${srv.base}${path}`)).status, 404, path);
   }
 });

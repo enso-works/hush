@@ -4,9 +4,9 @@
 // a write key that ships in the app bundle) and /admin/* is the operator's,
 // behind ADMIN_TOKEN. Expose /admin only as far as you need to: the token is
 // meant to be the second lock, after a network or proxy rule, not the only one.
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import http from 'node:http';
-import { dirname, join } from 'node:path';
+import { dirname, extname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { appDetail, breakdown, summary } from './admin.mjs';
@@ -32,28 +32,46 @@ const ticketLimit = rateLimiter(10);
 
 const r = router();
 
-// The dashboard: three static files, read once at boot and served only by
-// exact name, so no path from the URL ever reaches the filesystem. Its data
-// comes from /admin with the token the page asks for.
+// The dashboard: a prebuilt single-page app (source in dashboard/, built into
+// src/dashboard/ and committed, so running hush needs no build step). Every
+// file is read once at boot and served only by exact name, so no path from
+// the URL ever reaches the filesystem. Its data comes from /admin, with the
+// token the page asks for.
 const DASHBOARD_DIR = join(dirname(fileURLToPath(import.meta.url)), 'dashboard');
+const TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.woff2': 'font/woff2',
+};
 const DASHBOARD = Object.fromEntries(
-  [['index.html', 'text/html; charset=utf-8'], ['app.js', 'text/javascript; charset=utf-8'], ['style.css', 'text/css; charset=utf-8']]
-    .map(([name, type]) => [name, { type, body: readFileSync(join(DASHBOARD_DIR, name)) }]),
+  readdirSync(DASHBOARD_DIR, { recursive: true })
+    .filter((name) => TYPES[extname(name)])
+    .map((name) => [name.split(sep).join('/'), { type: TYPES[extname(name)], body: readFileSync(join(DASHBOARD_DIR, name)) }]),
 );
 const DASHBOARD_HEADERS = {
-  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
-  'Cache-Control': 'no-cache',
 };
 function serveDashboard(res, pathname) {
+  // Relative, so it also lands right behind a proxy prefix (/demo/dashboard).
   if (pathname === '/dashboard') {
-    res.writeHead(301, { Location: '/dashboard/' });
+    res.writeHead(301, { Location: 'dashboard/' });
     return res.end();
   }
-  const file = DASHBOARD[pathname.slice('/dashboard/'.length) || 'index.html'];
+  const name = pathname.slice('/dashboard/'.length) || 'index.html';
+  const file = DASHBOARD[name];
   if (!file) return json(res, 404, { error: 'not found' });
-  res.writeHead(200, { 'Content-Type': file.type, 'Content-Length': file.body.length, ...DASHBOARD_HEADERS });
+  res.writeHead(200, {
+    'Content-Type': file.type,
+    'Content-Length': file.body.length,
+    // Built assets carry a content hash in their names; the page does not.
+    'Cache-Control': name.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache',
+    ...DASHBOARD_HEADERS,
+  });
   return res.end(file.body);
 }
 
