@@ -5,8 +5,12 @@ import { q } from './db.mjs';
 
 export const hashKey = (key) => createHash('sha256').update(key).digest('hex');
 
-/** `bvk_<app>_<env>_<random>`: readable enough to tell two keys apart in a diff. */
-export const mintKey = (app, env) => `bvk_${app}_${env}_${randomBytes(18).toString('base64url')}`;
+/**
+ * `hush_<app>_<env>_<random>`: readable enough to tell two keys apart in a
+ * diff. Only the hash is stored, so keys minted under an older prefix keep
+ * working.
+ */
+export const mintKey = (app, env) => `hush_${app}_${env}_${randomBytes(18).toString('base64url')}`;
 
 // Every request carries a key, so the lookup is cached briefly. A revoked key
 // therefore keeps working for at most a minute, which is fine for an

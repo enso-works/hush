@@ -1,13 +1,13 @@
-// Anonymous analytics and support tickets for the bavrk mobile fleet.
+// hush: anonymous analytics and in-app support tickets for mobile apps.
 //
 // Two audiences, deliberately split: /v1/* is public (phones, authenticated by
-// a write key that ships in the app bundle) and /admin/* is reachable only
-// from the docker network, where Cockpit proxies it. Caddy never forwards
-// /admin, so the token is the second lock, not the only one.
+// a write key that ships in the app bundle) and /admin/* is the operator's,
+// behind ADMIN_TOKEN. Expose /admin only as far as you need to: the token is
+// meant to be the second lock, after a network or proxy rule, not the only one.
 import http from 'node:http';
 
 import { appDetail, breakdown, summary } from './admin.mjs';
-import { cfg, log } from './config.mjs';
+import { cfg, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { clientKey, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
@@ -19,9 +19,9 @@ import { adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, crea
 const MAX_BODY = 64 * 1024;
 // Checked before the write key is even looked up, so a flood of made-up keys
 // is refused without a database query. Generous: a phone sends a batch every
-// few minutes, the per-route limits below are the real ones. The address it
-// counts by is trustworthy only because Caddy lets nothing but Cloudflare
-// (and the box itself) reach /v1, so cf-connecting-ip cannot be forged.
+// few minutes, the per-route limits below are the real ones. The address they
+// count by (clientKey in http.mjs) is only as trustworthy as the proxy in
+// front: see the README before exposing /v1 without one.
 const v1Limit = rateLimiter(120);
 const ingestLimit = rateLimiter(60);
 const ticketLimit = rateLimiter(10);
@@ -92,6 +92,8 @@ r.get('/v1/tickets', async (_req, res, { url, key }) => {
 });
 
 // --- admin (docker network only)
+// A ticket id from the path: a positive integer, or null (answered with 404).
+const ticketId = (params) => (/^[1-9][0-9]{0,17}$/.test(params.id) ? Number(params.id) : null);
 const days = (url) => Math.min(Math.max(Number(url.searchParams.get('days') ?? 30) || 30, 1), 365);
 const envOf = (url) => (url.searchParams.get('env') === 'dev' ? 'dev' : 'prod');
 
@@ -128,22 +130,25 @@ r.get('/admin/tickets', async (_req, res, { url }) => {
 });
 
 r.get('/admin/tickets/:id', async (_req, res, { params }) => {
-  const ticket = await adminGet(Number(params.id));
+  if (!ticketId(params)) return json(res, 404, { error: 'not found' });
+  const ticket = await adminGet(ticketId(params));
   return ticket ? json(res, 200, ticket) : json(res, 404, { error: 'not found' });
 });
 
 r.post('/admin/tickets/:id/reply', async (req, res, { params }) => {
+  if (!ticketId(params)) return json(res, 404, { error: 'not found' });
   const body = await readJson(req, MAX_BODY);
   const text = str(body?.body, 4000);
   if (!text) return json(res, 400, { error: 'body required' });
-  const out = await adminReply(Number(params.id), text, { close: body.close === true });
+  const out = await adminReply(ticketId(params), text, { close: body.close === true });
   return out ? json(res, 200, { ok: true, ...out }) : json(res, 404, { error: 'not found' });
 });
 
 r.post('/admin/tickets/:id/status', async (req, res, { params }) => {
+  if (!ticketId(params)) return json(res, 404, { error: 'not found' });
   const body = await readJson(req, MAX_BODY);
   if (!['open', 'answered', 'closed'].includes(body?.status)) return json(res, 400, { error: 'invalid status' });
-  const ok = await adminStatus(Number(params.id), body.status);
+  const ok = await adminStatus(ticketId(params), body.status);
   return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'not found' });
 });
 
@@ -161,10 +166,10 @@ const server = http.createServer(async (req, res) => {
       if (!v1Limit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
       const key = await resolveKey(req.headers.authorization);
       if (!key) return json(res, 401, { error: 'unauthorized' });
-      // Cloudflare's country header is the only thing derived from the
-      // caller's address, and it never leaves the install row.
-      const cf = req.headers['cf-ipcountry'];
-      const country = typeof cf === 'string' && /^[A-Z]{2}$/.test(cf) ? cf : null;
+      // The proxy's country header (COUNTRY_HEADER) is the only thing derived
+      // from the caller's address, and it never leaves the install row.
+      const raw = cfg.countryHeader ? req.headers[cfg.countryHeader] : undefined;
+      const country = typeof raw === 'string' && /^[A-Z]{2}$/.test(raw) ? raw : null;
       return await route.handler(req, res, { url, params: route.params, key, country });
     }
     return await route.handler(req, res, { url, params: route.params });
@@ -186,9 +191,17 @@ async function sweep() {
   }
 }
 
+// APPS registers apps at boot; an app that already has a row keeps it.
+async function registerApps() {
+  for (const { slug, name } of parseApps(cfg.apps)) {
+    await q('INSERT INTO apps (slug, name) VALUES ($1, $2) ON CONFLICT (slug) DO NOTHING', [slug, name]);
+  }
+}
+
 migrate()
+  .then(registerApps)
   .then(() => {
-    server.listen(cfg.port, '0.0.0.0', () => log.info('telemetry listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off' }));
+    server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off' }));
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
     setTimeout(sweep, 60_000).unref();
   })

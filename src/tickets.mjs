@@ -18,7 +18,7 @@ export function parseTicket(body) {
   const subject = body.subject == null || body.subject === '' ? null : str(body.subject, 120);
   if (body.subject && !subject) return 'subject';
   // Same flat-primitive shape as event props: the diagnostics end up in an
-  // email body and in the Cockpit ticket view, so a nested or oversized
+  // email body and in the dashboard's ticket view, so a nested or oversized
   // structure is refused here rather than rendered somewhere later.
   const diag = flatObject(body.diag, { maxKeys: 20 });
   if (diag === null) return 'diag';
@@ -39,16 +39,20 @@ export function parseTicket(body) {
  * install: without it, five concurrent submissions all read four and all
  * insert. The lock is per install, so it never serializes unrelated traffic.
  */
-// Alert mails go to one inbox (cfg.alertEmail). The per-install caps stop one
+// Alert mails go to one inbox (ALERT_EMAIL). The per-install caps stop one
 // phone, but an install id is a client-chosen UUID, so a script can mint new
 // ones and turn each ticket into a mail. Past this many alerts an hour the
-// tickets are still stored and shown in Cockpit; only the mail is skipped,
-// with one warning in the log per hour.
+// tickets are still stored and shown on the dashboard; only the mail is
+// skipped, with one warning in the log per hour.
 const ALERTS_PER_HOUR = 30;
 let alertHour = -1;
 let alertCount = 0;
 
+// Where to answer, appended to every alert when REPLY_HINT is set.
+const replyLine = () => (cfg.replyHint ? `\n\nReply from ${cfg.replyHint}.` : '');
+
 function alertMail(mail) {
+  if (!cfg.alertEmail) return;
   const hour = Math.floor(Date.now() / 3_600_000);
   if (hour !== alertHour) { alertHour = hour; alertCount = 0; }
   alertCount += 1;
@@ -83,7 +87,7 @@ export async function createTicket({ app, install, email, subject, message, diag
     to: cfg.alertEmail,
     subject: `[${app}] ${heading} #${ticket.id}${subject ? ` — ${subject}` : ''}`,
     replyTo: email ?? undefined,
-    text: `${message}\n\n--\ninstall: ${install}\ncustomer: ${rcId ?? '(no RevenueCat id)'}\nemail: ${email ?? '(none given)'}\n${diagLines}\n\nReply from ops.bavrk.com → Tickets.`,
+    text: `${message}\n\n--\ninstall: ${install}\ncustomer: ${rcId ?? '(no RevenueCat id)'}\nemail: ${email ?? '(none given)'}\n${diagLines}${replyLine()}`,
   });
   return ticket;
 }
@@ -123,7 +127,7 @@ export async function userReply({ id, install, app, body }) {
     to: cfg.alertEmail,
     subject: `[${app}] Reply on #${id}${ticket.subject ? ` — ${ticket.subject}` : ''}`,
     replyTo: ticket.email ?? undefined,
-    text: `${body}\n\n--\nticket: #${id}\ninstall: ${install}\n\nReply from ops.bavrk.com → Tickets.`,
+    text: `${body}\n\n--\nticket: #${id}\ninstall: ${install}${replyLine()}`,
   });
   return reply;
 }

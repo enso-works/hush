@@ -1,8 +1,8 @@
 // Admin CLI, run inside the container:
-//   docker compose exec telemetry node src/cli.mjs keys:create braele prod "1.4.0"
+//   docker compose exec hush node src/cli.mjs keys:create myapp prod "1.0.0"
 //
 // The key is printed once and only its hash is stored; it goes into the app's
-// EXPO_PUBLIC_TELEMETRY_KEY and nowhere else.
+// write-key setting (the SDK's `key`) and nowhere else.
 import { log } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { hashKey, mintKey } from './keys.mjs';

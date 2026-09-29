@@ -1,8 +1,8 @@
-// Read-side queries for the Cockpit pages. Plain SQL over `events` and
+// Read-side queries for the dashboard. Plain SQL over `events` and
 // `installs`: at fleet volume (well under a million rows a year) a GROUP BY
 // over an indexed range is milliseconds, and rollup tables would be a second
 // source of truth to keep honest for no gain.
-import { FUNNEL } from './catalog.mjs';
+import { FUNNEL, highlightOf } from './catalog.mjs';
 import { q } from './db.mjs';
 
 export async function summary({ days, env }) {
@@ -81,6 +81,10 @@ export async function appDetail({ app, days, env }) {
   // The same window, one window earlier, so the page can say "up 12%" and
   // mean something. Sessions and new installs are counts; active is the
   // distinct installs seen at all, which is what a small app's "audience" is.
+  // `highlight` counts the app's own key event (the catalog names it), and
+  // `highlight_done` how many of those carried its done prop as true; both
+  // are 0 for an app whose catalog names none.
+  const hl = highlightOf(app);
   const period = async (from, to) =>
     (await q(
       `SELECT
@@ -90,12 +94,12 @@ export async function appDetail({ app, days, env }) {
             AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS sessions,
          (SELECT count(DISTINCT e.install)::int FROM events e WHERE e.app = $1 AND e.env = $2
             AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS active,
-         (SELECT count(*)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND e.name = 'breathing_session_completed'
-            AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS breaths,
-         (SELECT count(*)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND e.name = 'breathing_session_completed'
-            AND e.props->>'completed' = 'true'
-            AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS breaths_done`,
-      [app, env, from, to],
+         (SELECT count(*)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND e.name = $5
+            AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS highlight,
+         (SELECT count(*)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND e.name = $5
+            AND $6::text IS NOT NULL AND e.props->>$6::text = 'true'
+            AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS highlight_done`,
+      [app, env, from, to, hl?.event ?? null, hl?.doneProp ?? null],
     )).rows[0];
   const current = await period(days, 0);
   const prior = await period(days * 2, days);
@@ -126,6 +130,7 @@ export async function appDetail({ app, days, env }) {
 
   return {
     app,
+    highlight: hl ? { event: hl.event, done_prop: hl.doneProp } : null,
     current,
     prior,
     retention: {
@@ -145,7 +150,7 @@ export async function appDetail({ app, days, env }) {
   };
 }
 
-/** One event's props sliced by a single key — how the Braele card gets sessions by pattern without any app-specific SQL living here. */
+/** One event's props sliced by a single key (sessions by pattern, purchases by product) without any app-specific SQL living here. */
 export async function breakdown({ app, env, days, event, prop }) {
   const { rows } = await q(
     `SELECT COALESCE(props->>$5, 'unset') AS value, count(*)::int AS n, count(DISTINCT install)::int AS installs

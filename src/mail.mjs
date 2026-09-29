@@ -2,8 +2,9 @@
 import { cfg, log } from './config.mjs';
 
 export async function sendMail({ to, subject, text, replyTo }) {
-  if (cfg.mailDryRun || !cfg.resendKey) {
-    log.info('mail skipped', { to, subject, reason: cfg.mailDryRun ? 'dry-run' : 'no key' });
+  if (cfg.mailDryRun || !cfg.resendKey || !cfg.mailFrom || !to) {
+    const reason = cfg.mailDryRun ? 'dry-run' : !cfg.resendKey ? 'no RESEND_API_KEY' : !cfg.mailFrom ? 'no MAIL_FROM' : 'no recipient';
+    log.info('mail skipped', { to, subject, reason });
     return false;
   }
   try {

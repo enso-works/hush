@@ -101,10 +101,6 @@ CREATE TABLE ticket_replies (
 );
 CREATE INDEX ticket_replies_ticket_idx ON ticket_replies (ticket_id, created_at);
 
-INSERT INTO apps (slug, name) VALUES
-    ('braele',   'Braele'),
-    ('ampul',    'Ampul'),
-    ('invoit',   'Invoit'),
-    ('mycv',     'MyCV'),
-    ('riseproof','Riseproof'),
-    ('mindsaid', 'Mindsaid');
+-- Apps are registered at boot from APPS, or with `node src/cli.mjs apps:add`.
+-- (The first deployment seeded its own apps here; migrations are tracked by
+-- file name, so removing the seed changes nothing where this already ran.)
