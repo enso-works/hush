@@ -1,8 +1,13 @@
 {
-  "name": "bavrk-telemetry",
+  "name": "hush-server",
+  "version": "0.1.0",
   "private": true,
-  "version": "1.0.0",
-  "description": "First-party, anonymous app analytics and support tickets for the bavrk mobile fleet.",
+  "description": "hush: anonymous analytics and in-app support tickets for small mobile apps, self-hosted.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enso-works/hush.git"
+  },
   "type": "module",
   "engines": {
     "node": ">=22"
