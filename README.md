@@ -16,6 +16,9 @@ and this page say. MIT.
   advertising id, no IP address, so nothing to ask consent for.
 - **Revenue** (optional): RevenueCat's own figures next to your usage.
 
+Site and docs: [hush.bavrk.com](https://hush.bavrk.com). See the dashboard on
+invented data: [live demo](https://hush.bavrk.com/demo/dashboard/).
+
 ## Run it
 
 ```bash
