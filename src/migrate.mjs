@@ -1,7 +1,8 @@
-// Applies every migrations/*.sql not yet recorded, each in its own
-// transaction, then exits. The container entrypoint runs this before the
-// server starts (the migrate-before-start rule the fleet learned from
-// termin-api crash-looping on an empty database).
+// Applies every migrations/*.sql not yet recorded (by file name), each in its
+// own transaction. server.mjs runs it before it listens, so a first boot
+// against an empty database is the normal path and there is never a moment
+// when the service is up against a schema that does not exist yet.
+// `node src/migrate.mjs` runs it on its own and exits.
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

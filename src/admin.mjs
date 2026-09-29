@@ -1,5 +1,5 @@
 // Read-side queries for the dashboard. Plain SQL over `events` and
-// `installs`: at fleet volume (well under a million rows a year) a GROUP BY
+// `installs`: at small-app volume (well under a million rows a year) a GROUP BY
 // over an indexed range is milliseconds, and rollup tables would be a second
 // source of truth to keep honest for no gain.
 import { FUNNEL, highlightOf } from './catalog.mjs';

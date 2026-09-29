@@ -139,7 +139,7 @@ r.get('/admin/apps/:app/breakdown', async (_req, res, { url, params }) => {
 
 // RevenueCat, refreshed by the act of looking: opening the page updates a
 // stale cache, `refresh=1` (the button) forces one, and the answer always
-// comes out of Postgres. Nothing else in the fleet calls RevenueCat.
+// comes out of Postgres. Nothing but this service calls RevenueCat.
 r.get('/admin/revenue', async (_req, res, { url }) => {
   const app = str(url.searchParams.get('app'), 40);
   await ensureFresh({ app, force: url.searchParams.get('refresh') === '1' });

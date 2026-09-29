@@ -85,7 +85,7 @@ async function rc(path, params = {}) {
   return body;
 }
 
-/** `RC_PROJECTS="braele=projabc,invoit=projdef"` — a pinned map for when project names and app slugs diverge. */
+/** `RC_PROJECTS="myapp=projabc,other=projdef"` — a pinned map for when project names and app slugs diverge. */
 function pinned() {
   const out = new Map();
   for (const pair of (cfg.rcProjects || '').split(',')) {
@@ -437,7 +437,7 @@ export async function ensureFresh({ app = null, force = false, budgetMs = 12_000
     (await q(`SELECT app, project_id, last_polled_at FROM rc_projects${app ? ' WHERE app = $1' : ''} ORDER BY app`, app ? [app] : [])).rows;
 
   let rows = await linked();
-  // Nothing linked yet is the first-run case, and a forced fleet-wide refresh
+  // Nothing linked yet is the first-run case, and a forced all-apps refresh
   // is how a project added in RevenueCat later gets picked up.
   if (rows.length === 0 || (force && !app)) {
     try {
@@ -455,7 +455,7 @@ export async function ensureFresh({ app = null, force = false, budgetMs = 12_000
   await Promise.race([Promise.allSettled(due.map(pullOne)), sleep(budgetMs)]);
 }
 
-/** Read side for Cockpit: the cards for every linked app, and one app's daily series. */
+/** Read side for the dashboard: the cards for every linked app, and one app's daily series. */
 export async function revenue({ app = null, days = 30 }) {
   const projects = (await q(
     `SELECT p.app, p.name, p.project_id, p.last_polled_at, p.last_success_at, p.last_error,
