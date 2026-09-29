@@ -32,6 +32,10 @@ export const cfg = {
   // dashboard's URL. Optional.
   replyHint: env('REPLY_HINT'),
   mailDryRun: env('MAIL_DRY_RUN') === '1',
+  // A public, read-only showcase with invented data (src/demo.mjs). Opens
+  // /admin reads without a token and wipes its database daily, so it must
+  // have a database of its own; it refuses to start on one with write keys.
+  demo: env('DEMO') === '1',
   retentionDays: Number(env('RETENTION_DAYS', '180')),
   // RevenueCat, read-only. A v2 *secret* key: it never reaches a browser or a
   // phone, only the poller in this process. Empty = the revenue section says

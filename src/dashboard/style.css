@@ -86,3 +86,5 @@ dl.facts dd { margin: 0; overflow-wrap: anywhere; }
 .login form { display: grid; gap: 12px; }
 .error { color: var(--bad); }
 .empty { color: var(--muted); padding: 12px 0; }
+.demo-banner { background: #2f6fed; color: #fff; text-align: center; padding: 8px 16px; font-size: 14px; font-weight: 600; }
+.demo-banner a { color: #fff; text-decoration: underline; }

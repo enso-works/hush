@@ -20,6 +20,7 @@
 import { readFileSync } from 'node:fs';
 
 import { cfg } from './config.mjs';
+import { DEMO_CATALOG } from './demo.mjs';
 
 // Every app gets the generic lifecycle names even before it has a catalog of
 // its own, so a newly wired app does not light up the "unknown events" list.
@@ -58,7 +59,7 @@ export function parseCatalog(raw) {
   return out;
 }
 
-const catalog = cfg.catalogFile ? parseCatalog(readFileSync(cfg.catalogFile, 'utf8')) : {};
+const catalog = cfg.catalogFile ? parseCatalog(readFileSync(cfg.catalogFile, 'utf8')) : cfg.demo ? DEMO_CATALOG : {};
 
 const known = new Map();
 export function isKnown(app, name) {

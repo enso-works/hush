@@ -7,6 +7,11 @@
 const TOKEN_KEY = 'hush.token';
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
+// Where the API lives: wherever the dashboard is served from, minus
+// /dashboard/. Usually the root; `/demo` when a proxy mounts a demo there.
+const BASE = location.pathname.replace(/\/dashboard(\/.*)?$/, '');
+// A demo server answers /admin reads without a token; found out once, at start.
+let demo = false;
 
 // --- tiny DOM helper: h('div', { class: 'x' }, 'text', child)
 function h(tag, attrs = {}, ...children) {
@@ -29,10 +34,10 @@ const render = (...nodes) => view.replaceChildren(...nodes);
 class AuthError extends Error {}
 async function api(path, { method = 'GET', body } = {}) {
   const token = sessionStorage.getItem(TOKEN_KEY);
-  if (!token) throw new AuthError();
-  const res = await fetch(path, {
+  if (!token && !demo) throw new AuthError();
+  const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401) {
@@ -157,7 +162,7 @@ async function appView(slug) {
 
   render(
     h('p', { class: 'sub' }, h('a', { href: '#/' }, '← Apps')),
-    h('h1', {}, slug),
+    h('h1', {}, d.name ?? slug),
     h('p', { class: 'sub' }, `Last event ${when(d.lastEvent)} · ${d.tickets} open ticket${d.tickets === 1 ? '' : 's'}`),
     controls(route),
     h('div', { class: 'kpis' }, ...kpis),
@@ -217,7 +222,9 @@ async function ticketView(id) {
         h('div', { class: 'thread' },
           h('div', { class: 'msg' }, h('div', { class: 'meta' }, `User · ${new Date(t.created_at).toLocaleString()}`), t.message),
           ...(t.replies ?? []).map((r) => h('div', { class: `msg ${r.author}` }, h('div', { class: 'meta' }, `${r.author === 'support' ? 'Support' : 'User'} · ${new Date(r.at).toLocaleString()}`), r.body))),
-        t.status === 'closed'
+        demo
+          ? h('p', { class: 'sub', style: { marginTop: '14px' } }, 'Replying is switched off in the demo. On your own instance you answer here, and the user reads it in the app (and by email, if they left one).')
+          : t.status === 'closed'
           ? h('p', { class: 'sub', style: { marginTop: '14px' } }, 'Closed: the app offers a new message instead of a reply. ', h('button', { class: 'link', onclick: () => setStatus('open') }, 'Reopen'))
           : h('form', { style: { marginTop: '14px', display: 'grid', gap: '10px' }, onsubmit: async (e) => {
               e.preventDefault();
@@ -246,7 +253,7 @@ async function ticketView(id) {
 
 // --- router
 async function route() {
-  if (!sessionStorage.getItem(TOKEN_KEY)) return login();
+  if (!sessionStorage.getItem(TOKEN_KEY) && !demo) return login();
   nav.hidden = false;
   const [path, query] = location.hash.replace(/^#/, '').split('?');
   const params = new URLSearchParams(query ?? '');
@@ -268,4 +275,16 @@ document.getElementById('signout').addEventListener('click', () => {
   login();
 });
 window.addEventListener('hashchange', route);
-route();
+
+// Is this a demo? It answers /admin without a token; a real server says 401.
+fetch(`${BASE}/admin/apps?days=1`)
+  .then((r) => {
+    if (!r.ok) return;
+    demo = true;
+    document.getElementById('signout').hidden = true;
+    document.body.prepend(h('div', { class: 'demo-banner', role: 'note' },
+      'Demo: invented apps and data, read-only. ',
+      h('a', { href: 'https://github.com/enso-works/hush' }, 'Run your own'), '.'));
+  })
+  .catch(() => {})
+  .finally(route);

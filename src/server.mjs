@@ -16,6 +16,7 @@ import { clientKey, isUuid, json, rateLimiter, readJson, router, str } from './h
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { migrate } from './migrate.mjs';
+import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
 import { adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, KINDS, parseTicket, ticketsForInstall, userReply } from './tickets.mjs';
 
@@ -189,6 +190,13 @@ const server = http.createServer(async (req, res) => {
   if (!route) return json(res, 404, { error: 'not found' });
 
   try {
+    if (cfg.demo) {
+      // The showcase reads without a token and writes nothing, and no app
+      // may send it data.
+      if (url.pathname.startsWith('/v1/')) return json(res, 403, { error: 'demo instance: not accepting data' });
+      if (url.pathname.startsWith('/admin/') && req.method !== 'GET') return json(res, 403, { error: 'read-only demo' });
+      if (url.pathname.startsWith('/admin/')) return await route.handler(req, res, { url, params: route.params });
+    }
     if (url.pathname.startsWith('/admin/')) {
       if (!adminAuthorized(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
       return await route.handler(req, res, { url, params: route.params });
@@ -229,8 +237,15 @@ async function registerApps() {
   }
 }
 
+// A demo re-generates its invented data at boot and every day after.
+async function startDemo() {
+  log.warn('DEMO mode: /admin is readable without a token and the data is invented; never point an app at this instance');
+  await seedDemo();
+  setInterval(() => seedDemo().catch((err) => log.error('demo reseed failed', { err: String(err?.message ?? err) })), 24 * 60 * 60 * 1000).unref();
+}
+
 migrate()
-  .then(registerApps)
+  .then(() => (cfg.demo ? startDemo() : registerApps()))
   .then(() => {
     server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off' }));
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();

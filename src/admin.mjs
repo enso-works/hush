@@ -130,6 +130,7 @@ export async function appDetail({ app, days, env }) {
 
   return {
     app,
+    name: (await q('SELECT name FROM apps WHERE slug = $1', [app])).rows[0]?.name ?? app,
     highlight: hl ? { event: hl.event, done_prop: hl.doneProp } : null,
     current,
     prior,
