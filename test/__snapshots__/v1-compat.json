@@ -1,0 +1,221 @@
+[
+  {
+    "label": "events: no key",
+    "status": 401,
+    "body": {
+      "error": "unauthorized"
+    }
+  },
+  {
+    "label": "events: valid batch",
+    "status": 200,
+    "body": {
+      "accepted": 3,
+      "duplicate": 0,
+      "rejected": 0
+    }
+  },
+  {
+    "label": "events: retried batch",
+    "status": 200,
+    "body": {
+      "accepted": 0,
+      "duplicate": 2,
+      "rejected": 0
+    }
+  },
+  {
+    "label": "events: partly malformed",
+    "status": 200,
+    "body": {
+      "accepted": 1,
+      "duplicate": 0,
+      "rejected": 1
+    }
+  },
+  {
+    "label": "events: nothing valid",
+    "status": 400,
+    "body": {
+      "error": "invalid events: none valid",
+      "max_events": 100
+    }
+  },
+  {
+    "label": "events: empty",
+    "status": 400,
+    "body": {
+      "error": "invalid events",
+      "max_events": 100
+    }
+  },
+  {
+    "label": "events: not json",
+    "status": 400,
+    "body": {
+      "error": "invalid json"
+    }
+  },
+  {
+    "label": "events: not an object",
+    "status": 400,
+    "body": {
+      "error": "invalid events",
+      "max_events": 100
+    }
+  },
+  {
+    "label": "tickets: create",
+    "status": 201,
+    "body": {
+      "id": "<id>",
+      "created_at": "<time>",
+      "status": "open"
+    }
+  },
+  {
+    "label": "tickets: invalid email",
+    "status": 400,
+    "body": {
+      "error": "invalid email"
+    }
+  },
+  {
+    "label": "tickets: invalid install",
+    "status": 400,
+    "body": {
+      "error": "invalid install"
+    }
+  },
+  {
+    "label": "tickets: list",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "issue",
+          "subject": null,
+          "message": "Timer stops",
+          "status": "open",
+          "created_at": "<time>",
+          "read_at": null,
+          "unread": false,
+          "replies": []
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: list, bad install",
+    "status": 400,
+    "body": {
+      "error": "invalid install"
+    }
+  },
+  {
+    "label": "tickets: list, other app",
+    "status": 200,
+    "body": {
+      "tickets": []
+    }
+  },
+  {
+    "label": "tickets: list after support reply (unread)",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "issue",
+          "subject": null,
+          "message": "Timer stops",
+          "status": "answered",
+          "created_at": "<time>",
+          "read_at": null,
+          "unread": true,
+          "replies": [
+            {
+              "author": "support",
+              "body": "Fixed in 2.0.2.",
+              "at": "<time>"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: list again (read)",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "issue",
+          "subject": null,
+          "message": "Timer stops",
+          "status": "answered",
+          "created_at": "<time>",
+          "read_at": "<time>",
+          "unread": false,
+          "replies": [
+            {
+              "author": "support",
+              "body": "Fixed in 2.0.2.",
+              "at": "<time>"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: user reply",
+    "status": 201,
+    "body": {
+      "id": "<id>",
+      "created_at": "<time>",
+      "status": "open"
+    }
+  },
+  {
+    "label": "tickets: reply, empty body",
+    "status": 400,
+    "body": {
+      "error": "invalid body"
+    }
+  },
+  {
+    "label": "tickets: reply, wrong install",
+    "status": 404,
+    "body": {
+      "error": "not found"
+    }
+  },
+  {
+    "label": "tickets: reply on closed",
+    "status": 409,
+    "body": {
+      "error": "closed"
+    }
+  },
+  {
+    "label": "unknown route",
+    "status": 404,
+    "body": {
+      "error": "not found"
+    }
+  },
+  {
+    "label": "healthz",
+    "status": 200,
+    "body": {
+      "ok": true,
+      "db": "up"
+    }
+  }
+]

@@ -4,11 +4,14 @@
   "version": "1.0.0",
   "description": "First-party, anonymous app analytics and support tickets for the bavrk mobile fleet.",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "node src/server.mjs",
     "migrate": "node src/migrate.mjs",
-    "cli": "node src/cli.mjs"
+    "cli": "node src/cli.mjs",
+    "test": "node --test 'test/*.test.mjs'"
   },
   "dependencies": {
     "pg": "^8.16.3"
