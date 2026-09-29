@@ -17,6 +17,12 @@ import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
 import { adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, KINDS, parseTicket, ticketsForInstall, userReply } from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
+// Checked before the write key is even looked up, so a flood of made-up keys
+// is refused without a database query. Generous: a phone sends a batch every
+// few minutes, the per-route limits below are the real ones. The address it
+// counts by is trustworthy only because Caddy lets nothing but Cloudflare
+// (and the box itself) reach /v1, so cf-connecting-ip cannot be forged.
+const v1Limit = rateLimiter(120);
 const ingestLimit = rateLimiter(60);
 const ticketLimit = rateLimiter(10);
 
@@ -27,7 +33,9 @@ r.get('/healthz', async (_req, res) => {
     await q('SELECT 1');
     json(res, 200, { ok: true, db: 'up' });
   } catch (err) {
-    json(res, 503, { ok: false, db: String(err?.message ?? err) });
+    // /healthz is public: the reason goes to the log, not to the caller.
+    log.warn('healthz: db down', { err: String(err?.message ?? err) });
+    json(res, 503, { ok: false, db: 'down' });
   }
 });
 
@@ -150,6 +158,7 @@ const server = http.createServer(async (req, res) => {
       return await route.handler(req, res, { url, params: route.params });
     }
     if (url.pathname.startsWith('/v1/')) {
+      if (!v1Limit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
       const key = await resolveKey(req.headers.authorization);
       if (!key) return json(res, 401, { error: 'unauthorized' });
       // Cloudflare's country header is the only thing derived from the

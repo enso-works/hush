@@ -1,4 +1,4 @@
-import { cfg } from './config.mjs';
+import { cfg, log } from './config.mjs';
 import { q, tx } from './db.mjs';
 import { flatObject, str } from './http.mjs';
 import { sendMail } from './mail.mjs';
@@ -39,6 +39,26 @@ export function parseTicket(body) {
  * install: without it, five concurrent submissions all read four and all
  * insert. The lock is per install, so it never serializes unrelated traffic.
  */
+// Alert mails go to one inbox (cfg.alertEmail). The per-install caps stop one
+// phone, but an install id is a client-chosen UUID, so a script can mint new
+// ones and turn each ticket into a mail. Past this many alerts an hour the
+// tickets are still stored and shown in Cockpit; only the mail is skipped,
+// with one warning in the log per hour.
+const ALERTS_PER_HOUR = 30;
+let alertHour = -1;
+let alertCount = 0;
+
+function alertMail(mail) {
+  const hour = Math.floor(Date.now() / 3_600_000);
+  if (hour !== alertHour) { alertHour = hour; alertCount = 0; }
+  alertCount += 1;
+  if (alertCount > ALERTS_PER_HOUR) {
+    if (alertCount === ALERTS_PER_HOUR + 1) log.warn('alert mail suppressed for the rest of the hour', { limit: ALERTS_PER_HOUR });
+    return;
+  }
+  void sendMail(mail);
+}
+
 export async function createTicket({ app, install, email, subject, message, diag, kind = 'issue', rcId = null }) {
   const ticket = await tx(async (client) => {
     await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [install]);
@@ -59,7 +79,7 @@ export async function createTicket({ app, install, email, subject, message, diag
   const diagLines = Object.entries(diag).map(([k, v]) => `  ${k}: ${v}`).join('\n');
   // Fire-and-forget: the ticket is stored, the phone should not wait on Resend.
   const heading = { issue: 'Problem', feature: 'Feature idea', love: 'Kind words' }[kind];
-  void sendMail({
+  alertMail({
     to: cfg.alertEmail,
     subject: `[${app}] ${heading} #${ticket.id}${subject ? ` — ${subject}` : ''}`,
     replyTo: email ?? undefined,
@@ -99,7 +119,7 @@ export async function userReply({ id, install, app, body }) {
   });
 
   // Same fire-and-forget as a new ticket: stored first, announced after.
-  void sendMail({
+  alertMail({
     to: cfg.alertEmail,
     subject: `[${app}] Reply on #${id}${ticket.subject ? ` — ${ticket.subject}` : ''}`,
     replyTo: ticket.email ?? undefined,
