@@ -6,6 +6,7 @@
 // TEST_DATABASE_URL at any Postgres you can create databases on; the default
 // matches the `docker run` line in CONTRIBUTING.md.
 import { spawn } from 'node:child_process';
+import net from 'node:net';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,8 +50,33 @@ export async function freshDatabase(prefix) {
   };
 }
 
+// A port the OS just handed out, so parallel test files do not collide the
+// way random picks did (EADDRINUSE in CI, 2026-09-29).
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const s = net.createServer();
+    s.unref();
+    s.on('error', reject);
+    s.listen(0, '127.0.0.1', () => {
+      const { port } = s.address();
+      s.close(() => resolve(port));
+    });
+  });
+}
+
 export async function startServer(db, env = {}) {
-  const port = 30000 + Math.floor(Math.random() * 20000);
+  // Another process can still take the port between freePort() and the
+  // server's listen(); a server that dies on EADDRINUSE is simply retried.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await startOnce(db, env, await freePort());
+    } catch (err) {
+      if (attempt >= 5 || !/EADDRINUSE/.test(String(err.message))) throw err;
+    }
+  }
+}
+
+async function startOnce(db, env, port) {
   const logs = [];
   const child = spawn(process.execPath, ['src/server.mjs'], {
     cwd: ROOT,
