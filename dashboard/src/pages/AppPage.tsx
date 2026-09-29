@@ -203,7 +203,7 @@ export function AppPage({ slug }: { slug: string }) {
               <Stat label="Active today" value={d.todayActive} />
               {d.highlight && <Stat label={humanize(d.highlight.event)} value={c.highlight} before={p.highlight} />}
               {d.highlight?.done_prop && (
-                <Stat label={`${humanize(d.highlight.event)}, done`} value={c.highlight_done} text={pct(c.highlight_done, c.highlight)} />
+                <Stat label="Completion rate" value={c.highlight_done} text={pct(c.highlight_done, c.highlight)} />
               )}
             </div>
           </BlurFade>
