@@ -25,3 +25,6 @@ declare module 'react-native' {
   export const AppState: { addEventListener(type: 'change', listener: (state: AppStateStatus) => void): { remove(): void } };
   export const Platform: { OS: 'ios' | 'android' | 'web' | 'windows' | 'macos' };
 }
+// What an Expo app's globals provide to the example in examples/expo.
+declare const __DEV__: boolean;
+declare const process: { env: Record<string, string | undefined> };

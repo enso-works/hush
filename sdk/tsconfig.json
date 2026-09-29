@@ -6,8 +6,21 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "lib": ["ES2022", "DOM"],
-    "types": []
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
+    "types": [],
+    "baseUrl": ".",
+    "paths": {
+      "@/lib/hush": [
+        "./src/index.ts"
+      ]
+    }
   },
-  "include": ["src", "types"]
+  "include": [
+    "src",
+    "types",
+    "../examples/expo"
+  ]
 }

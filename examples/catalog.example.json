@@ -1,0 +1,6 @@
+{
+  "myapp": {
+    "events": ["workout_started", "workout_completed", "reminder_set"],
+    "highlight": { "event": "workout_completed", "done_prop": "completed" }
+  }
+}
