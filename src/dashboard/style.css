@@ -5,7 +5,7 @@
   --ink: #16171a;
   --muted: #6b6f78;
   --line: #e4e5e8;
-  --accent: #2f6fed;
+  --accent: #5b4bf0;
   --good: #1f8a4c;
   --bad: #c2412d;
   --radius: 12px;
@@ -20,7 +20,7 @@
     --ink: #eceef2;
     --muted: #9a9ea8;
     --line: #2a2c31;
-    --accent: #7aa2ff;
+    --accent: #9d93ff;
     --good: #4cc27d;
     --bad: #ff7a64;
   }
@@ -86,5 +86,5 @@ dl.facts dd { margin: 0; overflow-wrap: anywhere; }
 .login form { display: grid; gap: 12px; }
 .error { color: var(--bad); }
 .empty { color: var(--muted); padding: 12px 0; }
-.demo-banner { background: #2f6fed; color: #fff; text-align: center; padding: 8px 16px; font-size: 14px; font-weight: 600; }
+.demo-banner { background: #5b4bf0; color: #fff; text-align: center; padding: 8px 16px; font-size: 14px; font-weight: 600; }
 .demo-banner a { color: #fff; text-decoration: underline; }
