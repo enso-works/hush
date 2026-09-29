@@ -18,6 +18,10 @@ export const cfg = {
   // at all. Only set it when the proxy overwrites the header, or any client
   // can claim any country.
   countryHeader: env('COUNTRY_HEADER').toLowerCase(),
+  // The header a trusted proxy puts the caller's address in, for the rate
+  // limits: "cf-connecting-ip" behind Cloudflare, "x-forwarded-for" behind
+  // most others. Unset: the socket address, right when nothing sits in front.
+  clientIpHeader: env('CLIENT_IP_HEADER').toLowerCase(),
   resendKey: env('RESEND_API_KEY'),
   // The sender for ticket mail, on a domain verified in Resend.
   mailFrom: env('MAIL_FROM'),

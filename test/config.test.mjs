@@ -88,3 +88,27 @@ test('a ticket id that is not a number is 404, not a server error', async () => 
   assert.equal((await admin(srv.base).post('/admin/tickets/undefined/status', { status: 'closed' })).status, 404);
   await srv.stop();
 });
+
+test('rate limits count the socket address unless CLIENT_IP_HEADER names a trusted header', async () => {
+  const d = await db('hush_ip');
+  // No trusted header: a client rotating X-Forwarded-For still shares one bucket.
+  let srv = await startServer(d, { CLIENT_IP_HEADER: '' });
+  const key = await addApp(d, 'myapp');
+  const codes = [];
+  for (let i = 0; i < 12; i++) {
+    const r = await client(srv.base, key, { ip: `203.0.113.${i}` }).post('/v1/tickets', { install: uuid(), message: 'x' }, { 'X-Forwarded-For': `198.51.100.${i}` });
+    codes.push(r.status);
+  }
+  assert.ok(codes.includes(429), `spoofed headers must not dodge the limit: ${codes}`);
+  await srv.stop();
+
+  // A trusted header: each address gets its own bucket.
+  srv = await startServer(d, { CLIENT_IP_HEADER: 'x-forwarded-for' });
+  const spread = [];
+  for (let i = 0; i < 12; i++) {
+    const r = await client(srv.base, key).post('/v1/tickets', { install: uuid(), message: 'x' }, { 'X-Forwarded-For': `198.51.100.${i}, 10.0.0.1` });
+    spread.push(r.status);
+  }
+  assert.ok(!spread.includes(429), `distinct addresses must not share a bucket: ${spread}`);
+  await srv.stop();
+});

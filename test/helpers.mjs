@@ -62,6 +62,9 @@ export async function startServer(db, env = {}) {
       // The name bavrk's deployment passes; both must keep working.
       TELEMETRY_ADMIN_TOKEN: ADMIN_TOKEN,
       MAIL_DRY_RUN: '1',
+      // The harness gives every client its own address in this header; a
+      // test that needs the socket address overrides it with ''.
+      CLIENT_IP_HEADER: 'cf-connecting-ip',
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

@@ -2,6 +2,8 @@
 // JSON out. Nothing here needs a framework.
 import { createHash, randomBytes } from 'node:crypto';
 
+import { cfg } from './config.mjs';
+
 export function router() {
   const routes = [];
   const add = (method, pattern, handler) => routes.push({ method, parts: pattern.split('/').filter(Boolean), handler });
@@ -68,8 +70,15 @@ export function readJson(req, maxBytes) {
 // address is hashed with a salt that dies with the process, so no client
 // address is held in memory even transiently beyond the request.
 const salt = randomBytes(16);
+//
+// Which address: the socket's, unless CLIENT_IP_HEADER names a header a
+// trusted proxy in front sets (and overwrites), e.g. "cf-connecting-ip" or
+// "x-forwarded-for" (its first entry). Trusting a header no proxy controls
+// would let every client pick its own bucket and walk past the limits.
 export const clientKey = (req) => {
-  const raw = req.headers['cf-connecting-ip'] || (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+  const header = cfg.clientIpHeader ? req.headers[cfg.clientIpHeader] : undefined;
+  const fromHeader = typeof header === 'string' ? header.split(',')[0].trim() : '';
+  const raw = fromHeader || req.socket.remoteAddress || '';
   return createHash('sha256').update(salt).update(raw).digest('base64url').slice(0, 16);
 };
 
