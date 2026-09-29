@@ -20,7 +20,22 @@ export async function summary({ days, env }) {
      FROM apps a ORDER BY a.slug`,
     [days, env],
   );
-  return rows;
+  // Active installs per day over the same window, one query for every app,
+  // with the quiet days filled in: the overview draws it as a sparkline.
+  const { rows: daily } = await q(
+    `SELECT app, to_char(date_trunc('day', at), 'YYYY-MM-DD') AS day, count(DISTINCT install)::int AS n
+     FROM events WHERE env = $2 AND at >= date_trunc('day', now()) - make_interval(days => $1 - 1)
+     GROUP BY 1, 2`,
+    [days, env],
+  );
+  const today = new Date();
+  const dayKeys = Array.from({ length: days }, (_, i) => {
+    const d = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - (days - 1 - i)));
+    return d.toISOString().slice(0, 10);
+  });
+  const byApp = new Map();
+  for (const r of daily) byApp.set(`${r.app} ${r.day}`, r.n);
+  return rows.map((a) => ({ ...a, trend: dayKeys.map((k) => byApp.get(`${a.app} ${k}`) ?? 0) }));
 }
 
 export async function appDetail({ app, days, env }) {

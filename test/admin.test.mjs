@@ -47,6 +47,10 @@ describe('reads', () => {
     assert.equal(b.events, 9);
     assert.equal(b.open_tickets, 1);
     assert.equal(b.dau, 2);
+    // Active installs per day for the overview's sparkline, today last.
+    const week = (await admin(srv.base).get('/admin/apps?days=7')).json.apps.find((x) => x.app === 'braele');
+    assert.equal(week.trend.length, 7);
+    assert.equal(week.trend.at(-1), 2);
   });
 
   test('one app: funnel, versions, unknown events, highlight counts', async () => {
