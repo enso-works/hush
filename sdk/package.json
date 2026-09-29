@@ -1,0 +1,24 @@
+{
+  "name": "@bavrk/hush",
+  "version": "0.1.0",
+  "private": true,
+  "description": "hush SDK for Expo / React Native: anonymous events and in-app support tickets.",
+  "license": "MIT",
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "types": "src/index.ts",
+  "files": ["src"],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": ">=1.21",
+    "expo-constants": "*",
+    "expo-device": "*",
+    "expo-localization": "*",
+    "react-native": ">=0.73"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
