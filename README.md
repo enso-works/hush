@@ -1,202 +1,119 @@
 # hush
 
-Anonymous analytics and in-app support for small mobile apps, self-hosted.
+In-app feedback and anonymous usage tracking for mobile apps. One small
+container, Postgres, a one-file SDK and a dashboard.
 
-One small Node container and Postgres. Your app sends events and support
-tickets with a one-file SDK; you read them on a dashboard the same container
-serves. Nothing personal is collected, so there is nothing to ask consent
-for: no account, no advertising id, no IP address, no fingerprint.
+Built for our own apps ([bavrk](https://bavrk.com): Braele and friends), where
+it runs in production. It is public so you can read it, fork it or run it
+yourself; it is not a product, and there is no support beyond what the code
+and this page say. MIT.
 
-- **Events**: installs, sessions, screens, a paywall funnel, retention,
-  versions, and whatever your app tracks, with props.
-- **Support tickets**: users write from inside the app, you answer on the
-  dashboard (and by email if they left one), they read your reply in the app
-  and can answer back.
-- **Revenue** (optional): RevenueCat's own numbers next to your usage, pulled
-  by the server with a read-only key.
+- **Feedback**: users write from inside the app (a problem, an idea, or kind
+  words). You answer on the dashboard, and by email if they left an address;
+  they read your reply in the app and can answer back.
+- **Anonymous tracking**: installs, sessions, screens, a paywall funnel,
+  retention, versions, and your own events with props. No account, no
+  advertising id, no IP address, so nothing to ask consent for.
+- **Revenue** (optional): RevenueCat's own figures next to your usage.
 
-Node 22, one runtime dependency (`pg`), about 2,200 lines you can read in an
-afternoon. MIT.
-
-## Quickstart (five minutes)
+## Run it
 
 ```bash
 git clone https://github.com/enso-works/hush && cd hush/examples
 cp .env.example .env            # set ADMIN_TOKEN and POSTGRES_PASSWORD
-docker compose up -d            # hush on http://localhost:3000, Postgres beside it
+docker compose up -d            # http://localhost:3000
 
-# register your app and mint a write key for it (printed once)
 docker compose exec hush node src/cli.mjs apps:add myapp "My App"
-docker compose exec hush node src/cli.mjs keys:create myapp prod
+docker compose exec hush node src/cli.mjs keys:create myapp prod   # prints the write key once
 ```
 
-Open `http://localhost:3000/dashboard/` and sign in with your `ADMIN_TOKEN`.
+Dashboard: `http://localhost:3000/dashboard/`, signed in with `ADMIN_TOKEN`.
 
-In the app (Expo / React Native), copy [`sdk/src/index.ts`](sdk/src/index.ts)
-in (it is one file; the npm package is not published yet) and:
+In the app, copy [`sdk/src/index.ts`](sdk/src/index.ts) in (Expo / React
+Native, one file; [SDK guide](sdk/README.md)):
 
 ```ts
 import * as hush from './hush';
 
 hush.configure({ url: 'https://hush.example.com', key: 'hush_myapp_prod_…' });
-hush.init();                                  // once, at startup; never throws
+hush.init();
 hush.screen('Home');
 hush.track('workout_completed', { minutes: 20, completed: true });
-hush.identify({ pro: true });                 // paid or not, if you know
-await hush.createTicket({ kind: 'issue', message: 'The timer stops on lock', email: 'optional@example.com' });
+await hush.createTicket({ kind: 'issue', message: 'The timer stops on lock' });
 ```
 
-A full example, with the background-flush hook and the ticket screens'
-calls: [`examples/expo/hush-setup.ts`](examples/expo/hush-setup.ts). The SDK:
-[`sdk/README.md`](sdk/README.md).
+Before pointing real apps at it: put it behind a TLS proxy, expose only
+`/v1/*` and `/healthz` publicly, keep `/dashboard/` and `/admin/*` behind a VPN
+or an access proxy (the token is the second lock, not the only one), and back
+up Postgres; it is the only state.
 
-## Privacy model
+## What is collected
 
-- **The only identifier is an install id**, a random UUID the app creates on
-  first launch and keeps in its own storage. Deleting the app deletes it.
-- **No IP address is stored**, anywhere. The rate limiter counts requests by
-  a salted hash of the address that lives only in memory and dies with the
-  process. Do not put an access log in front that records addresses.
-- **Country is optional.** With `COUNTRY_HEADER` set (behind a proxy that
-  sets a trusted two-letter country header) it is kept on the install row
-  only; the dashboard folds any country under ten installs into "other".
-  Unset, no country is stored.
-- **An email address exists only when a user typed one** into a ticket, so
-  you can answer them.
-- **Raw events are deleted** after `RETENTION_DAYS` (180). Install rows
-  (counters) and tickets (conversations) are kept.
-- **The write key is not a secret.** It ships inside your app, so anyone can
-  read it out. It identifies the app and can be revoked; it cannot read
-  anything but the calling install's own tickets.
+- **An install id**: a random UUID the app creates on first launch. Deleting
+  the app deletes it. It is the only identifier.
+- **The app version and build, OS, device model, the phone's language**, and
+  the events and props your app sends. Keep props to what the app did, not
+  who did it.
+- **Country**, only if you set `COUNTRY_HEADER` behind a proxy that provides a
+  trusted one. The dashboard folds any country under ten installs into
+  "other".
+- **An email address**, only when a user types one into feedback.
+- **No IP address**, anywhere. Rate limits count a salted hash that lives in
+  memory only.
 
-Write your privacy policy from that list. If you add props that describe a
-person, the list stops being true: keep props to what the app did, not who
-did it.
+Raw events are deleted after `RETENTION_DAYS` (180); install rows and
+feedback threads are kept. The write key ships inside the app, so it is not a
+secret: it identifies the app, can be revoked, and can read nothing but the
+calling install's own feedback.
 
 ## Configuration
 
-Environment variables. Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
+Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 
-| Variable | Default | |
-|---|---|---|
-| `DATABASE_URL` | – | Postgres connection string. Migrations run at every boot, before the server listens. |
-| `ADMIN_TOKEN` | – | Guards `/admin/*` and the dashboard's data. Long and random: `openssl rand -hex 32`. |
-| `PORT` | `3000` | |
-| `APPS` | – | Apps to register at boot: `myapp=My App,other=Other`. Existing apps are left as they are. |
-| `CATALOG_FILE` | – | Path to a JSON file naming each app's events and its highlight metric (below). |
-| `CLIENT_IP_HEADER` | – | The header a trusted proxy puts the caller's address in (`cf-connecting-ip`, `x-forwarded-for`), for the rate limits. Unset: the socket address. Never name a header your proxy does not overwrite. |
-| `COUNTRY_HEADER` | – | The header a trusted proxy puts the caller's two-letter country in (`cf-ipcountry`). Unset: no country. |
-| `RESEND_API_KEY` | – | Ticket email through [Resend](https://resend.com). Unset: tickets are stored and shown, nothing is mailed. |
-| `MAIL_FROM` | – | Sender, on a domain verified in Resend: `Support <support@example.com>`. |
-| `ALERT_EMAIL` | – | Where new tickets and user replies are announced. At most 30 alerts an hour. |
-| `REPLY_HINT` | – | A line at the end of each alert, e.g. your dashboard's URL. |
-| `MAIL_DRY_RUN` | – | `1` logs mail instead of sending it. |
-| `RETENTION_DAYS` | `180` | Raw events older than this are deleted. |
-| `RC_API_KEY` | – | RevenueCat v2 **secret** key, read-only scopes (see RevenueCat below). |
-| `RC_PROJECTS` | – | `myapp=projabc`, only when a project's name is neither the app's slug nor its name. |
-| `RC_CURRENCY` | `USD` | What RevenueCat converts money to. |
-| `RC_STALE_MINUTES` | `10` | Opening the dashboard refreshes a revenue cache older than this. |
-| `RC_FLOOR_SECONDS` | `60` | How soon a forced refresh may ask again. |
-| `RC_RATE_PER_MINUTE` | `20` | RevenueCat allows 25. |
+| Variable | |
+|---|---|
+| `DATABASE_URL` | Postgres. Migrations run at every boot, before listening. |
+| `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `openssl rand -hex 32`. |
+| `APPS` | Register apps at boot: `myapp=My App,other=Other`. |
+| `CATALOG_FILE` | Each app's known events and its highlight metric, as JSON (below). |
+| `CLIENT_IP_HEADER` | Header a trusted proxy sets with the caller's address (`cf-connecting-ip`, `x-forwarded-for`), for rate limits. Unset: the socket address. |
+| `COUNTRY_HEADER` | Header a trusted proxy sets with a two-letter country (`cf-ipcountry`). Unset: no country. |
+| `RESEND_API_KEY`, `MAIL_FROM` | Email through [Resend](https://resend.com): feedback alerts, and your replies to users who left an address. |
+| `ALERT_EMAIL`, `REPLY_HINT` | Where new feedback is announced (at most 30 an hour), and a last line saying where to answer. |
+| `RETENTION_DAYS` | Default 180. |
+| `RC_API_KEY`, `RC_PROJECTS`, `RC_CURRENCY` | RevenueCat v2 secret key with read-only scopes; see `src/revenuecat.mjs`. |
+| `PORT`, `MAIL_DRY_RUN` | `3000`; `1` logs mail instead of sending it. |
 
-### The event catalog
-
-Every app knows the common names (`app_first_opened`, `session_started`,
-`screen_viewed`, `paywall_viewed`, `purchase_started`, `purchase_result`,
-`restore_result`, `ticket_opened`). `CATALOG_FILE` adds each app's own, and
-names its **highlight**: the one event the dashboard counts per period, and
-the boolean prop that marks it done (shown as a completion rate).
+The catalog names the events you expect (anything else is still stored,
+flagged as unknown on the dashboard) and one highlight: the event counted
+per period, and the prop that marks it done.
 
 ```json
-{
-  "myapp": {
-    "events": ["workout_started", "workout_completed"],
-    "highlight": { "event": "workout_completed", "done_prop": "completed" }
-  }
-}
+{ "myapp": { "events": ["workout_completed"], "highlight": { "event": "workout_completed", "done_prop": "completed" } } }
 ```
-
-Unknown names are still stored, never dropped (a shipped app must not lose
-data because the server is behind); the dashboard flags them so you can fix
-the typo or add the name.
-
-## Deploying
-
-`examples/docker-compose.yml` is the whole thing. Put it behind a reverse
-proxy that terminates TLS, and:
-
-- expose `/v1/*` and `/healthz` to the internet (the apps);
-- expose `/dashboard/` and `/admin/*` only as far as you need to: a VPN, an
-  IP allowlist or an access proxy in front, with `ADMIN_TOKEN` as the second
-  lock rather than the only one;
-- set `CLIENT_IP_HEADER` (and `COUNTRY_HEADER`, if you want countries) to what
-  your proxy sets, or leave them unset;
-- back up the Postgres database. It is the only state.
-
-**Limits, stated plainly.** Rate limits (120 requests a minute per address on
-`/v1`, 60 event batches, 10 ticket writes, 5 tickets a day per install) are
-in memory and per process: they reset on restart and do not add up across
-replicas. A public ingest endpoint will be probed; the limits make that
-cheap for you, not impossible for them. One instance handles small apps
-comfortably; if you need more than one, put a shared limiter in front.
 
 ## API
 
-Apps (the SDK does this for you): `Authorization: Key <write key>`.
+Apps send `Authorization: Key <write key>`; the SDK does this for you.
 
 | | |
 |---|---|
-| `POST /v1/events` | `{ context, events: [{ id, name, at, session, install, props }] }`, up to 100 events. 200 `{ accepted, duplicate, rejected }`: a retried batch is counted, not stored twice; malformed events are dropped, the rest land. 4xx (except 429) means the batch will never be accepted: drop it. 429 and 5xx: retry later. |
-| `POST /v1/tickets` | `{ install, kind: issue\|feature\|love, message, email?, subject?, diag?, rc_id? }` → 201 `{ id, created_at, status }`. 429 past five a day per install. |
-| `GET /v1/tickets?install=` | `{ tickets: [...] }` with replies and an `unread` flag, only the calling app's. |
-| `POST /v1/tickets/:id/reply` | `{ install, body }` → 201; 409 once closed. |
-| `GET /healthz` | `{ ok, db }` |
+| `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. |
+| `POST /v1/tickets` | feedback: `{ install, kind: issue\|feature\|love, message, email?, subject? }` → 201. Five a day per install. |
+| `GET /v1/tickets?install=` | that install's feedback, with replies and `unread` |
+| `POST /v1/tickets/:id/reply` | `{ install, body }` → 201, or 409 once closed |
 
-Operator: `Authorization: Bearer <ADMIN_TOKEN>`. The dashboard uses exactly
-these.
+The operator side, `Authorization: Bearer <ADMIN_TOKEN>`, is what the
+dashboard reads: `/admin/apps`, `/admin/apps/:app`, `/admin/tickets`,
+`/admin/tickets/:id` (+ `/reply`, `/status`), `/admin/revenue`. CLI:
+`node src/cli.mjs apps:add | keys:create | keys:list | keys:revoke | rc:* | migrate`.
 
-| | |
-|---|---|
-| `GET /admin/apps?days=&env=` | every app with its counters |
-| `GET /admin/apps/:app?days=&env=` | one app: current and prior period, daily series, versions, events, funnel, retention, countries |
-| `GET /admin/apps/:app/breakdown?event=&prop=` | one event sliced by one prop |
-| `GET /admin/revenue?app=&days=&refresh=1` | RevenueCat cache, refreshed when stale |
-| `GET /admin/tickets?status=&kind=`, `GET /admin/tickets/:id` | the inbox, one thread |
-| `POST /admin/tickets/:id/reply` | `{ body, close? }`; emailed to the user if they left an address |
-| `POST /admin/tickets/:id/status` | `{ status: open\|answered\|closed }` |
+Limits are honest about what this is: rate limits are in memory, per
+process, and reset on restart. One instance is plenty for small apps.
 
-## CLI
+## Working on it
 
-```bash
-node src/cli.mjs apps:list | apps:add <slug> <name>
-node src/cli.mjs keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id>
-node src/cli.mjs rc:projects | rc:sync | rc:link <app> <project> | rc:charts | rc:poll
-node src/cli.mjs migrate
-```
-
-`dev` and `prod` keys are separate; the dashboard shows either. Only a key's
-SHA-256 is stored, so a lost key is revoked and replaced, never recovered.
-
-## RevenueCat
-
-With `RC_API_KEY` set, the dashboard shows RevenueCat's own figures for each
-linked app. The server is the only thing that calls RevenueCat, never a
-browser: it pulls on demand when someone opens the page and the cache is
-older than `RC_STALE_MINUTES`, caches in Postgres, and shares one in-flight
-pull between concurrent requests. There is no poller.
-
-Create the key under Project settings → API keys → v2 secret key, with
-`charts_metrics:overview:read`, `charts_metrics:charts:read` and
-`project_configuration:projects:read`. It can read customer data, so it is a
-real secret. Projects are linked to apps by name automatically
-(`rc:sync`), or by hand (`rc:link`).
-
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md). The test suite runs the real server
-against a real Postgres, and freezes the `/v1` contract apps are built
-against: a change there breaks apps already in users' hands.
-
-## License
-
-MIT. See [LICENSE](LICENSE).
+`npm test` runs the real server against a real Postgres
+([CONTRIBUTING.md](CONTRIBUTING.md)). The `/v1` responses are frozen in a
+snapshot taken from the server our shipped apps talk to: apps in users'
+hands cannot be redeployed, so a change there is a breaking change.

@@ -2,7 +2,7 @@
   "name": "hush-server",
   "version": "0.1.0",
   "private": true,
-  "description": "hush: anonymous analytics and in-app support tickets for small mobile apps, self-hosted.",
+  "description": "In-app feedback and anonymous usage tracking for mobile apps. Self-hosted, one container.",
   "license": "MIT",
   "repository": {
     "type": "git",
