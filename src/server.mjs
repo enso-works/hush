@@ -4,7 +4,10 @@
 // a write key that ships in the app bundle) and /admin/* is the operator's,
 // behind ADMIN_TOKEN. Expose /admin only as far as you need to: the token is
 // meant to be the second lock, after a network or proxy rule, not the only one.
+import { readFileSync } from 'node:fs';
 import http from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { appDetail, breakdown, summary } from './admin.mjs';
 import { cfg, log, parseApps } from './config.mjs';
@@ -27,6 +30,31 @@ const ingestLimit = rateLimiter(60);
 const ticketLimit = rateLimiter(10);
 
 const r = router();
+
+// The dashboard: three static files, read once at boot and served only by
+// exact name, so no path from the URL ever reaches the filesystem. Its data
+// comes from /admin with the token the page asks for.
+const DASHBOARD_DIR = join(dirname(fileURLToPath(import.meta.url)), 'dashboard');
+const DASHBOARD = Object.fromEntries(
+  [['index.html', 'text/html; charset=utf-8'], ['app.js', 'text/javascript; charset=utf-8'], ['style.css', 'text/css; charset=utf-8']]
+    .map(([name, type]) => [name, { type, body: readFileSync(join(DASHBOARD_DIR, name)) }]),
+);
+const DASHBOARD_HEADERS = {
+  'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Cache-Control': 'no-cache',
+};
+function serveDashboard(res, pathname) {
+  if (pathname === '/dashboard') {
+    res.writeHead(301, { Location: '/dashboard/' });
+    return res.end();
+  }
+  const file = DASHBOARD[pathname.slice('/dashboard/'.length) || 'index.html'];
+  if (!file) return json(res, 404, { error: 'not found' });
+  res.writeHead(200, { 'Content-Type': file.type, 'Content-Length': file.body.length, ...DASHBOARD_HEADERS });
+  return res.end(file.body);
+}
 
 r.get('/healthz', async (_req, res) => {
   try {
@@ -154,6 +182,9 @@ r.post('/admin/tickets/:id/status', async (req, res, { params }) => {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  if (req.method === 'GET' && (url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/'))) {
+    return serveDashboard(res, url.pathname);
+  }
   const route = r.match(req.method, url.pathname);
   if (!route) return json(res, 404, { error: 'not found' });
 
