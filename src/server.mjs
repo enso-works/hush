@@ -9,7 +9,8 @@ import http from 'node:http';
 import { dirname, extname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { appDetail, breakdown, summary } from './admin.mjs';
+import { appDetail, breakdown, propKeys, summary } from './admin.mjs';
+import { forgetInstall, installDetail } from './installs.mjs';
 import { cfg, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { clientKey, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
@@ -29,6 +30,7 @@ const MAX_BODY = 64 * 1024;
 const v1Limit = rateLimiter(120);
 const ingestLimit = rateLimiter(60);
 const ticketLimit = rateLimiter(10);
+const forgetLimit = rateLimiter(10);
 
 const r = router();
 
@@ -129,6 +131,19 @@ r.post('/v1/tickets/:id/reply', async (req, res, { key, params }) => {
   return json(res, 201, { id: out.id, created_at: out.created_at, status: 'open' });
 });
 
+// --- public: forget. A user's "delete my data": everything stored about the
+// calling install under the calling app. The SDK then starts over with a new
+// install id. Idempotent: an install with nothing stored gets the same 200.
+r.post('/v1/forget', async (req, res, { key }) => {
+  if (!forgetLimit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
+  const body = await readJson(req, MAX_BODY);
+  if (!isUuid(body?.install)) return json(res, 400, { error: 'invalid install' });
+  if (await belongsToAnotherApp(body.install, key.app)) return json(res, 403, { error: 'install belongs to another app' });
+  const deleted = await forgetInstall(body.install, key.app);
+  log.info('install forgotten', { app: key.app, events: deleted.events, tickets: deleted.tickets });
+  return json(res, 200, { ok: true, deleted });
+});
+
 r.get('/v1/tickets', async (_req, res, { url, key }) => {
   const install = url.searchParams.get('install');
   if (!isUuid(install)) return json(res, 400, { error: 'invalid install' });
@@ -143,17 +158,45 @@ r.get('/v1/tickets', async (_req, res, { url, key }) => {
 const ticketId = (params) => (/^[1-9][0-9]{0,17}$/.test(params.id) ? Number(params.id) : null);
 const days = (url) => Math.min(Math.max(Number(url.searchParams.get('days') ?? 30) || 30, 1), 365);
 const envOf = (url) => (url.searchParams.get('env') === 'dev' ? 'dev' : 'prod');
+// A build channel to filter by, or null for all of them.
+const channelOf = (url) => {
+  const c = url.searchParams.get('channel');
+  return c && /^[a-z][a-z0-9_]{0,23}$/.test(c) ? c : null;
+};
 
 r.get('/admin/apps', async (_req, res, { url }) => json(res, 200, { apps: await summary({ days: days(url), env: envOf(url) }) }));
 
 r.get('/admin/apps/:app', async (_req, res, { url, params }) =>
-  json(res, 200, await appDetail({ app: params.app, days: days(url), env: envOf(url) })));
+  json(res, 200, await appDetail({ app: params.app, days: days(url), env: envOf(url), channel: channelOf(url) })));
+
+r.get('/admin/apps/:app/props', async (_req, res, { url, params }) => {
+  const event = str(url.searchParams.get('event'), 64);
+  if (!event) return json(res, 400, { error: 'event is required' });
+  return json(res, 200, { keys: await propKeys({ app: params.app, env: envOf(url), days: days(url), event }) });
+});
 
 r.get('/admin/apps/:app/breakdown', async (_req, res, { url, params }) => {
   const event = str(url.searchParams.get('event'), 64);
   const prop = str(url.searchParams.get('prop'), 40);
   if (!event || !prop) return json(res, 400, { error: 'event and prop are required' });
-  return json(res, 200, { rows: await breakdown({ app: params.app, env: envOf(url), days: days(url), event, prop }) });
+  return json(res, 200, { rows: await breakdown({ app: params.app, env: envOf(url), days: days(url), event, prop, channel: channelOf(url) }) });
+});
+
+// One install: its row, latest events and tickets. For checking that a build
+// sends what it should (paste the id the app shows in a debug screen) and for
+// answering a data request.
+r.get('/admin/installs/:id', async (_req, res, { url, params }) => {
+  if (!isUuid(params.id)) return json(res, 404, { error: 'not found' });
+  const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 100) || 100, 1), 500);
+  const detail = await installDetail(params.id, { limit });
+  return detail ? json(res, 200, detail) : json(res, 404, { error: 'not found' });
+});
+
+r.post('/admin/installs/:id/forget', async (_req, res, { params }) => {
+  if (!isUuid(params.id)) return json(res, 404, { error: 'not found' });
+  const deleted = await forgetInstall(params.id);
+  log.info('install forgotten by the operator', { events: deleted.events, tickets: deleted.tickets });
+  return json(res, 200, { ok: true, deleted });
 });
 
 // RevenueCat, refreshed by the act of looking: opening the page updates a

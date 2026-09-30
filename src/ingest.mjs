@@ -11,6 +11,9 @@ const MAX_PAST_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FUTURE_MS = 24 * 60 * 60 * 1000;
 
 const EVENT_NAME = /^[a-z][a-z0-9_]{1,63}$/;
+// A build channel is a label the app picks (app_store, testflight, dev...):
+// short and snake_case, so it can never carry anything but that.
+const CHANNEL = /^[a-z][a-z0-9_]{0,23}$/;
 
 const cleanProps = (props) => flatObject(props, { maxBytes: MAX_PROPS_BYTES });
 
@@ -34,6 +37,9 @@ export function parseBatch(body, { app, env, country }) {
     // RevenueCat answered, sends no `pro` at all — and must not be read as
     // "this install is no longer paid". Only an explicit false downgrades.
     pro: typeof ctx.pro === 'boolean' ? ctx.pro : null,
+    // Added with SDK 2; older SDKs send neither, and the columns stay NULL.
+    channel: CHANNEL.test(ctx.channel ?? '') ? ctx.channel : null,
+    sdk: str(body.sdk, 24),
   };
   if (!Array.isArray(body.events) || body.events.length === 0) return 'events';
   if (body.events.length > MAX_EVENTS) return 'events: too many';
@@ -77,8 +83,8 @@ export async function store(batch) {
   const { app, env, context, country } = batch;
   for (const [id, firstAt] of batch.installs) {
     await q(
-      `INSERT INTO installs (id, app, env, first_seen, last_seen, platform, os, device, locale, country, version, build, rc_id, pro)
-       VALUES ($1, $2, $3, $4, now(), $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, false))
+      `INSERT INTO installs (id, app, env, first_seen, last_seen, platform, os, device, locale, country, version, build, rc_id, pro, channel, sdk)
+       VALUES ($1, $2, $3, $4, now(), $5, $6, $7, $8, $9, $10, $11, $12, COALESCE($13, false), $14, $15)
        ON CONFLICT (id) DO UPDATE SET
          last_seen = now(),
          -- An install that queued events offline can report a moment earlier
@@ -92,25 +98,27 @@ export async function store(batch) {
          version  = COALESCE(EXCLUDED.version, installs.version),
          build    = COALESCE(EXCLUDED.build, installs.build),
          rc_id    = COALESCE(EXCLUDED.rc_id, installs.rc_id),
+         channel  = COALESCE(EXCLUDED.channel, installs.channel),
+         sdk      = COALESCE(EXCLUDED.sdk, installs.sdk),
          -- $13, not EXCLUDED.pro: the inserted expression already folded a
          -- missing flag to false, so EXCLUDED can never be NULL here and the
          -- COALESCE would silently downgrade every paid install.
          pro      = COALESCE($13, installs.pro)`,
-      [id, app, env, new Date(firstAt).toISOString(), context.platform, context.os, context.device, context.locale, country, context.version, context.build, context.rc_id, context.pro],
+      [id, app, env, new Date(firstAt).toISOString(), context.platform, context.os, context.device, context.locale, country, context.version, context.build, context.rc_id, context.pro, context.channel, context.sdk],
     );
   }
 
-  const cols = 12;
+  const cols = 13;
   const values = [];
   const params = [];
   batch.events.forEach((e, i) => {
     const p = (n) => `$${i * cols + n}`;
-    values.push(`(${p(1)},${p(2)},${p(3)},${p(4)},${p(5)},${p(6)},${p(7)},${p(8)},${p(9)},${p(10)},${p(11)},${p(12)}::jsonb)`);
-    params.push(e.id, app, env, e.install, e.session, e.name, e.known, e.at, context.version, context.build, context.platform, JSON.stringify(e.props));
+    values.push(`(${p(1)},${p(2)},${p(3)},${p(4)},${p(5)},${p(6)},${p(7)},${p(8)},${p(9)},${p(10)},${p(11)},${p(12)}::jsonb,${p(13)})`);
+    params.push(e.id, app, env, e.install, e.session, e.name, e.known, e.at, context.version, context.build, context.platform, JSON.stringify(e.props), context.channel);
   });
   // A retried batch collides on the event id and is counted, not stored twice.
   const inserted = await q(
-    `INSERT INTO events (id, app, env, install, session, name, known, at, version, build, platform, props)
+    `INSERT INTO events (id, app, env, install, session, name, known, at, version, build, platform, props, channel)
      VALUES ${values.join(',')} ON CONFLICT (id) DO NOTHING`,
     params,
   );
