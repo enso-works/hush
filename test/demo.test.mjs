@@ -30,6 +30,11 @@ test('the showcase is seeded: three apps with installs, events and feedback', as
   assert.ok(detail.json.countries.some((c) => c.country !== 'other'), 'enough installs per country to show some');
   const tally = await client(srv.base).get('/admin/apps/tally?days=60');
   assert.ok(tally.json.unknown.some((u) => u.name === 'widget_added'), 'one unknown event, so the flag shows');
+  // SDK 2's data: channels to filter by, session lengths, a paywall variant.
+  assert.ok(detail.json.channels.some((c) => c.channel === 'testflight'));
+  assert.ok(detail.json.engagement.median_s > 0 && detail.json.engagement.measured > 50);
+  const variants = await client(srv.base).get('/admin/apps/stillwater/breakdown?event=paywall_viewed&prop=variant&days=30');
+  assert.deepEqual(variants.json.rows.map((x) => x.value).sort(), ['a', 'b']);
   const tickets = await client(srv.base).get('/admin/tickets?status=all');
   assert.ok(tickets.json.tickets.length >= 8);
 });

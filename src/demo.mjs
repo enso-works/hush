@@ -95,6 +95,12 @@ export async function seedDemo() {
       const version = weighted(r, VERSIONS);
       const id = uuid(r);
       const pro = r() < 0.07;
+      // Most installs from the store; a few TestFlight or internal builds on
+      // the prod key, which is what the channel filter is for.
+      const channel = platform === 'ios' ? weighted(r, [['app_store', 88], ['testflight', 12]]) : weighted(r, [['play', 92], ['internal', 8]]);
+      // Paywall copy under test: a global prop the app sets once per launch.
+      const variant = r() < 0.5 ? 'a' : 'b';
+      let prevFg = 0;
       // How many later days this install comes back: many never, some daily.
       const loyalty = r();
       const returns = loyalty < 0.35 ? 0 : loyalty < 0.7 ? Math.floor(r() * 4) : Math.floor(r() * Math.max(1, ageDays));
@@ -106,34 +112,39 @@ export async function seedDemo() {
         last = Math.max(last, sessionAt);
         const session = uuid(r);
         const at = (offsetMin) => new Date(Math.min(now, sessionAt + offsetMin * 60000)).toISOString();
-        const ev = (name, props = {}, offset = 0) => events.push([uuid(r), app.slug, 'prod', id, session, name, true, at(offset), version, platform, JSON.stringify(props)]);
+        const ev = (name, props = {}, offset = 0) => events.push([uuid(r), app.slug, 'prod', id, session, name, true, at(offset), version, platform, JSON.stringify(props), channel]);
         if (n === 0) ev('app_first_opened');
-        ev('session_started', { entry: weighted(r, [['launch', 80], ['notification', 12], ['widget', 8]]) });
+        // What SDK 2 sends: the session's number, the previous session's time
+        // in the foreground, and where it began (with a campaign for links).
+        const entry = weighted(r, [['launch', 74], ['notification', 11], ['widget', 8], ['link', 7]]);
+        const campaign = entry === 'link' ? { utm_source: weighted(r, [['newsletter', 50], ['twitter', 30], ['website', 20]]), utm_campaign: pick(r, ['autumn_update', 'streaks_launch']) } : {};
+        ev('session_started', { entry, n: n + 1, ...(prevFg ? { prev_fg_s: prevFg } : {}), ...campaign });
+        prevFg = Math.round(20 + Math.pow(r(), 2.2) * 900);
         const screens = 1 + Math.floor(r() * 3);
         for (let s = 0; s < screens; s++) ev('screen_viewed', { screen: pick(r, ['Home', 'Library', 'Stats', 'Settings']) }, s);
         if (r() < 0.8) ev(app.highlight, { completed: r() < 0.74, minutes: 5 + Math.floor(r() * 20) }, 4);
         if (r() < 0.25) ev(pick(r, app.events.filter((e) => e !== app.highlight)), {}, 6);
         if (n === 0 && r() < 0.32) {
-          ev('paywall_viewed', { source: pick(r, ['onboarding', 'settings', 'locked_feature']) }, 1);
-          if (r() < 0.35) {
-            ev('purchase_started', { product: pick(r, ['pro_yearly', 'pro_monthly']) }, 2);
-            ev('purchase_result', { result: pro ? 'purchased' : weighted(r, [['cancelled', 70], ['failed', 30]]) }, 3);
+          ev('paywall_viewed', { source: pick(r, ['onboarding', 'settings', 'locked_feature']), variant }, 1);
+          if (r() < (variant === 'b' ? 0.42 : 0.3)) {
+            ev('purchase_started', { product: pick(r, ['pro_yearly', 'pro_monthly']), variant }, 2);
+            ev('purchase_result', { result: pro ? 'purchased' : weighted(r, [['cancelled', 70], ['failed', 30]]), variant }, 3);
           }
         }
         // One name the catalog does not know, so the dashboard's flag shows.
         if (app.slug === 'tally' && r() < 0.05) ev('widget_added', {}, 7);
       }
-      installs.push([id, app.slug, 'prod', new Date(first).toISOString(), new Date(last).toISOString(), platform, `${platform} ${platform === 'ios' ? '18.6' : '15'}`, pick(r, DEVICES[platform]), LOCALE[country], country, version, '42', pro]);
+      installs.push([id, app.slug, 'prod', new Date(first).toISOString(), new Date(last).toISOString(), platform, `${platform} ${platform === 'ios' ? '18.6' : '15'}`, pick(r, DEVICES[platform]), LOCALE[country], country, version, '42', pro, channel, '2.0.0']);
     }
   }
 
   await tx(async (client) => {
     await client.query('TRUNCATE events, installs, ticket_replies, tickets, write_keys, apps CASCADE');
     await insertRows(client, 'apps', ['slug', 'name'], DEMO_APPS.map((a) => [a.slug, a.name]));
-    await insertRows(client, 'installs', ['id', 'app', 'env', 'first_seen', 'last_seen', 'platform', 'os', 'device', 'locale', 'country', 'version', 'build', 'pro'], installs);
+    await insertRows(client, 'installs', ['id', 'app', 'env', 'first_seen', 'last_seen', 'platform', 'os', 'device', 'locale', 'country', 'version', 'build', 'pro', 'channel', 'sdk'], installs);
     // The catalog's known flag is set above from the demo catalog; widget_added is not in it.
     for (const e of events) if (e[5] === 'widget_added') e[6] = false;
-    await insertRows(client, 'events', ['id', 'app', 'env', 'install', 'session', 'name', 'known', 'at', 'version', 'platform', 'props'], events);
+    await insertRows(client, 'events', ['id', 'app', 'env', 'install', 'session', 'name', 'known', 'at', 'version', 'platform', 'props', 'channel'], events);
     for (const t of TICKETS) {
       const created = new Date(now - t.daysAgo * DAY - 3 * 3600000);
       const install = installs.find((i) => i[1] === t.app)[0];
