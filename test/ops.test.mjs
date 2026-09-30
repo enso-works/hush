@@ -59,6 +59,23 @@ describe('signing the dashboard in', () => {
   });
 });
 
+describe('web apps', () => {
+  test('/v1 answers a CORS preflight and any origin; /admin does not', async () => {
+    const pre = await fetch(`${srv.base}/v1/events`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'capacitor://localhost', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,content-type' },
+    });
+    assert.equal(pre.status, 204);
+    assert.equal(pre.headers.get('access-control-allow-origin'), '*');
+    assert.match(pre.headers.get('access-control-allow-headers'), /Authorization/);
+    const sent = await client(srv.base, key).post('/v1/events', batch([event(uuid(), 'session_started')]), { Origin: 'capacitor://localhost' });
+    assert.equal(sent.status, 200);
+    assert.equal(sent.headers.get('access-control-allow-origin'), '*');
+    const adminPre = await fetch(`${srv.base}/admin/apps`, { method: 'OPTIONS', headers: { Origin: 'https://evil.example' } });
+    assert.equal(adminPre.headers.get('access-control-allow-origin'), null);
+  });
+});
+
 describe('catalog breakdowns', () => {
   test('pinned to the app page in catalog order, with a title made up when there is none', async () => {
     const d = (await admin(srv.base).get('/admin/apps/game?days=7')).json;

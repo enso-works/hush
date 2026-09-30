@@ -280,6 +280,20 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && (url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/'))) {
     return serveDashboard(res, url.pathname);
   }
+  // /v1 answers any origin, so web apps (and Capacitor's capacitor://localhost)
+  // can send too. Nothing rides on it: no cookies, and the write key it takes
+  // is public anyway, shipped inside every app.
+  if (url.pathname.startsWith('/v1/')) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204, {
+        'Access-Control-Allow-Methods': 'GET, POST',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        'Access-Control-Max-Age': '86400',
+      });
+      return res.end();
+    }
+  }
   const route = r.match(req.method, url.pathname);
   if (!route) return json(res, 404, { error: 'not found' });
 
