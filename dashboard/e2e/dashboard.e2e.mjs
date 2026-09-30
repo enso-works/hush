@@ -9,15 +9,19 @@ import { chromium } from 'playwright';
 
 import { freshDatabase, startServer } from '../../test/helpers.mjs';
 
+// E2E_BASE=https://hush.bavrk.com/demo runs the same checks against a live demo.
 let db, srv, browser;
 before(async () => {
-  db = await freshDatabase('hush_e2e');
-  srv = await startServer(db, { DEMO: '1', ADMIN_TOKEN: '', TELEMETRY_ADMIN_TOKEN: '' });
+  if (process.env.E2E_BASE) srv = { base: process.env.E2E_BASE.replace(/\/$/, '') };
+  else {
+    db = await freshDatabase('hush_e2e');
+    srv = await startServer(db, { DEMO: '1', ADMIN_TOKEN: '', TELEMETRY_ADMIN_TOKEN: '' });
+  }
   browser = await chromium.launch();
 });
 after(async () => {
   await browser?.close();
-  await srv?.stop();
+  await srv?.stop?.();
   await db?.drop();
 });
 
