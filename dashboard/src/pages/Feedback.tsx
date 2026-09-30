@@ -169,7 +169,11 @@ function Thread({ id, onChanged }: { id: number; onChanged: () => void }) {
             </summary>
             <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 px-3 py-3 text-xs">
               <dt className="text-muted-foreground">Install</dt>
-              <dd className="truncate font-mono">{t.install}</dd>
+              <dd className="truncate font-mono">
+                <a className="underline-offset-2 hover:underline" href={href.installs(t.install)}>
+                  {t.install}
+                </a>
+              </dd>
               <dt className="text-muted-foreground">Email</dt>
               <dd>{t.email ?? 'none given'}</dd>
               <dt className="text-muted-foreground">Customer</dt>

@@ -6,6 +6,7 @@ export type Route =
   | { page: 'overview' }
   | { page: 'app'; slug: string }
   | { page: 'feedback'; id?: number; status: string; kind: string }
+  | { page: 'installs'; id?: string }
 
 function parse(hash: string): Route {
   const [path, query] = hash.replace(/^#/, '').split('?')
@@ -22,6 +23,7 @@ function parse(hash: string): Route {
       kind: params.get('kind') ?? 'all',
     }
   }
+  if (parts[0] === 'installs') return { page: 'installs', id: parts[1] ? decodeURIComponent(parts[1]) : undefined }
   return { page: 'overview' }
 }
 
@@ -38,6 +40,7 @@ export function useRoute() {
 export const href = {
   overview: () => '#/',
   app: (slug: string) => `#/app/${encodeURIComponent(slug)}`,
+  installs: (id?: string) => `#/installs${id ? `/${encodeURIComponent(id)}` : ''}`,
   feedback: (o: { id?: number; status?: string; kind?: string } = {}) => {
     const q = new URLSearchParams()
     if (o.status && o.status !== 'open') q.set('status', o.status)

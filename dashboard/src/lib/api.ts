@@ -70,6 +70,17 @@ export type Period = { new_installs: number; sessions: number; active: number; h
 export type AppDetail = {
   app: string
   name?: string
+  /** The channel this detail is filtered to (added with SDK 2), or null for all. */
+  channel?: string | null
+  channels?: { channel: string; installs: number }[]
+  engagement?: {
+    measured: number
+    median_s: number | null
+    p75_s: number | null
+    sessions_per_install: number | null
+    /** Installs by sessions this period: 1, 2, 3-5, 6-10, more than 10. */
+    sessions_histogram: number[]
+  }
   highlight: { event: string; done_prop: string | null } | null
   current: Period
   prior: Period
@@ -108,6 +119,32 @@ export type Ticket = Omit<TicketSummary, 'preview' | 'replies'> & {
   diag: Record<string, unknown> | null
   replies: { id: number; author: 'user' | 'support'; body: string; at: string; emailed: boolean }[]
 }
+
+export type InstallDetail = {
+  id: string
+  install: {
+    id: string
+    app: string
+    env: string
+    first_seen: string
+    last_seen: string
+    platform: string | null
+    os: string | null
+    device: string | null
+    locale: string | null
+    country: string | null
+    version: string | null
+    build: string | null
+    rc_id: string | null
+    pro: boolean
+    channel: string | null
+    sdk: string | null
+  } | null
+  events: { id: string; name: string; known: boolean; at: string; received_at: string; session: string | null; version: string | null; channel: string | null; props: Record<string, unknown> }[]
+  tickets: { id: number; app: string; kind: TicketKind; subject: string | null; status: TicketStatus; created_at: string }[]
+}
+
+export type BreakdownRow = { value: string; n: number; installs: number }
 
 export type Revenue = {
   configured: boolean

@@ -38,19 +38,22 @@ export function useSession() {
 }
 
 /** Period and environment, shared by every page and kept for the tab. */
-export type Prefs = { days: number; env: 'prod' | 'dev' }
+export type Prefs = { days: number; env: 'prod' | 'dev'; channel: string | null }
 const PrefsCtx = createContext<{ prefs: Prefs; setPrefs: (p: Partial<Prefs>) => void } | null>(null)
 
 export function PrefsProvider({ children }: { children: ReactNode }) {
   const [prefs, set] = useState<Prefs>(() => ({
     days: Number(sessionStorage.getItem('hush.days')) || 30,
     env: sessionStorage.getItem('hush.env') === 'dev' ? 'dev' : 'prod',
+    channel: sessionStorage.getItem('hush.channel') || null,
   }))
   const setPrefs = useCallback((p: Partial<Prefs>) => {
     set((old) => {
       const next = { ...old, ...p }
       sessionStorage.setItem('hush.days', String(next.days))
       sessionStorage.setItem('hush.env', next.env)
+      if (next.channel) sessionStorage.setItem('hush.channel', next.channel)
+      else sessionStorage.removeItem('hush.channel')
       return next
     })
   }, [])

@@ -14,6 +14,7 @@ import { useApi } from '@/lib/data'
 import { countryName, flag, humanize, num, pct, shortDay, when } from '@/lib/format'
 import { href } from '@/lib/route'
 import { usePrefs } from '@/lib/session'
+import { BreakdownBars, ChannelFilter, Engagement, Explore } from '@/pages/AppInsights'
 import { ErrorNote } from '@/pages/ErrorNote'
 
 export function Panel({ title, sub, children, className }: { title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
@@ -156,7 +157,9 @@ function RevenuePanel({ slug }: { slug: string }) {
 
 export function AppPage({ slug }: { slug: string }) {
   const { prefs } = usePrefs()
-  const { data: d, error, loading } = useApi<AppDetail>(`/admin/apps/${encodeURIComponent(slug)}?days=${prefs.days}&env=${prefs.env}`)
+  const { data: d, error, loading } = useApi<AppDetail>(
+    `/admin/apps/${encodeURIComponent(slug)}?days=${prefs.days}&env=${prefs.env}${prefs.channel ? `&channel=${encodeURIComponent(prefs.channel)}` : ''}`,
+  )
   const name = d?.name ?? slug
   const c = d?.current
   const p = d?.prior
@@ -178,7 +181,12 @@ export function AppPage({ slug }: { slug: string }) {
             ' '
           )
         }
-        actions={<PeriodControls />}
+        actions={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {d?.channels && <ChannelFilter channels={d.channels} />}
+            <PeriodControls />
+          </div>
+        }
       />
       {error && <ErrorNote message={error} />}
 
@@ -262,6 +270,35 @@ export function AppPage({ slug }: { slug: string }) {
               />
             </Panel>
           </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {d.engagement && (
+              <Panel title="Engagement" sub="Time in the app per session, and how often installs come back">
+                <Engagement e={d.engagement} />
+              </Panel>
+            )}
+            <Panel title="How sessions start" sub="The app's doors: launch, widget, notification, link...">
+              <BreakdownBars slug={slug} event="session_started" prop="entry" empty="No sessions in this period." />
+            </Panel>
+            <Panel title="Campaigns" sub="Sessions opened from a link, by its utm_source">
+              <BreakdownBars
+                slug={slug}
+                event="session_started"
+                prop="utm_source"
+                taggedOnly
+                empty="No tagged links yet. SDK 2 keeps utm_* and ref from a link passed to entry('link', { url })."
+              />
+            </Panel>
+            {d.channels && d.channels.length > 0 && (
+              <Panel title="Build channels" sub="Installs seen this period, by where their build came from">
+                <BarList rows={d.channels.map((c) => ({ key: c.channel, label: <span className="truncate">{humanize(c.channel)}</span>, value: c.installs }))} />
+              </Panel>
+            )}
+          </div>
+
+          <Panel title="Explore" sub="Any event by any of its props: a paywall variant, a source, a product">
+            <Explore slug={slug} events={d.events} />
+          </Panel>
 
           <Panel title="Events" sub="Count this period, and how many installs sent each">
             <BarList

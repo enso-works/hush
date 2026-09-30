@@ -23,6 +23,20 @@ export const change = (now: number, before: number) => (before ? Math.round(((no
 
 export const humanize = (s: string) => s.replace(/_/g, ' ')
 
+/** Seconds as "45 s", "3 min 20 s", "1 h 5 min". */
+export function duration(s: number | null | undefined) {
+  if (s == null) return '–'
+  if (s < 60) return `${Math.round(s)} s`
+  if (s < 3600) {
+    const m = Math.floor(s / 60)
+    const rest = Math.round(s % 60)
+    return rest ? `${m} min ${rest} s` : `${m} min`
+  }
+  const h = Math.floor(s / 3600)
+  const m = Math.round((s % 3600) / 60)
+  return m ? `${h} h ${m} min` : `${h} h`
+}
+
 /** A country code as its flag (regional indicator letters); nothing for "other"/"unknown". */
 export function flag(code: string) {
   if (!/^[A-Z]{2}$/.test(code)) return ''

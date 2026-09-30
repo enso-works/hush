@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ExternalLink, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Sun } from 'lucide-react'
+import { ExternalLink, Fingerprint, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, Sun } from 'lucide-react'
 
 import { AppMark, Logo } from '@/components/Logo'
 import { useApps } from '@/lib/apps'
@@ -81,6 +81,9 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
       </NavLink>
       <NavLink to={href.feedback()} active={route.page === 'feedback'} icon={<MessageSquare className="size-4" />} badge={open}>
         Feedback
+      </NavLink>
+      <NavLink to={href.installs()} active={route.page === 'installs'} icon={<Fingerprint className="size-4" />}>
+        Installs
       </NavLink>
     </>
   )

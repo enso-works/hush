@@ -6,6 +6,7 @@ import { useRoute } from '@/lib/route'
 import { useSession } from '@/lib/session'
 import { AppPage } from '@/pages/AppPage'
 import { Feedback } from '@/pages/Feedback'
+import { Installs } from '@/pages/Installs'
 import { Login } from '@/pages/Login'
 import { Overview } from '@/pages/Overview'
 
@@ -23,6 +24,8 @@ export function App() {
       <Shell route={route}>
         {route.page === 'app' ? (
           <AppPage key={route.slug} slug={route.slug} />
+        ) : route.page === 'installs' ? (
+          <Installs id={route.id} />
         ) : route.page === 'feedback' ? (
           <Feedback id={route.id} status={route.status} kind={route.kind} />
         ) : (
