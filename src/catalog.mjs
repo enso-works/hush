@@ -37,7 +37,7 @@ import { readFileSync } from 'node:fs';
 
 import { cfg } from './config.mjs';
 import { DEMO_CATALOG } from './demo.mjs';
-import { DEFAULT_FUNNELS, parseFunnels } from './funnels.mjs';
+import { DEFAULT_FUNNELS, parseFunnels, parseStep } from './funnels.mjs';
 
 // Every app gets the generic lifecycle names even before it has a catalog of
 // its own, so a newly wired app does not light up the "unknown events" list.
@@ -73,7 +73,13 @@ export function parseCatalog(raw) {
     }
     const funnels = parseFunnels(spec.funnels, `catalog.${app}.funnels`);
     const breakdowns = parseBreakdowns(spec.breakdowns, `catalog.${app}.breakdowns`);
-    out[app] = { events, highlight, funnels, breakdowns };
+    let appStoreId = null;
+    if (spec.app_store_id != null) {
+      appStoreId = String(spec.app_store_id);
+      if (!/^[1-9][0-9]{5,11}$/.test(appStoreId)) throw new Error(`catalog.${app}.app_store_id: the App Store id, digits`);
+    }
+    const conversionValues = parseConversionValues(spec.conversion_values, `catalog.${app}.conversion_values`);
+    out[app] = { events, highlight, funnels, breakdowns, appStoreId, conversionValues };
   }
   return out;
 }
@@ -91,6 +97,34 @@ function parseBreakdowns(raw, path) {
     if (count !== 'events' && count !== 'installs') throw new Error(`${path}[${i}].count: "events" or "installs"`);
     const title = typeof b.title === 'string' && b.title.trim() ? b.title.trim().slice(0, 60) : `${humanize(b.event)} by ${b.prop.replace(/_/g, ' ')}`;
     return { event: b.event, prop: b.prop, title, count };
+  });
+}
+
+const COARSE = ['low', 'medium', 'high'];
+
+/**
+ * The conversion values an app reports to Apple's ad attribution (and so to
+ * the ad network): milestones in order, each a fine value 1-63 and a coarse
+ * low/medium/high, reached when its event happens (with `where` like a funnel
+ * step). The SDK raises the value, never lowers it; `lock` ends the first
+ * window early, at a milestone after which nothing more is worth waiting for.
+ * The same table goes into the ad network (Meta: Events Manager, SKAdNetwork),
+ * which is how it reads the values.
+ */
+function parseConversionValues(raw, path) {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > 20) throw new Error(`${path}: expected up to 20 milestones`);
+  let last = 0;
+  let lastCoarse = 0;
+  return raw.map((m, i) => {
+    const step = parseStep(m);
+    if (typeof step === 'string') throw new Error(`${path}[${i}]: ${step}`);
+    if (!Number.isInteger(m.value) || m.value <= last || m.value > 63) throw new Error(`${path}[${i}].value: 1 to 63, higher than the one before`);
+    const coarse = COARSE.indexOf(m.coarse ?? 'low');
+    if (coarse < lastCoarse) throw new Error(`${path}[${i}].coarse: low, medium or high, never lower than the one before`);
+    last = m.value;
+    lastCoarse = coarse;
+    return { value: m.value, coarse: COARSE[coarse], event: step.event, where: step.where, label: step.label, lock: m.lock === true };
   });
 }
 
@@ -114,3 +148,12 @@ export const funnelsOf = (app) => catalog[app]?.funnels ?? DEFAULT_FUNNELS;
 
 /** Charts the catalog pins to the app page, in its order; none by default. */
 export const breakdownsOf = (app) => catalog[app]?.breakdowns ?? [];
+
+/** The app's App Store id (a string of digits), or null. */
+export const appStoreIdOf = (app) => catalog[app]?.appStoreId ?? null;
+
+/** The app whose App Store id this is, for a postback that names only the id. */
+export const appOfStoreId = (id) => Object.entries(catalog).find(([, v]) => v.appStoreId === String(id))?.[0] ?? null;
+
+/** The app's conversion-value milestones, in order; none by default. */
+export const conversionValuesOf = (app) => catalog[app]?.conversionValues ?? [];

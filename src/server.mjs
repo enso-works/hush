@@ -11,8 +11,9 @@ import { fileURLToPath } from 'node:url';
 
 import { appDetail, breakdown, propKeys, summary } from './admin.mjs';
 import { forgetInstall, installDetail } from './installs.mjs';
-import { funnelsOf } from './catalog.mjs';
-import { cohorts, runFunnel, stepsFromQuery } from './funnels.mjs';
+import { appStoreIdOf, conversionValuesOf, funnelsOf } from './catalog.mjs';
+import { aakRow, postbackSummary, skanRow, storePostback } from './attribution.mjs';
+import { CAMPAIGN_KEYS, campaignFunnel, cohorts, runFunnel, stepsFromQuery } from './funnels.mjs';
 import { cfg, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { clientKey, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
@@ -21,6 +22,7 @@ import { adminAuthorized, resolveKey } from './keys.mjs';
 import { migrate } from './migrate.mjs';
 import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
+import { appStoreCampaigns, ascConfigured, syncAll } from './appstore.mjs';
 import { adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, KINDS, parseTicket, ticketsForInstall, userReply } from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
@@ -146,6 +148,14 @@ r.post('/v1/forget', async (req, res, { key }) => {
   return json(res, 200, { ok: true, deleted });
 });
 
+// What an app's SDK reads at start: the conversion-value milestones it sets
+// for Apple's ad attribution (catalog conversion_values). Public by nature:
+// the same table is entered in the ad network.
+r.get('/v1/config', async (_req, res, { key }) =>
+  json(res, 200, {
+    conversion_values: conversionValuesOf(key.app).map(({ value, coarse, event, where, lock }) => ({ value, coarse, event, where, lock })),
+  }));
+
 r.get('/v1/tickets', async (_req, res, { url, key }) => {
   const install = url.searchParams.get('install');
   if (!isUuid(install)) return json(res, 400, { error: 'invalid install' });
@@ -194,6 +204,49 @@ r.get('/admin/apps/:app/funnel', async (_req, res, { url, params }) => {
   return json(res, 200, {
     window_days: windowDays,
     steps: await runFunnel({ app: params.app, env: envOf(url), days: days(url), channel: channelOf(url), steps, windowDays }),
+  });
+});
+
+// A funnel per campaign, from the first tagged session: ?by=utm_campaign
+// (or utm_source, utm_term, utm_content...), &where=utm_source:meta to narrow
+// it, and the steps from a catalog funnel (&funnel=0, its opening
+// app_first_opened dropped: the count starts at the tagged session) or given
+// as &step= like the funnel builder.
+r.get('/admin/apps/:app/campaigns', async (_req, res, { url, params }) => {
+  const by = url.searchParams.get('by') ?? 'utm_campaign';
+  if (!CAMPAIGN_KEYS.includes(by)) return json(res, 400, { error: `by is one of ${CAMPAIGN_KEYS.join(', ')}` });
+  let where = null;
+  const w = url.searchParams.get('where');
+  if (w) {
+    const i = w.indexOf(':');
+    const key = w.slice(0, i);
+    if (i < 1 || !CAMPAIGN_KEYS.includes(key)) return json(res, 400, { error: 'where is tag:value' });
+    where = { key, value: w.slice(i + 1).slice(0, 64) };
+  }
+  let steps;
+  let windowDays = Math.min(Math.max(Number(url.searchParams.get('window') ?? 7) || 7, 1), 90);
+  if (url.searchParams.getAll('step').length) {
+    steps = stepsFromQuery(url.searchParams.getAll('step'), 1);
+    if (typeof steps === 'string') return json(res, 400, { error: steps });
+  } else {
+    const all = funnelsOf(params.app);
+    const f = all[Math.min(Math.max(Number(url.searchParams.get('funnel') ?? 0) || 0, 0), all.length - 1)];
+    steps = f.steps.filter((st, i) => !(i === 0 && (st.event === 'app_first_opened' || st.event === 'session_started')));
+    if (!url.searchParams.get('window')) windowDays = f.window_days;
+  }
+  const rows = await campaignFunnel({ app: params.app, env: envOf(url), days: days(url), channel: channelOf(url), by, where, steps, windowDays });
+  return json(res, 200, { by, where, window_days: windowDays, steps: steps.map(({ event, where: w2, label }) => ({ event, where: w2, label })), rows });
+});
+
+// Where installs came from, as Apple reports it: postback copies (verified
+// only; env=dev shows Apple's development ones), and App Store campaigns.
+r.get('/admin/apps/:app/attribution', async (_req, res, { url, params }) => {
+  const d = days(url);
+  return json(res, 200, {
+    app_store_id: appStoreIdOf(params.app),
+    conversion_values: conversionValuesOf(params.app),
+    postbacks: await postbackSummary({ app: params.app, days: d, development: envOf(url) === 'dev' }),
+    appstore: await appStoreCampaigns({ app: params.app, days: d }),
   });
 });
 
@@ -275,6 +328,20 @@ r.post('/admin/tickets/:id/status', async (req, res, { params }) => {
   return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'not found' });
 });
 
+// Apple's postback copies (src/attribution.mjs). Anything that parses gets a
+// 200, verified or not: a device retries for days on anything else, and an
+// unverified postback is stored but never counted.
+const postbackRoute = (toRow) => async (req, res) => {
+  const body = await readJson(req, MAX_BODY);
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return json(res, 400, { error: 'expected a JSON object' });
+  const row = toRow(body);
+  const fresh = await storePostback(row);
+  if (fresh) log.info('postback', { kind: row.kind, verified: row.verified, development: row.development, network: row.ad_network, app: row.apple_app_id });
+  return json(res, 200, { ok: true });
+};
+r.post('/.well-known/skadnetwork/report-attribution', postbackRoute(skanRow));
+r.post('/.well-known/appattribution/report-attribution', postbackRoute(aakRow));
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
   if (req.method === 'GET' && (url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/'))) {
@@ -296,6 +363,12 @@ const server = http.createServer(async (req, res) => {
   }
   const route = r.match(req.method, url.pathname);
   if (!route) return json(res, 404, { error: 'not found' });
+  if (url.pathname.startsWith('/.well-known/')) {
+    // Postbacks from devices: no key (Apple's signature is the proof), the
+    // same per-address limit as /v1, and never into a demo.
+    if (cfg.demo) return json(res, 403, { error: 'demo instance: not accepting data' });
+    if (!v1Limit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
+  }
 
   try {
     if (cfg.demo) {
@@ -376,6 +449,13 @@ migrate()
     server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off', proxySignIn: proxySignIn ? cfg.adminProxyHeader : 'off' }));
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
     setTimeout(sweep, 60_000).unref();
+    // App Store campaign reports: Apple makes one a day, so every six hours is
+    // plenty; the first two minutes after boot, out of the way of the start.
+    if (ascConfigured()) {
+      const syncStores = () => q('SELECT slug FROM apps').then(({ rows }) => syncAll(rows.map((r) => r.slug))).catch((err) => log.warn('app store sync', { err: String(err?.message ?? err) }));
+      setInterval(syncStores, 6 * 60 * 60 * 1000).unref();
+      setTimeout(syncStores, 120_000).unref();
+    }
   })
   .catch((err) => {
     log.error('startup failed', { err: String(err?.message ?? err) });

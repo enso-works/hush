@@ -13,10 +13,10 @@ import { log } from './config.mjs';
 import { q, tx } from './db.mjs';
 
 export const DEMO_APPS = [
-  { slug: 'stillwater', name: 'Stillwater', installs: 900, start: 'meditation_started', highlight: 'meditation_completed', first: 'First meditation', events: ['onboarding_completed', 'meditation_started', 'meditation_completed', 'streak_viewed', 'reminder_set'] },
+  { slug: 'stillwater', appStoreId: '6700000101', name: 'Stillwater', installs: 900, start: 'meditation_started', highlight: 'meditation_completed', first: 'First meditation', events: ['onboarding_completed', 'meditation_started', 'meditation_completed', 'streak_viewed', 'reminder_set'] },
   // A habit is created once, then checked off in later sessions.
-  { slug: 'tally', name: 'Tally', installs: 460, start: 'habit_created', startOnce: true, highlight: 'habit_checked', first: 'First habit', events: ['onboarding_completed', 'habit_created', 'habit_checked', 'stats_viewed', 'reminder_set'] },
-  { slug: 'pace', name: 'Pace', installs: 230, start: 'run_started', highlight: 'run_finished', first: 'First run', events: ['onboarding_completed', 'run_started', 'run_finished', 'route_saved'] },
+  { slug: 'tally', appStoreId: '6700000102', name: 'Tally', installs: 460, start: 'habit_created', startOnce: true, highlight: 'habit_checked', first: 'First habit', events: ['onboarding_completed', 'habit_created', 'habit_checked', 'stats_viewed', 'reminder_set'] },
+  { slug: 'pace', appStoreId: '6700000103', name: 'Pace', installs: 230, start: 'run_started', highlight: 'run_finished', first: 'First run', events: ['onboarding_completed', 'run_started', 'run_finished', 'route_saved'] },
 ];
 
 /** The catalog a demo runs with when no CATALOG_FILE is given. */
@@ -33,6 +33,14 @@ export const DEMO_CATALOG = Object.fromEntries(
           window_days: 3,
           steps: ['paywall_viewed', 'purchase_started', { event: 'purchase_result', where: { result: 'purchased' }, label: 'Purchased' }],
         },
+      ],
+      app_store_id: a.appStoreId,
+      conversion_values: [
+        { value: 1, coarse: 'low', event: 'onboarding_completed', label: 'Onboarded' },
+        { value: 4, coarse: 'low', event: a.start, label: 'Started' },
+        { value: 12, coarse: 'medium', event: a.highlight, where: { completed: true }, label: a.first },
+        { value: 24, coarse: 'medium', event: 'paywall_viewed', label: 'Saw the paywall' },
+        { value: 60, coarse: 'high', event: 'purchase_result', where: { result: 'purchased' }, label: 'Purchased', lock: true },
       ],
       breakdowns: [
         { event: 'paywall_viewed', prop: 'source', title: 'Where the paywall opens' },
@@ -138,7 +146,14 @@ export async function seedDemo() {
         // What SDK 2 sends: the session's number, the previous session's time
         // in the foreground, and where it began (with a campaign for links).
         const entry = weighted(r, [['launch', 74], ['notification', 11], ['widget', 8], ['link', 7]]);
-        const campaign = entry === 'link' ? { utm_source: weighted(r, [['newsletter', 50], ['twitter', 30], ['website', 20]]), utm_campaign: pick(r, ['autumn_update', 'streaks_launch']) } : {};
+        // Links from ads carry what Meta's URL parameters fill in: the
+        // campaign, the ad set (utm_term) and the ad (utm_content).
+        const source = entry === 'link' ? weighted(r, [['meta', 45], ['newsletter', 30], ['twitter', 15], ['website', 10]]) : null;
+        const campaign = !source
+          ? {}
+          : source === 'meta'
+            ? { utm_source: 'meta', utm_medium: 'paid_social', utm_campaign: pick(r, ['autumn_install', 'autumn_retarget']), utm_term: pick(r, ['broad_25_44', 'lookalike_1pct']), utm_content: pick(r, ['video_calm', 'static_streak', 'ugc_review']) }
+            : { utm_source: source, utm_campaign: pick(r, ['autumn_update', 'streaks_launch']) };
         ev('session_started', { entry, n: n + 1, ...(prevFg ? { prev_fg_s: prevFg } : {}), ...campaign });
         prevFg = Math.round(20 + Math.pow(r(), 2.2) * 900);
         const screens = 1 + Math.floor(r() * 3);
@@ -182,5 +197,60 @@ export async function seedDemo() {
       }
     }
   });
+  await seedAttribution(r, now);
   log.info('demo seeded', { apps: DEMO_APPS.length, installs: installs.length, events: events.length, tickets: TICKETS.length });
+}
+
+/**
+ * What Apple would report for the demo apps: SKAdNetwork postbacks from Meta
+ * campaigns (verified in real life; invented here) and App Store campaign
+ * rows, so the Attribution panel shows what it is for.
+ */
+async function seedAttribution(r, now) {
+  const DAY = 86400000;
+  const postbacks = [];
+  const store = [];
+  for (const app of DEMO_APPS) {
+    const campaigns = [['1204', 0.5], ['1205', 0.3], ['3310', 0.2]];
+    const count = Math.round(app.installs * 0.22);
+    for (let i = 0; i < count; i++) {
+      const at = new Date(now - Math.floor(Math.pow(r(), 1.3) * 58 * DAY) - 2 * DAY).toISOString();
+      const source = weighted(r, campaigns.map(([id, w]) => [id, w]));
+      const tier = r();
+      // Small campaigns (low crowd-anonymity tiers) get only a coarse value.
+      const fine = tier < 0.75 ? weighted(r, [[0, 30], [1, 22], [4, 20], [12, 15], [24, 9], [60, 4]]) : null;
+      const coarse = fine === null ? weighted(r, [['low', 70], ['medium', 25], ['high', 5]]) : null;
+      const id = uuid(r);
+      postbacks.push([`skan:${id}`, 'skan', app.slug, Number(app.appStoreId), at, true, false, '4.0', 'v9wttpbfk9.skadnetwork', source, fine, coarse, 0, true, r() < 0.06, r() < 0.06 ? 'redownload' : 'download', r() < 0.8 ? 'click' : 'view', 1, JSON.stringify({ demo: true })]);
+      if (r() < 0.35) {
+        postbacks.push([`skan:${id}:1`, 'skan', app.slug, Number(app.appStoreId), at, true, false, '4.0', 'v9wttpbfk9.skadnetwork', source.slice(0, 2), null, weighted(r, [['low', 60], ['medium', 30], ['high', 10]]), 1, true, false, 'download', 'click', 1, JSON.stringify({ demo: true })]);
+      }
+    }
+    for (let d = 3; d < 48; d++) {
+      const day = new Date(now - d * DAY).toISOString().slice(0, 10);
+      const scale = app.installs / 900;
+      for (const [campaign, source, w] of [['meta_autumn', 'Web referrer', 1], ['meta_retarget', 'Web referrer', 0.4], ['newsletter', 'Web referrer', 0.25], ['', 'App Store search', 2.2], ['', 'App Store browse', 0.9]]) {
+        const views = Math.round((20 + r() * 25) * w * scale * 3);
+        const downloads = Math.round(views * (0.18 + r() * 0.12));
+        if (downloads < 1) continue;
+        const purchases = Math.round(downloads * (0.03 + r() * 0.04));
+        for (const [kind, metric, value] of [
+          ['engagement', 'impressions', views * 6],
+          ['engagement', 'page_views', views],
+          ['downloads', 'first_downloads', downloads],
+          ['downloads', 'redownloads', Math.round(downloads * 0.08)],
+          ['sessions', 'sessions', Math.round(downloads * 3.4)],
+          ['purchases', 'purchases', purchases],
+          ['purchases', 'proceeds_usd', Math.round(purchases * 24.99 * 0.85 * 100) / 100],
+        ]) {
+          store.push([app.slug, kind, day, campaign, source, metric, value, day]);
+        }
+      }
+    }
+  }
+  await tx(async (client) => {
+    await insertRows(client, 'postbacks', ['dedupe', 'kind', 'app', 'apple_app_id', 'received_at', 'verified', 'development', 'version', 'ad_network', 'source_identifier', 'conversion_value', 'coarse_value', 'sequence', 'did_win', 'redownload', 'conversion_type', 'interaction', 'fidelity', 'raw'], postbacks);
+    await insertRows(client, 'asc_campaigns', ['app', 'kind', 'day', 'campaign', 'source_type', 'metric', 'value', 'processing_date'], store);
+    await insertRows(client, 'asc_requests', ['app', 'request_id', 'last_sync'], DEMO_APPS.map((a) => [a.slug, 'demo', new Date(now - 3 * 3600000).toISOString()]));
+  });
 }

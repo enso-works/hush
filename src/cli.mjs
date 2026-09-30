@@ -8,6 +8,7 @@ import { pool, q } from './db.mjs';
 import { hashKey, mintKey } from './keys.mjs';
 import { migrate } from './migrate.mjs';
 import { link, listProjects, poll, rcConfigured, syncProjects } from './revenuecat.mjs';
+import { ascConfigured, ensureRequest, syncAll, syncApp } from './appstore.mjs';
 
 const [, , cmd, ...args] = process.argv;
 
@@ -80,6 +81,22 @@ const commands = {
     await poll();
     const { rows } = await q('SELECT app, last_polled_at, last_error FROM rc_projects ORDER BY app');
     for (const r of rows) console.log(`${r.app}\t${r.last_polled_at?.toISOString() ?? 'never'}\t${r.last_error ?? 'ok'}`);
+  },
+
+  // App Store campaign reports: create (or find) the app's report request.
+  // Needs an Admin key once; Apple has the first data a day or two later.
+  async 'asc:request'(app) {
+    if (!ascConfigured()) throw new Error('ASC_KEY_ID, ASC_ISSUER_ID and ASC_PRIVATE_KEY(_FILE) are not set');
+    if (!app) throw new Error('usage: asc:request <app>');
+    console.log(`${app}: report request ${await ensureRequest(app)}`);
+  },
+
+  async 'asc:sync'(app) {
+    if (!ascConfigured()) throw new Error('ASC_KEY_ID, ASC_ISSUER_ID and ASC_PRIVATE_KEY(_FILE) are not set');
+    const apps = app ? [app] : (await q('SELECT slug FROM apps ORDER BY slug')).rows.map((r) => r.slug);
+    for (const r of app ? [await syncApp(app)] : await syncAll(apps)) {
+      console.log(r.error ? `${r.app}\terror: ${r.error}` : `${r.app}\t${r.reports} reports, ${r.imported} new instances`);
+    }
   },
 
   async migrate() {

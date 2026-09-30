@@ -59,6 +59,15 @@ export const cfg = {
   rcFloorSeconds: Math.max(Number(env('RC_FLOOR_SECONDS', '60')) || 60, 5),
   // RevenueCat allows 25 Charts & Metrics requests a minute per key.
   rcRatePerMinute: Math.max(Number(env('RC_RATE_PER_MINUTE', '20')) || 20, 1),
+  // App Store Connect API key for campaign reports (src/appstore.mjs): its key
+  // id, issuer id and the .p8 (inline, \n allowed, or a file). The Admin role
+  // once, to create each app's report request; Sales and Reports after that.
+  // Unset: no App Store campaigns, and nothing else changes.
+  ascKeyId: env('ASC_KEY_ID'),
+  ascIssuerId: env('ASC_ISSUER_ID'),
+  ascPrivateKey: env('ASC_PRIVATE_KEY'),
+  ascPrivateKeyFile: env('ASC_PRIVATE_KEY_FILE'),
+  ascApiBase: env('ASC_API_BASE', 'https://api.appstoreconnect.apple.com'),
 };
 
 export const log = {
