@@ -67,8 +67,8 @@ export function parseFunnels(raw, path) {
 }
 
 /** Steps from the dashboard's query string: `event` or `event:prop=value`. */
-export function stepsFromQuery(values) {
-  if (values.length < 2 || values.length > MAX_STEPS) return `2 to ${MAX_STEPS} steps`;
+export function stepsFromQuery(values, min = 2) {
+  if (values.length < min || values.length > MAX_STEPS) return `${min} to ${MAX_STEPS} steps`;
   const steps = [];
   for (const v of values) {
     const [event, cond] = v.split(':', 2);
@@ -134,6 +134,69 @@ export async function runFunnel({ app, env, days, channel = null, steps, windowD
     installs: r[`n${i}`],
     // Median seconds from the previous step, among installs that made it.
     median_s: r[`m${i}`],
+  }));
+}
+
+/** The link tags a campaign can be split by, as SDK 2 keeps them on session_started. */
+export const CAMPAIGN_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref'];
+
+/**
+ * A funnel per campaign. Each install counts once, for the first session in
+ * the period that came from a tagged link (first touch), split by one tag
+ * (`by`: the source, campaign, ad set in utm_term, ad in utm_content...);
+ * `where` narrows it to one value of another tag, e.g. only utm_source=meta.
+ * From that session on, the steps in order, as runFunnel counts them. `new`
+ * is how many of those installs were new: the app's first open is within ten
+ * minutes of that session, i.e. the link brought the install rather than
+ * reopening an app someone already had.
+ *
+ * A link only reaches a native app that is already installed (a universal
+ * link), so on iOS this measures re-engagement; new installs from an ad are
+ * Apple's to count (App Store campaigns, attribution postbacks). On the web
+ * the link opens the product itself, and this is the whole path.
+ */
+export async function campaignFunnel({ app, env, days, channel = null, by, where = null, steps, windowDays = 7, limit = 30 }) {
+  const params = [app, env, days, channel, windowDays, by];
+  const p = (v) => {
+    params.push(v);
+    return `$${params.length}`;
+  };
+  const match = (step) =>
+    [`e.name = ${p(step.event)}`, ...Object.entries(step.where ?? {}).map(([k, v]) => `e.props->>${p(k)} = ${p(v)}`)].join(' AND ');
+  const narrow = where ? `AND e.props->>${p(where.key)} = ${p(where.value)}` : '';
+  const ctes = [
+    `s0 AS (
+      SELECT DISTINCT ON (e.install) e.install, e.at AS t, e.at AS t0, e.props->>$6 AS v FROM events e
+      WHERE e.app = $1 AND e.env = $2 AND ${byChannel(4, 'e.channel')} AND e.at >= now() - make_interval(days => $3)
+        AND e.name = 'session_started' AND e.props->>$6 IS NOT NULL AND e.props->>$6 <> '' ${narrow}
+      ORDER BY e.install, e.at)`,
+    ...steps.map((step, i) => {
+      const prev = i === 0 ? 's0' : `s${i}`;
+      const after = i > 0 && steps[i - 1].event === step.event ? '>' : '>=';
+      return `s${i + 1} AS (
+      SELECT prev.install, min(e.at) AS t, prev.t0 FROM ${prev} prev
+      JOIN events e ON e.install = prev.install AND e.app = $1 AND e.env = $2
+      WHERE e.at ${after} prev.t AND e.at <= prev.t0 + make_interval(days => $5) AND ${match(step)}
+      GROUP BY prev.install, prev.t0)`;
+    }),
+  ];
+  const joins = steps.map((_, i) => `LEFT JOIN s${i + 1} ON s${i + 1}.install = s0.install`).join(' ');
+  const counts = steps.map((_, i) => `count(s${i + 1}.install)::int AS n${i + 1}`).join(', ');
+  const { rows } = await q(
+    `WITH ${ctes.join(',\n')}
+     SELECT s0.v AS value, count(*)::int AS installs,
+            count(*) FILTER (WHERE EXISTS (
+              SELECT 1 FROM events f WHERE f.install = s0.install AND f.app = $1 AND f.name = 'app_first_opened'
+                AND f.at BETWEEN s0.t0 - interval '10 minutes' AND s0.t0 + interval '10 minutes'))::int AS new${counts ? `, ${counts}` : ''}
+     FROM s0 ${joins}
+     GROUP BY s0.v ORDER BY installs DESC, value LIMIT ${Number(limit) | 0}`,
+    params,
+  );
+  return rows.map((r) => ({
+    value: r.value,
+    installs: r.installs,
+    new: r.new,
+    steps: steps.map((_, i) => r[`n${i + 1}`]),
   }));
 }
 

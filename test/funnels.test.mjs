@@ -125,3 +125,38 @@ describe('cohorts', () => {
     assert.equal(newest.active[1], null, 'a week that has not happened yet');
   });
 });
+
+describe('campaigns', () => {
+  test('first tagged session per install, split by a tag, then the steps in order', async () => {
+    const c = client(srv.base, key);
+    const link = (install, minutesAgo, tags) => at(install, 'session_started', minutesAgo, { entry: 'link', ...tags });
+    const newFromAd = uuid();
+    const oldUser = uuid();
+    const other = uuid();
+    const newsletter = uuid();
+    const ad = (content) => ({ utm_source: 'meta', utm_campaign: 'autumn', utm_content: content });
+    await c.post('/v1/events', batch([
+      // New from an ad: first seen at the tagged session, then all the steps.
+      at(newFromAd, 'app_first_opened', 30), link(newFromAd, 30, ad('video')), at(newFromAd, 'item_added', 29), at(newFromAd, 'checkout', 28, { ok: true }),
+      // An old install reopened by an ad: counted, not new; a later ad does not move it (first touch).
+      at(oldUser, 'app_first_opened', 60 * 24 * 3), link(oldUser, 40, ad('static')), link(oldUser, 20, ad('video')), at(oldUser, 'item_added', 19),
+      // The steps before the tagged session do not count.
+      at(other, 'item_added', 50), link(other, 45, ad('video')),
+      // Another source, left out by where=utm_source:meta.
+      link(newsletter, 10, { utm_source: 'newsletter', utm_campaign: 'autumn', utm_content: 'mail' }),
+    ]));
+
+    const r = await admin(srv.base).get('/admin/apps/shop/campaigns?days=30&by=utm_content&where=utm_source:meta');
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.steps.map((s) => s.label), ['Item added', 'Paid'], 'the catalog funnel, from the tagged session on');
+    const rows = Object.fromEntries(r.json.rows.map((x) => [x.value, x]));
+    assert.deepEqual(rows.video, { value: 'video', installs: 2, new: 1, steps: [1, 1] });
+    assert.deepEqual(rows.static, { value: 'static', installs: 1, new: 0, steps: [1, 0] });
+    assert.equal(rows.mail, undefined);
+
+    const bySource = await admin(srv.base).get('/admin/apps/shop/campaigns?days=30&by=utm_source&step=checkout:ok=true');
+    const meta = bySource.json.rows.find((x) => x.value === 'meta');
+    assert.deepEqual([meta.installs, meta.steps[0]], [3, 1]);
+    assert.equal((await admin(srv.base).get('/admin/apps/shop/campaigns?by=fbclid')).status, 400, 'only campaign tags');
+  });
+});
