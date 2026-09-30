@@ -166,6 +166,10 @@ const channelOf = (url) => {
   return c && /^[a-z][a-z0-9_]{0,23}$/.test(c) ? c : null;
 };
 
+// What the dashboard asks first, without a token: 401 means sign in, and a
+// 200 means it is a demo or a proxy added the token (ops does).
+r.get('/admin/session', async (_req, res) => json(res, 200, { demo: cfg.demo }));
+
 r.get('/admin/apps', async (_req, res, { url }) => json(res, 200, { apps: await summary({ days: days(url), env: envOf(url) }) }));
 
 r.get('/admin/apps/:app', async (_req, res, { url, params }) =>
@@ -289,6 +293,17 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname.startsWith('/admin/')) {
       if (!adminAuthorized(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
+      // A proxy may sign the dashboard in by adding the token itself (ops on a
+      // private network does), and then the browser's requests carry it
+      // whatever page sent them. So a write must be one no other site can
+      // make: JSON, which a cross-origin page cannot send without a CORS
+      // preflight this server never answers, and not marked cross-site.
+      if (req.method !== 'GET') {
+        const site = req.headers['sec-fetch-site'];
+        if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '') || site === 'cross-site' || site === 'same-site') {
+          return json(res, 403, { error: 'admin writes are same-origin JSON' });
+        }
+      }
       return await route.handler(req, res, { url, params: route.params });
     }
     if (url.pathname.startsWith('/v1/')) {
