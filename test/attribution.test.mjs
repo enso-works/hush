@@ -122,6 +122,16 @@ describe('postback copies', () => {
   });
 });
 
+describe('the overview', () => {
+  test("each app's card counts the installs Apple attributed to an ad: verified, winning, production in prod and test ones in dev", async () => {
+    const prod = (await admin(srv.base).get('/admin/apps?days=7')).json.apps;
+    assert.equal(prod.find((a) => a.app === 'shop').ad_installs, 1, "Apple's signed sample; the forged one does not count");
+    assert.equal(prod.find((a) => a.app === 'game').ad_installs, 0, 'a development postback is not a real ad');
+    const dev = (await admin(srv.base).get('/admin/apps?days=7&env=dev')).json.apps;
+    assert.equal(dev.find((a) => a.app === 'game').ad_installs, 1);
+  });
+});
+
 describe('conversion values', () => {
   test('the SDK reads them with its write key', async () => {
     const r = await client(srv.base, key).get('/v1/config');

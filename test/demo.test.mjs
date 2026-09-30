@@ -87,3 +87,18 @@ test('a normal instance still requires the token', async () => {
     await d.drop();
   }
 });
+
+test('the showcase has campaigns and attribution, and takes no postbacks', async () => {
+  const c = client(srv.base);
+  const meta = (await c.get('/admin/apps/stillwater/campaigns?days=30&by=utm_content&where=utm_source:meta')).json;
+  assert.ok(meta.rows.length >= 2, 'ads split out');
+  assert.ok(meta.rows.every((r) => r.installs >= r.new && r.steps.every((n) => n <= r.installs)), 'no step above its installs');
+  const a = (await c.get('/admin/apps/stillwater/attribution?days=30')).json;
+  assert.equal(a.app_store_id, '6700000101');
+  assert.equal(a.conversion_values.at(-1).lock, true);
+  assert.ok(a.postbacks.campaigns.length >= 2, 'Meta campaigns from postbacks');
+  assert.ok(a.postbacks.campaigns.every((x) => x.installs > 0), 'later postbacks are not campaigns of their own');
+  assert.ok(a.appstore.campaigns.some((x) => x.campaign === 'meta_autumn' && x.first_downloads > 0));
+  const r = await fetch(`${srv.base}/.well-known/skadnetwork/report-attribution/`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  assert.equal(r.status, 403);
+});

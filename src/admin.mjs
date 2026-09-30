@@ -16,7 +16,11 @@ export async function summary({ days, env }) {
         (SELECT count(DISTINCT e.session)::int FROM events e WHERE e.app = a.slug AND e.env = $2 AND e.at >= now() - make_interval(days => $1)) AS sessions,
         (SELECT count(*)::int FROM events e WHERE e.app = a.slug AND e.env = $2 AND e.at >= now() - make_interval(days => $1)) AS events,
         (SELECT count(*)::int FROM tickets t WHERE t.app = a.slug AND t.status = 'open') AS open_tickets,
-        (SELECT max(e.at) FROM events e WHERE e.app = a.slug AND e.env = $2) AS last_event
+        (SELECT max(e.at) FROM events e WHERE e.app = a.slug AND e.env = $2) AS last_event,
+        -- Installs Apple attributes to an ad (verified first postbacks that
+        -- won); in dev, Apple's test postbacks instead.
+        (SELECT count(*)::int FROM postbacks p WHERE p.app = a.slug AND p.verified AND p.did_win IS NOT FALSE AND p.sequence = 0
+           AND p.development = ($2 = 'dev') AND p.received_at >= now() - make_interval(days => $1)) AS ad_installs
      FROM apps a ORDER BY a.slug`,
     [days, env],
   );
