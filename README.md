@@ -60,8 +60,9 @@ by any prop, and one install's events live.
 Before pointing real apps at it: put it behind a TLS proxy, expose only
 `/v1/*` and `/healthz` publicly, keep `/dashboard/` and `/admin/*` behind a VPN
 or an access proxy (the token is the second lock, not the only one), and back
-up Postgres; it is the only state. A proxy on a private network may also add
-`Authorization: Bearer <ADMIN_TOKEN>` to `/admin/*` itself: the dashboard
+up Postgres; it is the only state. A proxy on a private network may also sign
+the dashboard in for its users, by adding `Authorization: Bearer <ADMIN_TOKEN>`
+or `ADMIN_PROXY_HEADER: <ADMIN_PROXY_SECRET>` to `/admin/*`: the dashboard
 then opens without a sign-in, and admin writes stay safe because the server
 accepts only same-origin JSON for them.
 
@@ -95,6 +96,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 |---|---|
 | `DATABASE_URL` | Postgres. Migrations run at every boot, before listening. |
 | `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `openssl rand -hex 32`. |
+| `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16+ characters), accepted on `/admin/*` instead of the token. Only when the proxy overwrites that header. |
 | `APPS` | Register apps at boot: `myapp=My App,other=Other`. |
 | `CATALOG_FILE` | Each app's known events, highlight metric and funnels, as JSON (below). |
 | `CLIENT_IP_HEADER` | Header a trusted proxy sets with the caller's address (`cf-connecting-ip`, `x-forwarded-for`), for rate limits. Unset: the socket address. |

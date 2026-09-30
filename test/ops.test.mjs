@@ -23,7 +23,7 @@ writeFileSync(CATALOG_FILE, JSON.stringify({
 let db, srv, key;
 before(async () => {
   db = await freshDatabase('hush_ops');
-  srv = await startServer(db, { CATALOG_FILE });
+  srv = await startServer(db, { CATALOG_FILE, ADMIN_PROXY_HEADER: 'X-Test-Proxy', ADMIN_PROXY_SECRET: 'proxy-secret-0123456789' });
   key = await addApp(db, 'game', 'Game');
 });
 after(async () => {
@@ -35,6 +35,14 @@ describe('signing the dashboard in', () => {
   test('/admin/session: 401 without the token, and not a demo with it', async () => {
     assert.equal((await client(srv.base).get('/admin/session')).status, 401);
     assert.deepEqual((await admin(srv.base).get('/admin/session')).json, { demo: false });
+  });
+
+  test('a trusted proxy signs in with its header and secret, and only with the right secret', async () => {
+    const r = await client(srv.base).get('/admin/session', { 'X-Test-Proxy': 'proxy-secret-0123456789' });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json, { demo: false });
+    assert.equal((await client(srv.base).get('/admin/apps', { 'X-Test-Proxy': 'proxy-secret-012345678x' })).status, 401);
+    assert.equal((await client(srv.base).get('/admin/apps', { 'X-Test-Proxy': '' })).status, 401);
   });
 
   test('an admin write must be JSON and not from another site, even with the token', async () => {

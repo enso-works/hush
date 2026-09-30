@@ -42,10 +42,16 @@ export async function resolveKey(header) {
   return value;
 }
 
-export function adminAuthorized(header) {
-  const m = /^Bearer\s+(\S+)$/.exec(header ?? '');
-  if (!m || !cfg.adminToken) return false;
-  const a = Buffer.from(m[1]);
-  const b = Buffer.from(cfg.adminToken);
+const same = (given, secret) => {
+  const a = Buffer.from(given);
+  const b = Buffer.from(secret);
   return a.length === b.length && timingSafeEqual(a, b);
+};
+
+/** The admin token as a Bearer header, or the trusted proxy's header (ADMIN_PROXY_HEADER). */
+export function adminAuthorized(headers) {
+  const m = /^Bearer\s+(\S+)$/.exec(headers.authorization ?? '');
+  if (m && cfg.adminToken && same(m[1], cfg.adminToken)) return true;
+  const proxied = cfg.adminProxyHeader && cfg.adminProxySecret.length >= 16 ? headers[cfg.adminProxyHeader] : undefined;
+  return typeof proxied === 'string' && same(proxied, cfg.adminProxySecret);
 }

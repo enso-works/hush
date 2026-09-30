@@ -292,7 +292,7 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname.startsWith('/admin/')) return await route.handler(req, res, { url, params: route.params });
     }
     if (url.pathname.startsWith('/admin/')) {
-      if (!adminAuthorized(req.headers.authorization)) return json(res, 401, { error: 'unauthorized' });
+      if (!adminAuthorized(req.headers)) return json(res, 401, { error: 'unauthorized' });
       // A proxy may sign the dashboard in by adding the token itself (ops on a
       // private network does), and then the browser's requests carry it
       // whatever page sent them. So a write must be one no other site can
@@ -349,10 +349,17 @@ async function startDemo() {
   setInterval(() => seedDemo().catch((err) => log.error('demo reseed failed', { err: String(err?.message ?? err) })), 24 * 60 * 60 * 1000).unref();
 }
 
+// Proxy sign-in is off unless both halves are there; say so rather than
+// refuse to boot, since an empty secret usually means an unset variable.
+const proxySignIn = Boolean(cfg.adminProxyHeader && cfg.adminProxySecret.length >= 16);
+if ((cfg.adminProxyHeader || cfg.adminProxySecret) && !proxySignIn) {
+  log.warn('proxy sign-in is off: ADMIN_PROXY_HEADER needs ADMIN_PROXY_SECRET of at least 16 characters');
+}
+
 migrate()
   .then(() => (cfg.demo ? startDemo() : registerApps()))
   .then(() => {
-    server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off' }));
+    server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off', proxySignIn: proxySignIn ? cfg.adminProxyHeader : 'off' }));
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
     setTimeout(sweep, 60_000).unref();
   })

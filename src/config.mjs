@@ -8,6 +8,12 @@ export const cfg = {
   // Guards /admin/* and the dashboard's data. TELEMETRY_ADMIN_TOKEN is the
   // name early deployments used; it still works.
   adminToken: env('ADMIN_TOKEN') || env('TELEMETRY_ADMIN_TOKEN'),
+  // A proxy on a private network may sign the dashboard in for its users by
+  // sending this header with this secret on /admin/*, instead of the token.
+  // Both or neither; the secret at least 16 characters. Only set it when the
+  // proxy overwrites the header, or anyone who learns the secret is admin.
+  adminProxyHeader: env('ADMIN_PROXY_HEADER').toLowerCase(),
+  adminProxySecret: env('ADMIN_PROXY_SECRET'),
   // Apps to register at boot, "slug=Display Name,other=Other". Idempotent:
   // an existing app keeps its row. Apps can also be added with the CLI.
   apps: env('APPS'),
