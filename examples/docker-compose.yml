@@ -1,6 +1,11 @@
 # hush and its Postgres. `docker compose up -d` from this directory, with a
 # .env next to it (cp .env.example .env). Put a TLS-terminating proxy in
-# front before pointing apps at it; see "Deploying" in the README.
+# front before pointing apps at it; see "Before pointing real apps at it" in
+# the README. Every variable the README documents is passed through here,
+# except PORT (the container listens on 3000; HUSH_PORT picks the host port)
+# and DATABASE_URL, built below from POSTGRES_PASSWORD for the db service.
+# CATALOG_FILE is a host path, mounted at /config/catalog.json. ADMIN_TOKEN
+# goes by that name only, not TELEMETRY_ADMIN_TOKEN.
 services:
   hush:
     build: ..
@@ -12,6 +17,8 @@ services:
     environment:
       DATABASE_URL: postgresql://hush:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/hush
       ADMIN_TOKEN: ${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}
+      ADMIN_PROXY_HEADER: ${ADMIN_PROXY_HEADER:-}
+      ADMIN_PROXY_SECRET: ${ADMIN_PROXY_SECRET:-}
       APPS: ${APPS:-}
       CATALOG_FILE: ${CATALOG_FILE:+/config/catalog.json}
       CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-}
@@ -20,8 +27,21 @@ services:
       MAIL_FROM: ${MAIL_FROM:-}
       ALERT_EMAIL: ${ALERT_EMAIL:-}
       REPLY_HINT: ${REPLY_HINT:-}
+      MAIL_DRY_RUN: ${MAIL_DRY_RUN:-}
       RETENTION_DAYS: ${RETENTION_DAYS:-180}
       RC_API_KEY: ${RC_API_KEY:-}
+      RC_PROJECTS: ${RC_PROJECTS:-}
+      RC_CURRENCY: ${RC_CURRENCY:-USD}
+      RC_STALE_MINUTES: ${RC_STALE_MINUTES:-10}
+      RC_FLOOR_SECONDS: ${RC_FLOOR_SECONDS:-60}
+      RC_RATE_PER_MINUTE: ${RC_RATE_PER_MINUTE:-20}
+      ASC_KEY_ID: ${ASC_KEY_ID:-}
+      ASC_ISSUER_ID: ${ASC_ISSUER_ID:-}
+      ASC_PRIVATE_KEY: ${ASC_PRIVATE_KEY:-}
+      # A path inside the container: mount the .p8 under volumes to use it.
+      ASC_PRIVATE_KEY_FILE: ${ASC_PRIVATE_KEY_FILE:-}
+      ASC_API_BASE: ${ASC_API_BASE:-https://api.appstoreconnect.apple.com}
+      DEMO: ${DEMO:-}
     volumes:
       # Only used when CATALOG_FILE is set in .env.
       - ${CATALOG_FILE:-./catalog.example.json}:/config/catalog.json:ro

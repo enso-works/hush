@@ -14,22 +14,28 @@ hush.configure({
   // one from the environment, or stay off.
   key: __DEV__ ? (process.env.EXPO_PUBLIC_HUSH_KEY ?? '') : 'hush_myapp_prod_REPLACE_ME',
   // Which build this is, set per EAS build profile (production: app_store or
-  // play, preview: testflight or internal), so the dashboard can leave
-  // TestFlight out of the store numbers.
+  // play, preview: internal). One iOS build goes to TestFlight and then the
+  // App Store, so only @bavrk/hush-expo tells those apart:
+  // channel: hushExpo.channel() ?? process.env.EXPO_PUBLIC_HUSH_CHANNEL,
   channel: process.env.EXPO_PUBLIC_HUSH_CHANNEL,
   logLevel: __DEV__ ? 'debug' : 'silent',
   // Optional: give the flush on backgrounding real runway, with whatever
   // background-task module the app already has.
   // runInBackground: (work) => withBackgroundTask(work),
 });
-void hush.init();
+// Everything else waits for this: entry() claims the session init() starts.
+export const hushReady = hush.init();
 
-// Context every event should carry, e.g. the paywall copy under test.
-hush.setGlobalProps({ paywall_variant: Math.random() < 0.5 ? 'a' : 'b' });
+// Context every event should carry, e.g. the paywall copy under test (pick it
+// once per install and store it, so an install never switches arms).
+export function onVariant(variant: 'a' | 'b') {
+  hush.setGlobalProps({ paywall_variant: variant });
+}
 
 // --- the root layout, for links and notification taps
 
-export function onOpenedFromLink(url: string) {
+export async function onOpenedFromLink(url: string) {
+  await hushReady; // before init() has resolved there is no session to claim
   hush.entry('link', { url }); // keeps utm_source / utm_campaign / ref, never the URL
 }
 
