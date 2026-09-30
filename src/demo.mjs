@@ -34,6 +34,11 @@ export const DEMO_CATALOG = Object.fromEntries(
           steps: ['paywall_viewed', 'purchase_started', { event: 'purchase_result', where: { result: 'purchased' }, label: 'Purchased' }],
         },
       ],
+      breakdowns: [
+        { event: 'paywall_viewed', prop: 'source', title: 'Where the paywall opens' },
+        { event: 'purchase_started', prop: 'product', title: 'Plans chosen' },
+        { event: 'paywall_viewed', prop: 'variant', title: 'Paywall variants seen', count: 'installs' },
+      ],
     },
   ]),
 );

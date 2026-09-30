@@ -16,6 +16,10 @@
 //           "paywall_viewed", "purchase_started",
 //           { "event": "purchase_result", "where": { "result": "purchased" }, "label": "Purchased" }
 //         ] }
+//       ],
+//       "breakdowns": [
+//         { "event": "workout_completed", "prop": "kind", "title": "Workouts by kind" },
+//         { "event": "onboarding_completed", "prop": "goal", "count": "installs" }
 //       ]
 //     }
 //   }
@@ -24,7 +28,9 @@
 // the dashboard counts per period, and which boolean prop marks it as done
 // (the "completion rate"). `funnels` are ordered: each step must follow the
 // one before, within `window_days` (default 7) of the first; a step may
-// match props with `where`. All optional; an app missing from the file still
+// match props with `where`. `breakdowns` pin charts to the app page: one
+// event split by one prop, counted in events or (`count: "installs"`, for an
+// answer that can change later) in installs. All optional; an app missing from the file still
 // works, with only the common names known, no highlight, and the default
 // paywall funnel.
 import { readFileSync } from 'node:fs';
@@ -66,9 +72,26 @@ export function parseCatalog(raw) {
       highlight = { event, doneProp };
     }
     const funnels = parseFunnels(spec.funnels, `catalog.${app}.funnels`);
-    out[app] = { events, highlight, funnels };
+    const breakdowns = parseBreakdowns(spec.breakdowns, `catalog.${app}.breakdowns`);
+    out[app] = { events, highlight, funnels, breakdowns };
   }
   return out;
+}
+
+const PROP = /^[a-z][a-z0-9_]{0,39}$/;
+const humanize = (s) => s.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+
+function parseBreakdowns(raw, path) {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || raw.length > 12) throw new Error(`${path}: expected up to 12 breakdowns`);
+  return raw.map((b, i) => {
+    if (!b || typeof b.event !== 'string' || !NAME.test(b.event)) throw new Error(`${path}[${i}].event: expected an event name`);
+    if (typeof b.prop !== 'string' || !PROP.test(b.prop)) throw new Error(`${path}[${i}].prop: expected a prop name`);
+    const count = b.count ?? 'events';
+    if (count !== 'events' && count !== 'installs') throw new Error(`${path}[${i}].count: "events" or "installs"`);
+    const title = typeof b.title === 'string' && b.title.trim() ? b.title.trim().slice(0, 60) : `${humanize(b.event)} by ${b.prop.replace(/_/g, ' ')}`;
+    return { event: b.event, prop: b.prop, title, count };
+  });
 }
 
 const catalog = cfg.catalogFile ? parseCatalog(readFileSync(cfg.catalogFile, 'utf8')) : cfg.demo ? parseCatalog(DEMO_CATALOG) : {};
@@ -88,3 +111,6 @@ export const highlightOf = (app) => catalog[app]?.highlight ?? null;
 
 /** The app's funnels from the catalog, or the default paywall funnel. */
 export const funnelsOf = (app) => catalog[app]?.funnels ?? DEFAULT_FUNNELS;
+
+/** Charts the catalog pins to the app page, in its order; none by default. */
+export const breakdownsOf = (app) => catalog[app]?.breakdowns ?? [];

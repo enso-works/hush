@@ -2,7 +2,7 @@
 // `installs`: at small-app volume (well under a million rows a year) a GROUP BY
 // over an indexed range is milliseconds, and rollup tables would be a second
 // source of truth to keep honest for no gain.
-import { FUNNEL, highlightOf } from './catalog.mjs';
+import { breakdownsOf, FUNNEL, highlightOf } from './catalog.mjs';
 import { q } from './db.mjs';
 
 export async function summary({ days, env }) {
@@ -188,6 +188,7 @@ export async function appDetail({ app, days, env, channel = null }) {
     name: (await q('SELECT name FROM apps WHERE slug = $1', [app])).rows[0]?.name ?? app,
     channel,
     highlight: hl ? { event: hl.event, done_prop: hl.doneProp } : null,
+    breakdowns: breakdownsOf(app),
     current,
     prior,
     retention: {
