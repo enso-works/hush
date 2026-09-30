@@ -60,7 +60,10 @@ by any prop, and one install's events live.
 Before pointing real apps at it: put it behind a TLS proxy, expose only
 `/v1/*` and `/healthz` publicly, keep `/dashboard/` and `/admin/*` behind a VPN
 or an access proxy (the token is the second lock, not the only one), and back
-up Postgres; it is the only state.
+up Postgres; it is the only state. A proxy on a private network may also add
+`Authorization: Bearer <ADMIN_TOKEN>` to `/admin/*` itself: the dashboard
+then opens without a sign-in, and admin writes stay safe because the server
+accepts only same-origin JSON for them.
 
 ## What is collected
 
@@ -108,7 +111,9 @@ period, and the prop that marks it done), and the funnels the dashboard
 shows. A funnel is ordered: each step must follow the one before, within
 `window_days` (default 7) of the first; a step can match props with `where`.
 Without funnels an app gets a paywall one; any funnel can also be built on
-the dashboard without touching the catalog.
+the dashboard without touching the catalog. `breakdowns` pin charts to the
+app's page: one event split by one prop, counted per event or, for an answer
+that can change later, once per install.
 
 ```json
 {
@@ -119,6 +124,10 @@ the dashboard without touching the catalog.
       { "name": "First workout", "steps": ["app_first_opened", "onboarding_completed", "workout_completed"] },
       { "name": "Paywall", "window_days": 3, "steps": ["paywall_viewed", "purchase_started",
         { "event": "purchase_result", "where": { "result": "purchased" }, "label": "Purchased" }] }
+    ],
+    "breakdowns": [
+      { "event": "workout_completed", "prop": "kind", "title": "Workouts by kind" },
+      { "event": "onboarding_completed", "prop": "goal", "count": "installs" }
     ]
   }
 }
@@ -137,11 +146,13 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 | `POST /v1/forget` | `{ install }` → 200 `{ ok, deleted }`: that install's events, feedback and row, under the calling app |
 
 The operator side, `Authorization: Bearer <ADMIN_TOKEN>`, is what the
-dashboard reads: `/admin/apps`, `/admin/apps/:app` (`?channel=`),
+dashboard reads: `/admin/session` (asked first, to know whether to show
+the sign-in), `/admin/apps`, `/admin/apps/:app` (`?channel=`),
 `/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
 `/cohorts`, `/admin/installs/:id` (+ `/forget`),
 `/admin/tickets`, `/admin/tickets/:id` (+ `/reply`, `/status`),
-`/admin/revenue`. CLI:
+`/admin/revenue` (`?refresh=1` asks RevenueCat now). Writes must be
+`Content-Type: application/json`. CLI:
 `node src/cli.mjs apps:add | keys:create | keys:list | keys:revoke | rc:* | migrate`.
 
 Limits are honest about what this is: rate limits are in memory, per

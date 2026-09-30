@@ -81,7 +81,22 @@ export function Engagement({ e }: { e: NonNullable<AppDetail['engagement']> }) {
 }
 
 /** One event sliced by one prop, as bars. */
-export function BreakdownBars({ slug, event, prop, empty, taggedOnly }: { slug: string; event: string; prop: string; empty: string; taggedOnly?: boolean }) {
+export function BreakdownBars({
+  slug,
+  event,
+  prop,
+  empty,
+  taggedOnly,
+  count = 'events',
+}: {
+  slug: string
+  event: string
+  prop: string
+  empty: string
+  taggedOnly?: boolean
+  /** installs: one vote per install, for an answer that can change later. */
+  count?: 'events' | 'installs'
+}) {
   const { data } = useBreakdown(slug, event, prop)
   // taggedOnly: leave out the events without the prop (untagged sessions, say).
   const rows = (data?.rows ?? []).filter((r) => !taggedOnly || r.value !== 'unset')
@@ -91,8 +106,8 @@ export function BreakdownBars({ slug, event, prop, empty, taggedOnly }: { slug: 
       rows={rows.map((r) => ({
         key: r.value,
         label: <span className={cn('truncate', r.value === 'unset' && 'text-muted-foreground italic')}>{r.value === 'unset' ? 'none' : humanize(r.value)}</span>,
-        value: r.n,
-        extra: <span className="text-xs text-muted-foreground">{num(r.installs)} installs</span>,
+        value: count === 'installs' ? r.installs : r.n,
+        extra: <span className="text-xs text-muted-foreground">{count === 'installs' ? `${num(r.n)} events` : `${num(r.installs)} installs`}</span>,
       }))}
     />
   )

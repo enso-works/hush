@@ -3,17 +3,17 @@ import { createRoot } from 'react-dom/client'
 
 import './index.css'
 import { App } from './App'
-import { detectDemo } from './lib/api'
+import { detectAccess } from './lib/api'
 import { PrefsProvider, SessionProvider } from './lib/session'
 import { ThemeProvider } from './lib/theme'
 
-// Is this a demo? It answers /admin without a token. Asked once, before the
-// first render, so a demo never flashes the sign-in page.
-detectDemo().then((demo) => {
+// Demo, proxy or token? Asked once, before the first render, so neither a
+// demo nor a dashboard its proxy signs in ever flashes the sign-in page.
+detectAccess().then((access) => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
       <ThemeProvider>
-        <SessionProvider demo={demo}>
+        <SessionProvider access={access}>
           <PrefsProvider>
             <App />
           </PrefsProvider>

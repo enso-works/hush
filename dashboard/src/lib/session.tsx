@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 
-import { token } from './api'
+import { token, type Access } from './api'
 
 type Session = {
   demo: boolean
+  /** Signed in by the proxy in front, so there is nothing to sign out of. */
+  proxied: boolean
   signedIn: boolean
   message: string | null
   signIn: (t: string) => void
@@ -12,8 +14,10 @@ type Session = {
 
 const Ctx = createContext<Session | null>(null)
 
-export function SessionProvider({ demo, children }: { demo: boolean; children: ReactNode }) {
-  const [signedIn, setSignedIn] = useState(() => demo || !!token.get())
+export function SessionProvider({ access, children }: { access: Access; children: ReactNode }) {
+  const demo = access === 'demo'
+  const proxied = access === 'proxy'
+  const [signedIn, setSignedIn] = useState(() => demo || proxied || !!token.get())
   const [message, setMessage] = useState<string | null>(null)
   const signIn = useCallback((t: string) => {
     token.set(t.trim())
@@ -28,7 +32,7 @@ export function SessionProvider({ demo, children }: { demo: boolean; children: R
     },
     [demo],
   )
-  return <Ctx.Provider value={{ demo, signedIn, message, signIn, signOut }}>{children}</Ctx.Provider>
+  return <Ctx.Provider value={{ demo, proxied, signedIn, message, signIn, signOut }}>{children}</Ctx.Provider>
 }
 
 export function useSession() {

@@ -9,7 +9,7 @@ import { Stat } from '@/components/Stat'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { AppDetail, Revenue } from '@/lib/api'
+import type { AppDetail } from '@/lib/api'
 import { useApi } from '@/lib/data'
 import { countryName, flag, humanize, num, pct, shortDay, when } from '@/lib/format'
 import { href } from '@/lib/route'
@@ -17,6 +17,7 @@ import { usePrefs } from '@/lib/session'
 import { BreakdownBars, ChannelFilter, Engagement, Explore } from '@/pages/AppInsights'
 import { CatalogFunnels, Cohorts, FunnelBuilder } from '@/pages/Funnels'
 import { ErrorNote } from '@/pages/ErrorNote'
+import { RevenuePanel } from '@/pages/Revenue'
 
 export function Panel({ title, sub, children, className }: { title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -101,35 +102,6 @@ function Retention({ r }: { r: AppDetail['retention'] }) {
   )
 }
 
-function RevenuePanel({ slug }: { slug: string }) {
-  const { prefs } = usePrefs()
-  const { data } = useApi<Revenue>(`/admin/revenue?app=${encodeURIComponent(slug)}&days=${prefs.days}`)
-  if (!data?.configured) return null
-  const project = data.apps.find((a) => a.app === slug)
-  if (!project)
-    return (
-      <Panel title="Revenue">
-        <p className="text-sm text-muted-foreground">No RevenueCat project is linked to this app (see rc:projects and rc:link).</p>
-      </Panel>
-    )
-  const metrics = Object.entries(project.metrics ?? {})
-  return (
-    <Panel title="Revenue" sub={`RevenueCat · ${project.currency ?? ''} · as of ${when(project.fetched_at)}`}>
-      {project.last_error && <p className="mb-3 text-sm text-destructive">Last refresh failed: {project.last_error}</p>}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {metrics.map(([k, v]) => (
-          <div key={k} className="rounded-lg bg-muted/50 p-3">
-            <div className="truncate text-xs text-muted-foreground first-letter:uppercase">{humanize(k)}</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums">
-              {num(typeof v === 'object' && v !== null ? Number((v as { value?: number }).value) : Number(v))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </Panel>
-  )
-}
-
 export function AppPage({ slug }: { slug: string }) {
   const { prefs } = usePrefs()
   const { data: d, error, loading } = useApi<AppDetail>(
@@ -191,6 +163,16 @@ export function AppPage({ slug }: { slug: string }) {
             </div>
           </BlurFade>
 
+          {prefs.env === 'prod' && d.lastEvent && Date.now() - Date.parse(d.lastEvent) > 2 * 86400000 && (
+            <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+              <span>
+                Nothing has arrived since {when(d.lastEvent)}. A quiet week, or a revoked key, a wrong URL or an SDK that stopped sending: the
+                Installs page shows one device's events live.
+              </span>
+            </div>
+          )}
+
           {d.unknown.length > 0 && (
             <div className="flex items-start gap-2 rounded-lg border border-chart-4/40 bg-chart-4/10 px-3 py-2 text-sm">
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-chart-4" aria-hidden />
@@ -231,6 +213,27 @@ export function AppPage({ slug }: { slug: string }) {
           <Panel title="Cohorts" sub="Each week's new installs, and how many were still around in the weeks after">
             <Cohorts slug={slug} />
           </Panel>
+
+          {d.breakdowns.length > 0 && (
+            <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+              {d.breakdowns.map((b) => (
+                <Panel
+                  key={`${b.event}.${b.prop}`}
+                  title={b.title}
+                  sub={
+                    <>
+                      <span className="font-mono">
+                        {b.event}.{b.prop}
+                      </span>{' '}
+                      · {b.count === 'installs' ? 'one per install' : 'every event'}
+                    </>
+                  }
+                >
+                  <BreakdownBars slug={slug} event={b.event} prop={b.prop} count={b.count} empty="Nothing in this period." />
+                </Panel>
+              ))}
+            </div>
+          )}
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Versions" sub="Installs seen on each version, this period">

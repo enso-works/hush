@@ -69,7 +69,7 @@ export function DemoBanner() {
 }
 
 export function Shell({ route, children }: { route: Route; children: ReactNode }) {
-  const { demo, signOut } = useSession()
+  const { demo, proxied, signOut } = useSession()
   const { data } = useApps()
   const apps = data?.apps ?? []
   const open = apps.reduce((n, a) => n + a.open_tickets, 0)
@@ -120,7 +120,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           )}
           <div className="mt-auto flex items-center justify-between gap-2 px-1 pt-4">
             <ThemeSwitch />
-            {!demo && (
+            {!demo && !proxied && (
               <button
                 type="button"
                 onClick={() => signOut()}

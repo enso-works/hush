@@ -24,9 +24,11 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     method: init.method ?? 'GET',
     headers: {
       ...(t ? { Authorization: `Bearer ${t}` } : {}),
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      // Every write is JSON, even an empty one: the server refuses anything
+      // else, so another site cannot post a form to it.
+      ...(init.method && init.method !== 'GET' ? { 'Content-Type': 'application/json' } : {}),
     },
-    body: init.body ? JSON.stringify(init.body) : undefined,
+    body: init.method && init.method !== 'GET' ? JSON.stringify(init.body ?? {}) : undefined,
   })
   if (res.status === 401) {
     token.clear()
@@ -37,13 +39,20 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
   return data as T
 }
 
-/** A demo answers /admin reads without a token; a real server says 401. */
-export async function detectDemo(): Promise<boolean> {
+/**
+ * How this dashboard is signed in, asked once before the first render:
+ * `token` when the server wants one (the sign-in page), `demo` for the
+ * read-only showcase, `proxy` when a proxy in front adds the token itself.
+ */
+export type Access = 'token' | 'demo' | 'proxy'
+export async function detectAccess(): Promise<Access> {
   try {
-    const r = await fetch(`${BASE}/admin/apps?days=1`)
-    return r.ok
+    const r = await fetch(`${BASE}/admin/session`)
+    if (!r.ok) return 'token'
+    const { demo } = (await r.json()) as { demo?: boolean }
+    return demo ? 'demo' : 'proxy'
   } catch {
-    return false
+    return 'token'
   }
 }
 
@@ -82,6 +91,8 @@ export type AppDetail = {
     sessions_histogram: number[]
   }
   highlight: { event: string; done_prop: string | null } | null
+  /** Charts the catalog pins to this app's page. */
+  breakdowns: { event: string; prop: string; title: string; count: 'events' | 'installs' }[]
   current: Period
   prior: Period
   retention: Record<'d1' | 'd7' | 'd30', { cohort: number; retained: number }>
@@ -151,8 +162,19 @@ export type Funnel = { name: string; window_days: number; steps: FunnelStep[] }
 /** Installs by first week; active[k]: how many sent anything k weeks later (null: not yet). */
 export type Cohort = { week: string; installs: number; active: (number | null)[] }
 
-export type Revenue = {
-  configured: boolean
-  apps: { app: string; name: string; currency: string | null; metrics: Record<string, unknown> | null; fetched_at: string | null; last_error: string | null }[]
-  series: { chart: string; chartName: string; measure: string; name: string; unit: string; points: { day: string; value: number }[] }[]
+/** One RevenueCat overview number; `unit` is RevenueCat's own ("$", "#", "%"), `period` ISO 8601 (P0D is right now). */
+export type RevenueMetric = { id: string; name: string; description?: string; unit?: string; period?: string; value: number }
+export type RevenueProject = {
+  app: string
+  name: string | null
+  project_id: string
+  last_polled_at: string | null
+  /** When data last landed; older than last_polled_at means the last try failed. */
+  last_success_at: string | null
+  last_error: string | null
+  currency: string | null
+  metrics: RevenueMetric[] | null
+  fetched_at: string | null
 }
+export type RevenueSeries = { chart: string; chartName: string; measure: string; name: string; unit: string; points: { day: string; value: number }[] }
+export type Revenue = { configured: boolean; apps: RevenueProject[]; series: RevenueSeries[] }

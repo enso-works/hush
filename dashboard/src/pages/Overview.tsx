@@ -11,12 +11,15 @@ import { useApps } from '@/lib/apps'
 import { num, when } from '@/lib/format'
 import { href } from '@/lib/route'
 import { usePrefs } from '@/lib/session'
+import { findMetric, metricValue } from '@/lib/money'
 import { ErrorNote } from '@/pages/ErrorNote'
+import { useRevenueByApp } from '@/pages/Revenue'
 
 export function Overview() {
   const { data, error, loading } = useApps()
   const { prefs } = usePrefs()
   const apps = data?.apps ?? []
+  const money = useRevenueByApp()
   const sum = (k: 'total_installs' | 'new_installs' | 'dau' | 'sessions' | 'open_tickets') => apps.reduce((n, a) => n + a[k], 0)
 
   return (
@@ -115,6 +118,16 @@ export function Overview() {
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
                       {num(a.sessions)} sessions · {num(a.new_installs)} new
+                      {(() => {
+                        const p = money?.get(a.app)
+                        const m = findMetric(p, /^revenue/)
+                        return m && p ? (
+                          <>
+                            {' · '}
+                            <span className="font-medium text-foreground">{metricValue(m, p.currency)}</span> revenue
+                          </>
+                        ) : null
+                      })()}
                     </span>
                     <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
                   </div>
