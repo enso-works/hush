@@ -72,6 +72,8 @@ export type AppSummary = {
   last_event: string | null
   /** Active installs per day over the period (added in 2026-09; absent on older servers). */
   trend?: number[]
+  /** Installs Apple attributed to an ad this period (verified postbacks). */
+  ad_installs: number
 }
 
 export type Period = { new_installs: number; sessions: number; active: number; highlight: number; highlight_done: number }

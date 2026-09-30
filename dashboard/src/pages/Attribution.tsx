@@ -243,6 +243,9 @@ export function AttributionPanel({ slug }: { slug: string }) {
       {view === 'store' && <StoreCampaigns a={data} />}
       {view === 'values' && <Schema list={data.conversion_values} />}
       {prefs.env === 'dev' && view === 'ads' && <p className="text-xs text-muted-foreground">Dev shows Apple's test postbacks (the developer tool), never real ones.</p>}
+      {prefs.channel && view !== 'values' && (
+        <p className="text-xs text-muted-foreground">Apple's numbers are not split by build channel: the {prefs.channel} filter does not apply here.</p>
+      )}
     </div>
   )
 }

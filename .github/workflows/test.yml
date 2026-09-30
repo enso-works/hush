@@ -73,6 +73,57 @@ jobs:
           git status --porcelain src/dashboard
           test -z "$(git status --porcelain src/dashboard)"
 
+  # The dashboard in a real browser against a DEMO server: every page and
+  # panel, every switch, no console errors, no failed /admin request.
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            dashboard/package-lock.json
+      - run: npm ci
+      - run: npm ci
+        working-directory: dashboard
+      - run: npx playwright install --with-deps chromium
+        working-directory: dashboard
+      - run: npm run e2e
+        working-directory: dashboard
+
+  # @bavrk/hush-expo's JavaScript typechecks and builds (its Swift is built by
+  # the apps that use it; its tests run with the server's, test/expo.test.mjs).
+  expo:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: expo
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm pack --dry-run
+
   image:
     runs-on: ubuntu-latest
     steps:

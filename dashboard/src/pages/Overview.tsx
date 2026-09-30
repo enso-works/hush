@@ -118,6 +118,7 @@ export function Overview() {
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="tabular-nums">
                       {num(a.sessions)} sessions · {num(a.new_installs)} new
+                      {a.ad_installs > 0 && <> · {num(a.ad_installs)} from ads</>}
                       {(() => {
                         const p = money?.get(a.app)
                         const m = findMetric(p, /^revenue/)
