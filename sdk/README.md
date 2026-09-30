@@ -1,14 +1,21 @@
-# hush SDK (Expo / React Native)
+# @enso/hush (Expo / React Native)
 
-One file, [`src/index.ts`](src/index.ts). It queues events on the device,
+The SDK for [hush](https://hush.bavrk.com): in-app feedback and anonymous
+usage tracking, sent to your own hush server. It queues events on the device,
 sends them in small batches, and survives being offline, killed or
 backgrounded. It never throws into your app and never blocks a render: if the
 server is down or the key is missing, the app behaves exactly as without it.
 
-Not on npm yet: copy `src/index.ts` into your app (e.g. `src/lib/hush.ts`).
+```sh
+npx expo install @enso/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
+```
 
-**Peer dependencies**: `react-native`, `@react-native-async-storage/async-storage`,
-`expo-constants`, `expo-device`, `expo-localization`.
+Plain JavaScript: it works in Expo Go and needs no native build. The peer
+dependencies are marked optional so that `@enso/hush/core` (below) installs
+without React Native; a React Native app needs all four.
+
+Moving from the copied one-file SDK: keep your install ids by passing the
+`storagePrefix` the copy used (e.g. `'bavrk.telemetry'`).
 
 ## Setup
 
@@ -128,6 +135,29 @@ once.
 | `channel` | where this build came from: `app_store`, `testflight`, `play`, `internal`... (snake_case, 24 chars). The dashboard filters by it, so TestFlight and dev-client builds on a prod key stop counting as store users. Pass it per EAS build profile, e.g. `process.env.EXPO_PUBLIC_HUSH_CHANNEL`. Default `dev` in `__DEV__` builds, otherwise not sent. |
 | `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name), `debug` (every send) |
 | `onFlush` | called after every send with its result |
+
+## Other platforms: the core
+
+`@enso/hush/core` is the whole SDK without React Native: `createHush()` takes
+a storage, the app's foreground/background changes, a description of the
+device, and a dev flag, and returns the same API.
+
+```ts
+import { createHush } from '@enso/hush/core';
+
+const hush = createHush({
+  storage: { getItem: async (k) => localStorage.getItem(k), setItem: async (k, v) => localStorage.setItem(k, v), removeItem: async (k) => localStorage.removeItem(k) },
+  onAppState: (fn) => document.addEventListener('visibilitychange', () => fn(document.hidden ? 'background' : 'active')),
+  device: () => ({ version: '1.0.0', build: '1', platform: 'web', os: navigator.platform, device: 'browser', locale: navigator.language }),
+  isDev: () => location.hostname === 'localhost',
+});
+```
+
+## Versions
+
+Semver. `SDK_VERSION` is sent with every batch and stored per install, so the
+dashboard can tell which SDK an install runs. Any 2.x works with any hush
+server that speaks `/v1`; `forget()` needs one with `/v1/forget`.
 
 ## Privacy
 

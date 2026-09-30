@@ -32,11 +32,14 @@ docker compose exec hush node src/cli.mjs keys:create myapp prod   # prints the 
 
 Dashboard: `http://localhost:3000/dashboard/`, signed in with `ADMIN_TOKEN`.
 
-In the app, copy [`sdk/src/index.ts`](sdk/src/index.ts) in (Expo / React
-Native, one file; [SDK guide](sdk/README.md)):
+In the app ([SDK guide](sdk/README.md)):
+
+```sh
+npx expo install @enso/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
+```
 
 ```ts
-import * as hush from './hush';
+import * as hush from '@enso/hush';
 
 hush.configure({ url: 'https://hush.example.com', key: 'hush_myapp_prod_…', channel: 'app_store' });
 hush.init();

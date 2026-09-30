@@ -1,26 +1,17 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
+    "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "lib": [
-      "ES2022",
-      "DOM"
-    ],
+    "rewriteRelativeImportExtensions": true,
+    "lib": ["ES2020", "DOM"],
     "types": [],
-    "baseUrl": ".",
     "paths": {
-      "@/lib/hush": [
-        "./src/index.ts"
-      ]
+      "@enso/hush": ["./src/index.ts"]
     }
   },
-  "include": [
-    "src",
-    "types",
-    "../examples/expo"
-  ]
+  "include": ["src", "types", "../examples/expo"]
 }
