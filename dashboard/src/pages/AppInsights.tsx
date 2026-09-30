@@ -7,7 +7,7 @@ import { BarList } from '@/components/BarList'
 import { Segmented } from '@/components/Segmented'
 import type { AppDetail, BreakdownRow } from '@/lib/api'
 import { useApi } from '@/lib/data'
-import { duration, humanize, num } from '@/lib/format'
+import { duration, humanize, num, plural } from '@/lib/format'
 import { usePrefs } from '@/lib/session'
 import { cn } from '@/lib/utils'
 
@@ -107,7 +107,7 @@ export function BreakdownBars({
         key: r.value,
         label: <span className={cn('truncate', r.value === 'unset' && 'text-muted-foreground italic')}>{r.value === 'unset' ? 'none' : humanize(r.value)}</span>,
         value: count === 'installs' ? r.installs : r.n,
-        extra: <span className="text-xs text-muted-foreground">{count === 'installs' ? `${num(r.n)} events` : `${num(r.installs)} installs`}</span>,
+        extra: <span className="text-xs text-muted-foreground">{count === 'installs' ? plural(r.n, 'event') : plural(r.installs, 'install')}</span>,
       }))}
     />
   )

@@ -11,7 +11,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { Skeleton } from '@/components/ui/skeleton'
 import type { AppDetail } from '@/lib/api'
 import { useApi } from '@/lib/data'
-import { countryName, flag, humanize, num, pct, shortDay, when } from '@/lib/format'
+import { countryName, flag, humanize, num, pct, plural, shortDay, when } from '@/lib/format'
 import { href } from '@/lib/route'
 import { usePrefs } from '@/lib/session'
 import { BreakdownBars, ChannelFilter, Engagement, Explore } from '@/pages/AppInsights'
@@ -307,7 +307,7 @@ export function AppPage({ slug }: { slug: string }) {
                   </>
                 ),
                 value: e.n,
-                extra: <span className="text-xs text-muted-foreground">{num(e.installs)} installs</span>,
+                extra: <span className="text-xs text-muted-foreground">{plural(e.installs, 'install')}</span>,
               }))}
             />
           </Panel>

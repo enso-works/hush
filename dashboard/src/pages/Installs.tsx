@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, type InstallDetail } from '@/lib/api'
 import { useApi } from '@/lib/data'
-import { countryName, flag, stamp, when } from '@/lib/format'
+import { countryName, flag, plural, stamp, when } from '@/lib/format'
 import { href } from '@/lib/route'
 import { useSession } from '@/lib/session'
 import { cn } from '@/lib/utils'
@@ -98,7 +98,7 @@ function Detail({ id }: { id: string }) {
     if (!confirm('Delete everything stored about this install: its events, feedback and replies? This cannot be undone.')) return
     try {
       const r = await api<{ deleted: { events: number; tickets: number } }>(`/admin/installs/${encodeURIComponent(id)}/forget`, { method: 'POST' })
-      setNote(`Forgotten: ${r.deleted.events} events and ${r.deleted.tickets} tickets deleted.`)
+      setNote(`Forgotten: ${plural(r.deleted.events, 'event')} and ${plural(r.deleted.tickets, 'ticket')} deleted.`)
       setLive(false)
       reload()
     } catch (err) {

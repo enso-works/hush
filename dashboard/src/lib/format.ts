@@ -1,5 +1,8 @@
 export const num = (n: number | null | undefined) => (n == null ? '–' : Number(n).toLocaleString())
 
+/** "1 install", "12 installs". */
+export const plural = (n: number, one: string, many = `${one}s`) => `${num(n)} ${n === 1 ? one : many}`
+
 export const pct = (a: number, b: number) => (b ? `${Math.round((a / b) * 100)}%` : '–')
 
 export function when(iso: string | null | undefined) {
