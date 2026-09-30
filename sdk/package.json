@@ -1,15 +1,56 @@
 {
-  "name": "@bavrk/hush",
+  "name": "@enso/hush",
   "version": "2.0.0",
-  "private": true,
-  "description": "hush SDK for Expo / React Native: anonymous events and in-app support tickets.",
+  "description": "In-app feedback and anonymous usage tracking for React Native and Expo apps, sent to your own hush server. No advertising ids, no IP addresses.",
   "license": "MIT",
-  "main": "src/index.ts",
-  "react-native": "src/index.ts",
-  "types": "src/index.ts",
-  "files": ["src"],
+  "author": "bavrk (https://bavrk.com)",
+  "homepage": "https://hush.bavrk.com/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/enso-works/hush.git",
+    "directory": "sdk"
+  },
+  "bugs": "https://github.com/enso-works/hush/issues",
+  "keywords": [
+    "analytics",
+    "privacy",
+    "feedback",
+    "react-native",
+    "expo",
+    "self-hosted",
+    "telemetry"
+  ],
+  "type": "module",
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/esm/index.js",
+  "react-native": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "react-native": "./dist/esm/index.js",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/cjs/index.js",
+      "default": "./dist/esm/index.js"
+    },
+    "./core": {
+      "types": "./dist/esm/core.d.ts",
+      "import": "./dist/esm/core.js",
+      "require": "./dist/cjs/core.js",
+      "default": "./dist/esm/core.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc -p tsconfig.build.json --module commonjs --moduleResolution node10 --outDir dist/cjs --declaration false && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json && sed -i.bak 's#\\./core\\.ts#./core.js#g' dist/esm/*.d.ts && rm dist/esm/*.bak",
+    "prepublishOnly": "npm run typecheck && npm run build"
   },
   "peerDependencies": {
     "@react-native-async-storage/async-storage": ">=1.21",
@@ -18,7 +59,28 @@
     "expo-localization": "*",
     "react-native": ">=0.73"
   },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    },
+    "expo-constants": {
+      "optional": true
+    },
+    "expo-device": {
+      "optional": true
+    },
+    "expo-localization": {
+      "optional": true
+    },
+    "react-native": {
+      "optional": true
+    }
+  },
   "devDependencies": {
-    "typescript": "^5.6.0"
+    "typescript": "~5.9.3"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

@@ -1,0 +1,39 @@
+name: publish sdk
+
+# Publishes @enso/hush to npm when a tag sdk-v<version> is pushed, e.g.
+#   (bump sdk/package.json and SDK_VERSION in sdk/src/core.ts, commit)
+#   git tag sdk-v2.0.1 && git push origin sdk-v2.0.1
+# The tag must match sdk/package.json. Needs the NPM_TOKEN secret: a granular
+# npm token with read and write on the @enso scope.
+
+on:
+  push:
+    tags: ['sdk-v*']
+
+permissions:
+  contents: read
+  id-token: write # npm provenance: the package says which commit and workflow built it
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+      - name: The tag matches the package version
+        run: test "sdk-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - name: The SDK's tests pass
+        working-directory: .
+        run: node --test test/sdk.test.mjs
+      - run: npm ci
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

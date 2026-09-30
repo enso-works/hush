@@ -32,12 +32,26 @@ jobs:
 
   sdk:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - run: npx -y -p typescript@5.6 tsc --noEmit -p sdk/tsconfig.json
+          cache: npm
+          cache-dependency-path: sdk/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      # What `npm install @enso/hush` gets: both builds load, no .ts paths in the types.
+      - name: The package loads as ESM and CommonJS
+        run: |
+          node --input-type=module -e "import { createHush, SDK_VERSION } from './dist/esm/core.js'; if (typeof createHush !== 'function') process.exit(1); console.log('esm', SDK_VERSION)"
+          node -e "const c = require('./dist/cjs/core.js'); if (typeof c.createHush !== 'function') process.exit(1); console.log('cjs ok')"
+          if grep -n "core\.ts" dist/esm/*.d.ts; then echo "types point at .ts files"; exit 1; fi
+          npm pack --dry-run
 
   dashboard:
     runs-on: ubuntu-latest
