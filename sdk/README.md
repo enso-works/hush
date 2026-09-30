@@ -1,4 +1,4 @@
-# @enso/hush (Expo / React Native)
+# @bavrk/hush (Expo / React Native)
 
 The SDK for [hush](https://hush.bavrk.com): in-app feedback and anonymous
 usage tracking, sent to your own hush server. It queues events on the device,
@@ -7,11 +7,11 @@ backgrounded. It never throws into your app and never blocks a render: if the
 server is down or the key is missing, the app behaves exactly as without it.
 
 ```sh
-npx expo install @enso/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
+npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
 ```
 
 Plain JavaScript: it works in Expo Go and needs no native build. The peer
-dependencies are marked optional so that `@enso/hush/core` (below) installs
+dependencies are marked optional so that `@bavrk/hush/core` (below) installs
 without React Native; a React Native app needs all four.
 
 Moving from the copied one-file SDK: keep your install ids by passing the
@@ -138,12 +138,12 @@ once.
 
 ## Other platforms: the core
 
-`@enso/hush/core` is the whole SDK without React Native: `createHush()` takes
+`@bavrk/hush/core` is the whole SDK without React Native: `createHush()` takes
 a storage, the app's foreground/background changes, a description of the
 device, and a dev flag, and returns the same API.
 
 ```ts
-import { createHush } from '@enso/hush/core';
+import { createHush } from '@bavrk/hush/core';
 
 const hush = createHush({
   storage: { getItem: async (k) => localStorage.getItem(k), setItem: async (k, v) => localStorage.setItem(k, v), removeItem: async (k) => localStorage.removeItem(k) },

@@ -10,7 +10,7 @@
     "lib": ["ES2020", "DOM"],
     "types": [],
     "paths": {
-      "@enso/hush": ["./src/index.ts"]
+      "@bavrk/hush": ["./src/index.ts"]
     }
   },
   "include": ["src", "types", "../examples/expo"]

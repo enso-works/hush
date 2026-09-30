@@ -1,10 +1,10 @@
 name: publish sdk
 
-# Publishes @enso/hush to npm when a tag sdk-v<version> is pushed, e.g.
+# Publishes @bavrk/hush to npm when a tag sdk-v<version> is pushed, e.g.
 #   (bump sdk/package.json and SDK_VERSION in sdk/src/core.ts, commit)
 #   git tag sdk-v2.0.1 && git push origin sdk-v2.0.1
 # The tag must match sdk/package.json. Needs the NPM_TOKEN secret: a granular
-# npm token with read and write on the @enso scope.
+# npm token with read and write on the @bavrk scope.
 
 on:
   push:

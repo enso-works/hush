@@ -45,7 +45,7 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
-      # What `npm install @enso/hush` gets: both builds load, no .ts paths in the types.
+      # What `npm install @bavrk/hush` gets: both builds load, no .ts paths in the types.
       - name: The package loads as ESM and CommonJS
         run: |
           node --input-type=module -e "import { createHush, SDK_VERSION } from './dist/esm/core.js'; if (typeof createHush !== 'function') process.exit(1); console.log('esm', SDK_VERSION)"

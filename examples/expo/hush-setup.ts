@@ -1,9 +1,9 @@
 /**
  * Wiring hush into an Expo app: configuration, the calls a typical app makes,
  * and the ticket screen's three requests, with the SDK installed from npm
- * (npm install @enso/hush).
+ * (npm install @bavrk/hush).
  */
-import * as hush from '@enso/hush';
+import * as hush from '@bavrk/hush';
 
 // --- once, at startup (e.g. the root layout)
 

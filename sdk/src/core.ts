@@ -5,7 +5,7 @@
  *
  * A platform gives it storage, the app's comings and goings, a description
  * of the device, and whether this is a development build: see HushPlatform.
- * `@enso/hush` (the default entry) is that for React Native and Expo.
+ * `@bavrk/hush` (the default entry) is that for React Native and Expo.
  *
  * The only identifier is an install UUID it generates and keeps in storage.
  * Nothing here may ever break the app: every call is fire-and-forget, every

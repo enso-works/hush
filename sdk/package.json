@@ -1,5 +1,5 @@
 {
-  "name": "@enso/hush",
+  "name": "@bavrk/hush",
   "version": "2.0.0",
   "description": "In-app feedback and anonymous usage tracking for React Native and Expo apps, sent to your own hush server. No advertising ids, no IP addresses.",
   "license": "MIT",

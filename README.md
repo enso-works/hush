@@ -35,11 +35,11 @@ Dashboard: `http://localhost:3000/dashboard/`, signed in with `ADMIN_TOKEN`.
 In the app ([SDK guide](sdk/README.md)):
 
 ```sh
-npx expo install @enso/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
+npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
 ```
 
 ```ts
-import * as hush from '@enso/hush';
+import * as hush from '@bavrk/hush';
 
 hush.configure({ url: 'https://hush.example.com', key: 'hush_myapp_prod_…', channel: 'app_store' });
 hush.init();

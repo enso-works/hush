@@ -5,7 +5,7 @@
  * expo-device and expo-localization, and exposes one instance as the
  * module-level API:
  *
- *   import * as hush from '@enso/hush';
+ *   import * as hush from '@bavrk/hush';
  *   hush.configure({ url, key });
  *   hush.init();
  *

@@ -16,7 +16,7 @@ npm test
 Any Postgres you can create databases on works: point `TEST_DATABASE_URL` at
 it (default `postgresql://test:test@127.0.0.1:55432/postgres`).
 
-The SDK (`sdk/`, published as `@enso/hush`) is tested by `npm test` too:
+The SDK (`sdk/`, published as `@bavrk/hush`) is tested by `npm test` too:
 `test/sdk.test.mjs` runs its TypeScript under Node with React Native mocked.
 `cd sdk && npm ci && npm run typecheck && npm run build` checks and builds it.
 
