@@ -7,3 +7,5 @@ dashboard
 examples
 sdk
 test
+.claude-plugin
+plugins
