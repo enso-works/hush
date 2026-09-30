@@ -60,15 +60,31 @@ public class HushExpoModule: Module {
     #endif
   }
 
+  /// Both frameworks, each on its own: one refusing (SKAdNetwork on the
+  /// simulator, AdAttributionKit before iOS 17.4) does not stop the other.
+  /// Throws only when neither took the value.
   static func updateConversionValue(fine: Int, coarse: String, lockWindow: Bool) async throws {
     let value = max(0, min(63, fine))
-    let skanCoarse: SKAdNetwork.CoarseConversionValue = coarse == "high" ? .high : coarse == "medium" ? .medium : .low
-    try await SKAdNetwork.updatePostbackConversionValue(value, coarseValue: skanCoarse, lockWindow: lockWindow)
+    var failure: Error?
+    var accepted = false
+    do {
+      let c: SKAdNetwork.CoarseConversionValue = coarse == "high" ? .high : coarse == "medium" ? .medium : .low
+      try await SKAdNetwork.updatePostbackConversionValue(value, coarseValue: c, lockWindow: lockWindow)
+      accepted = true
+    } catch {
+      failure = error
+    }
     #if canImport(AdAttributionKit)
     if #available(iOS 17.4, *) {
-      let c: AdAttributionKit.CoarseConversionValue = coarse == "high" ? .high : coarse == "medium" ? .medium : .low
-      try await Postback.updateConversionValue(value, coarseConversionValue: c, lockPostback: lockWindow)
+      do {
+        let c: AdAttributionKit.CoarseConversionValue = coarse == "high" ? .high : coarse == "medium" ? .medium : .low
+        try await Postback.updateConversionValue(value, coarseConversionValue: c, lockPostback: lockWindow)
+        accepted = true
+      } catch {
+        failure = failure ?? error
+      }
     }
     #endif
+    if !accepted, let failure { throw failure }
   }
 }
