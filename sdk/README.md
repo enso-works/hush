@@ -1,4 +1,4 @@
-# @bavrk/hush (Expo / React Native)
+# @bavrk/hush (Expo, React Native, web)
 
 The SDK for [hush](https://hush.bavrk.com): in-app feedback and anonymous
 usage tracking, sent to your own hush server. It queues events on the device,
@@ -136,20 +136,45 @@ once.
 | `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name), `debug` (every send) |
 | `onFlush` | called after every send with its result |
 
+## The web, and web apps shipped as native ones
+
+`@bavrk/hush/web` is the same SDK for a web page, a PWA or a Capacitor app:
+localStorage keeps the install id and the queue, the page hiding counts as
+leaving the app (and sends, with `keepalive`), and the platform, OS and device
+model come from the user agent, coarsely. A page has no version of its own,
+so pass it; nothing else to install.
+
+```ts
+import { createWebHush } from '@bavrk/hush/web';
+
+export const hush = createWebHush({
+  version: import.meta.env.VITE_APP_VERSION,
+  build: import.meta.env.VITE_APP_BUILD,
+  platform: Capacitor.isNativePlatform() ? 'ios' : 'web', // optional; read from the user agent otherwise
+  dev: import.meta.env.DEV,
+});
+hush.configure({ url: 'https://hush.example.com', key: 'hush_mygame_prod_…', channel: 'testflight' });
+hush.init();
+```
+
+The hush server answers CORS on `/v1` for any origin (including Capacitor's
+`capacitor://localhost`); a server older than that needs a proxy that does.
+
 ## Other platforms: the core
 
-`@bavrk/hush/core` is the whole SDK without React Native: `createHush()` takes
-a storage, the app's foreground/background changes, a description of the
-device, and a dev flag, and returns the same API.
+`@bavrk/hush/core` is the whole SDK without React Native or the browser:
+`createHush()` takes a storage, the app's foreground/background changes, a
+description of the device, and a dev flag, and returns the same API. The web
+entry above is about fifty lines of it.
 
 ```ts
 import { createHush } from '@bavrk/hush/core';
 
 const hush = createHush({
-  storage: { getItem: async (k) => localStorage.getItem(k), setItem: async (k, v) => localStorage.setItem(k, v), removeItem: async (k) => localStorage.removeItem(k) },
-  onAppState: (fn) => document.addEventListener('visibilitychange', () => fn(document.hidden ? 'background' : 'active')),
-  device: () => ({ version: '1.0.0', build: '1', platform: 'web', os: navigator.platform, device: 'browser', locale: navigator.language }),
-  isDev: () => location.hostname === 'localhost',
+  storage: myStorage, // getItem, setItem, removeItem, async
+  onAppState: (fn) => myLifecycle.on('change', (active) => fn(active ? 'active' : 'background')),
+  device: () => ({ version: '1.0.0', build: '1', platform: 'desktop', os: 'macOS 15', device: 'Mac', locale: 'en-US' }),
+  isDev: () => false,
 });
 ```
 
@@ -157,7 +182,8 @@ const hush = createHush({
 
 Semver. `SDK_VERSION` is sent with every batch and stored per install, so the
 dashboard can tell which SDK an install runs. Any 2.x works with any hush
-server that speaks `/v1`; `forget()` needs one with `/v1/forget`.
+server that speaks `/v1`; `forget()` needs one with `/v1/forget`, and the
+web entry one that answers CORS. 2.1 added `@bavrk/hush/web`.
 
 ## Privacy
 

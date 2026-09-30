@@ -251,3 +251,41 @@ test('SDK_VERSION is the published package version', async () => {
   const pkg = JSON.parse(await readFile(new URL('../sdk/package.json', import.meta.url), 'utf8'));
   assert.equal(SDK_VERSION, pkg.version);
 });
+
+test('the web entry: localStorage, the page hiding as leaving, the device from the user agent, keepalive sends', async () => {
+  const store = new Map();
+  const doc = { visibilityState: 'visible', listeners: [], addEventListener: (_t, fn) => doc.listeners.push(fn) };
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v), removeItem: (k) => void store.delete(k) };
+  globalThis.document = doc;
+  const inits = [];
+  const recording = globalThis.fetch;
+  globalThis.fetch = (url, init) => (inits.push(init), recording(url, init));
+  try {
+    const { createWebHush, fromUserAgent } = await import(`../sdk/src/web.ts?launch=${++launches}`);
+    const hush = createWebHush({ version: '1.4.0', build: '2609301200', platform: 'ios', dev: false });
+    hush.configure({ url: 'https://hush.test', key: 'hush_game_prod_x', channel: 'testflight' });
+    await hush.init();
+    await settle();
+    hush.track('match_finished', { won: true });
+    doc.visibilityState = 'hidden';
+    for (const fn of doc.listeners) fn();
+    await settle();
+    const batch = sent.at(-1).body;
+    assert.deepEqual(
+      { version: batch.context.version, build: batch.context.build, platform: batch.context.platform, channel: batch.context.channel },
+      { version: '1.4.0', build: '2609301200', platform: 'ios', channel: 'testflight' },
+    );
+    assert.ok(named('match_finished').length === 1, 'hiding the page sends');
+    assert.ok(inits.every((i) => i.keepalive === true));
+    assert.ok([...store.keys()].some((k) => k.startsWith('hush.')), 'the install id is kept in localStorage');
+
+    const capacitorIphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
+    assert.deepEqual(fromUserAgent(capacitorIphone), { platform: 'ios', os: 'ios 18.2', device: 'iPhone' });
+    const macChrome = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Safari/537.36';
+    assert.deepEqual(fromUserAgent(macChrome), { platform: 'web', os: 'macOS 10.15.7', device: 'Mac' });
+    assert.deepEqual(fromUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 9) Mobile'), { platform: 'android', os: 'android 15', device: 'Android phone' });
+  } finally {
+    delete globalThis.localStorage;
+    delete globalThis.document;
+  }
+});
