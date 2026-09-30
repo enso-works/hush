@@ -13,14 +13,29 @@ import { log } from './config.mjs';
 import { q, tx } from './db.mjs';
 
 export const DEMO_APPS = [
-  { slug: 'stillwater', name: 'Stillwater', installs: 900, highlight: 'meditation_completed', events: ['meditation_started', 'meditation_completed', 'streak_viewed', 'reminder_set'] },
-  { slug: 'tally', name: 'Tally', installs: 460, highlight: 'habit_checked', events: ['habit_created', 'habit_checked', 'stats_viewed', 'reminder_set'] },
-  { slug: 'pace', name: 'Pace', installs: 230, highlight: 'run_finished', events: ['run_started', 'run_finished', 'route_saved'] },
+  { slug: 'stillwater', name: 'Stillwater', installs: 900, start: 'meditation_started', highlight: 'meditation_completed', first: 'First meditation', events: ['onboarding_completed', 'meditation_started', 'meditation_completed', 'streak_viewed', 'reminder_set'] },
+  // A habit is created once, then checked off in later sessions.
+  { slug: 'tally', name: 'Tally', installs: 460, start: 'habit_created', startOnce: true, highlight: 'habit_checked', first: 'First habit', events: ['onboarding_completed', 'habit_created', 'habit_checked', 'stats_viewed', 'reminder_set'] },
+  { slug: 'pace', name: 'Pace', installs: 230, start: 'run_started', highlight: 'run_finished', first: 'First run', events: ['onboarding_completed', 'run_started', 'run_finished', 'route_saved'] },
 ];
 
 /** The catalog a demo runs with when no CATALOG_FILE is given. */
 export const DEMO_CATALOG = Object.fromEntries(
-  DEMO_APPS.map((a) => [a.slug, { events: a.events, highlight: { event: a.highlight, doneProp: 'completed' } }]),
+  DEMO_APPS.map((a) => [
+    a.slug,
+    {
+      events: a.events,
+      highlight: { event: a.highlight, done_prop: 'completed' },
+      funnels: [
+        { name: a.first, steps: ['app_first_opened', 'onboarding_completed', a.start, a.highlight] },
+        {
+          name: 'Paywall',
+          window_days: 3,
+          steps: ['paywall_viewed', 'purchase_started', { event: 'purchase_result', where: { result: 'purchased' }, label: 'Purchased' }],
+        },
+      ],
+    },
+  ]),
 );
 
 // A small seeded PRNG (mulberry32): the same showcase every run.
@@ -114,6 +129,7 @@ export async function seedDemo() {
         const at = (offsetMin) => new Date(Math.min(now, sessionAt + offsetMin * 60000)).toISOString();
         const ev = (name, props = {}, offset = 0) => events.push([uuid(r), app.slug, 'prod', id, session, name, true, at(offset), version, platform, JSON.stringify(props), channel]);
         if (n === 0) ev('app_first_opened');
+        if (n === 0 && r() < 0.72) ev('onboarding_completed', {}, 0.5);
         // What SDK 2 sends: the session's number, the previous session's time
         // in the foreground, and where it began (with a campaign for links).
         const entry = weighted(r, [['launch', 74], ['notification', 11], ['widget', 8], ['link', 7]]);
@@ -122,6 +138,9 @@ export async function seedDemo() {
         prevFg = Math.round(20 + Math.pow(r(), 2.2) * 900);
         const screens = 1 + Math.floor(r() * 3);
         for (let s = 0; s < screens; s++) ev('screen_viewed', { screen: pick(r, ['Home', 'Library', 'Stats', 'Settings']) }, s);
+        if (!app.startOnce || n === 0) {
+          if (r() < 0.8) ev(app.start, {}, 3);
+        }
         if (r() < 0.8) ev(app.highlight, { completed: r() < 0.74, minutes: 5 + Math.floor(r() * 20) }, 4);
         if (r() < 0.25) ev(pick(r, app.events.filter((e) => e !== app.highlight)), {}, 6);
         if (n === 0 && r() < 0.32) {
