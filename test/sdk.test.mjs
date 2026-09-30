@@ -349,3 +349,96 @@ test('an opted-out user sets no conversion value; events before the milestones a
   await settle();
   assert.deepEqual(quiet.map((u) => u.fine), [0], 'registered before the choice, nothing after');
 });
+
+test('a native call that fails is taken back, and the same milestone is tried again later', async () => {
+  milestones = [{ value: 3, coarse: 'low', event: 'tutorial_done', where: null, lock: false }];
+  let fail = true;
+  const calls = [];
+  const bridge = {
+    update: async (v) => {
+      calls.push(v.fine);
+      if (fail && v.fine === 3) throw new Error('SKANErrorDomain 10');
+    },
+  };
+  const sdk = await launch({ attribution: bridge });
+  sdk.track('tutorial_done');
+  await settle();
+  fail = false;
+  sdk.track('tutorial_done');
+  await settle();
+  assert.deepEqual(calls, [0, 3, 3], 'the failed 3 did not count as set');
+});
+
+test('offline at start: the milestones come on the next launch, and nothing breaks meanwhile', async () => {
+  milestones = [{ value: 7, coarse: 'medium', event: 'tutorial_done', where: null, lock: false }];
+  const calls = [];
+  const bridge = { update: async (v) => void calls.push(v.fine) };
+  const online = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (new URL(url).pathname === '/v1/config') throw new Error('offline');
+    return online(url, init);
+  };
+  let sdk = await launch({ attribution: bridge });
+  sdk.track('tutorial_done');
+  await settle();
+  assert.deepEqual(calls, [0], 'registered; no milestones yet');
+  globalThis.fetch = online;
+  sdk = await launch({ attribution: bridge });
+  sdk.track('tutorial_done');
+  await settle();
+  assert.deepEqual(calls, [0, 7]);
+});
+
+test('opting back in starts attribution for an install that was opted out at launch', async () => {
+  milestones = [{ value: 9, coarse: 'medium', event: 'tutorial_done', where: null, lock: false }];
+  const calls = [];
+  const bridge = { update: async (v) => void calls.push(v.fine) };
+  let sdk = await launch({ attribution: bridge });
+  sdk.optOut();
+  sdk = await launch({ attribution: bridge });
+  sdk.track('tutorial_done');
+  await settle();
+  assert.deepEqual(calls, [0], 'nothing while opted out');
+  sdk.optIn();
+  await settle();
+  sdk.track('tutorial_done');
+  await settle();
+  assert.deepEqual(calls, [0, 9]);
+});
+
+test('forget keeps the conversion value: it is the device, not the identity, that Apple attributes', async () => {
+  milestones = [{ value: 4, coarse: 'low', event: 'tutorial_done', where: null, lock: false }];
+  const calls = [];
+  const sdk = await launch({ attribution: { update: async (v) => void calls.push(v.fine) } });
+  sdk.track('tutorial_done');
+  await settle();
+  await sdk.forget();
+  sdk.track('tutorial_done');
+  await settle();
+  assert.deepEqual(calls, [0, 4], 'not registered again, not lowered');
+});
+
+test('without a bridge nothing is fetched or set, and the web entry takes one too', async () => {
+  configFetches = 0;
+  const sdk = await launch();
+  sdk.track('tutorial_done');
+  await settle();
+  assert.equal(configFetches, 0);
+  const store = new Map();
+  globalThis.localStorage = { getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v), removeItem: (k) => void store.delete(k) };
+  globalThis.document = { visibilityState: 'visible', addEventListener() {} };
+  try {
+    milestones = [{ value: 2, coarse: 'low', event: 'level_up', where: null, lock: false }];
+    const calls = [];
+    const { createWebHush } = await import(`../sdk/src/web.ts?launch=${++launches}`);
+    const web = createWebHush({ version: '1.0.0' });
+    web.configure({ url: 'https://hush.test', key: 'hush_web_prod_x', attribution: { update: (v) => void calls.push(v.fine) } });
+    await web.init();
+    web.track('level_up');
+    await settle();
+    assert.deepEqual(calls, [0, 2]);
+  } finally {
+    delete globalThis.localStorage;
+    delete globalThis.document;
+  }
+});

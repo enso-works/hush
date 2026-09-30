@@ -96,7 +96,7 @@ export type FlushResult = {
 };
 
 /** Sent with every batch, and stored on the install: which SDK spoke. */
-export const SDK_VERSION = '2.2.0';
+export const SDK_VERSION = '2.2.1';
 
 const CHANNEL_RE = /^[a-z][a-z0-9_]{0,23}$/;
 // The server's rule for event names; anything else is dropped there anyway.
@@ -701,6 +701,8 @@ export function createHush(platform: HushPlatform) {
     void storage.removeItem(OPTOUT_KEY).catch(() => {});
     log('debug', 'opted in');
     if (ready) startSession();
+    // Attribution was never started for an install opted out at launch.
+    if (ready && !conversion) void startAttribution();
   }
 
   /** Whether the user opted out. Read from storage by init(); false before it resolves. */
