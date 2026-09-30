@@ -7,6 +7,8 @@ const MODULES = {
   'expo-device': `export const osVersion = '18.6'; export const modelId = 'iPhone17,1'; export const modelName = 'iPhone';`,
   'expo-localization': `export const getLocales = () => [{ languageTag: 'en-US' }];`,
   'react-native': `export { AppState, Platform } from '${mocks}';`,
+  // @bavrk/hush-expo's native module: whatever the test puts on globalThis.__hushExpoNative.
+  'expo-modules-core': `export const requireOptionalNativeModule = (name) => (name === 'HushExpo' ? (globalThis.__hushExpoNative ?? null) : null);`,
 };
 export async function resolve(specifier, context, next) {
   if (specifier in MODULES) {
