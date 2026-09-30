@@ -38,12 +38,21 @@ Native, one file; [SDK guide](sdk/README.md)):
 ```ts
 import * as hush from './hush';
 
-hush.configure({ url: 'https://hush.example.com', key: 'hush_myapp_prod_…' });
+hush.configure({ url: 'https://hush.example.com', key: 'hush_myapp_prod_…', channel: 'app_store' });
 hush.init();
+hush.setGlobalProps({ paywall_variant: 'b' });                   // on every event
 hush.screen('Home');
 hush.track('workout_completed', { minutes: 20, completed: true });
+hush.track('onboarding_completed', {}, { once: true });          // once per install
 await hush.createTicket({ kind: 'issue', message: 'The timer stops on lock' });
+hush.optOut();                                                  // the user's choice, remembered
+await hush.forget();                                            // "delete my data"
 ```
+
+Sessions are numbered and report their time in the app, links keep their
+campaign tags (never the URL), and the build channel keeps TestFlight out of
+the store numbers. The dashboard shows all of it, plus any event broken down
+by any prop, and one install's events live.
 
 Before pointing real apps at it: put it behind a TLS proxy, expose only
 `/v1/*` and `/healthz` publicly, keep `/dashboard/` and `/admin/*` behind a VPN
@@ -63,9 +72,12 @@ up Postgres; it is the only state.
 - **An email address**, only when a user types one into feedback.
 - **No IP address**, anywhere. Rate limits count a salted hash that lives in
   memory only.
+- **No advertising or device identifiers**: nothing for App Tracking
+  Transparency to ask about. From a link, only its `utm_*` and `ref` tags.
 
 Raw events are deleted after `RETENTION_DAYS` (180); install rows and
-feedback threads are kept. The write key ships inside the app, so it is not a
+feedback threads are kept until the install is forgotten (the SDK's
+`forget()`, or the dashboard's Installs page). The write key ships inside the app, so it is not a
 secret: it identifies the app, can be revoked, and can read nothing but the
 calling install's own feedback.
 
@@ -105,10 +117,13 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 | `POST /v1/tickets` | feedback: `{ install, kind: issue\|feature\|love, message, email?, subject? }` → 201. Five a day per install. |
 | `GET /v1/tickets?install=` | that install's feedback, with replies and `unread` |
 | `POST /v1/tickets/:id/reply` | `{ install, body }` → 201, or 409 once closed |
+| `POST /v1/forget` | `{ install }` → 200 `{ ok, deleted }`: that install's events, feedback and row, under the calling app |
 
 The operator side, `Authorization: Bearer <ADMIN_TOKEN>`, is what the
-dashboard reads: `/admin/apps`, `/admin/apps/:app`, `/admin/tickets`,
-`/admin/tickets/:id` (+ `/reply`, `/status`), `/admin/revenue`. CLI:
+dashboard reads: `/admin/apps`, `/admin/apps/:app` (`?channel=`),
+`/admin/apps/:app/breakdown` and `/props`, `/admin/installs/:id` (+ `/forget`),
+`/admin/tickets`, `/admin/tickets/:id` (+ `/reply`, `/status`),
+`/admin/revenue`. CLI:
 `node src/cli.mjs apps:add | keys:create | keys:list | keys:revoke | rc:* | migrate`.
 
 Limits are honest about what this is: rate limits are in memory, per
