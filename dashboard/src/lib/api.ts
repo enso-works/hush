@@ -146,6 +146,11 @@ export type InstallDetail = {
 
 export type BreakdownRow = { value: string; n: number; installs: number }
 
+export type FunnelStep = { event: string; where: Record<string, string> | null; label: string; installs: number; median_s: number | null }
+export type Funnel = { name: string; window_days: number; steps: FunnelStep[] }
+/** Installs by first week; active[k]: how many sent anything k weeks later (null: not yet). */
+export type Cohort = { week: string; installs: number; active: (number | null)[] }
+
 export type Revenue = {
   configured: boolean
   apps: { app: string; name: string; currency: string | null; metrics: Record<string, unknown> | null; fetched_at: string | null; last_error: string | null }[]

@@ -15,6 +15,7 @@ import { countryName, flag, humanize, num, pct, shortDay, when } from '@/lib/for
 import { href } from '@/lib/route'
 import { usePrefs } from '@/lib/session'
 import { BreakdownBars, ChannelFilter, Engagement, Explore } from '@/pages/AppInsights'
+import { CatalogFunnels, Cohorts, FunnelBuilder } from '@/pages/Funnels'
 import { ErrorNote } from '@/pages/ErrorNote'
 
 export function Panel({ title, sub, children, className }: { title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
@@ -54,32 +55,6 @@ function Activity({ daily }: { daily: AppDetail['daily'] }) {
         <Area dataKey="sessions" type="monotone" stroke="none" fill="none" />
       </AreaChart>
     </ChartContainer>
-  )
-}
-
-function Funnel({ steps }: { steps: AppDetail['funnel'] }) {
-  const top = steps[0]?.installs ?? 0
-  if (!steps.some((s) => s.installs)) return <p className="py-6 text-center text-sm text-muted-foreground">No paywall events in this period.</p>
-  return (
-    <ol className="flex flex-col gap-3">
-      {steps.map((s, i) => {
-        const prev = i ? steps[i - 1].installs : 0
-        return (
-          <li key={s.name}>
-            <div className="mb-1 flex items-baseline justify-between gap-2 text-sm">
-              <span className="truncate first-letter:uppercase">{humanize(s.name)}</span>
-              <span className="flex items-baseline gap-2 tabular-nums">
-                {i > 0 && <span className="text-xs text-muted-foreground">{pct(s.installs, prev)} of previous</span>}
-                <span className="font-medium">{num(s.installs)}</span>
-              </span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-muted">
-              <div className="h-full rounded-full bg-brand" style={{ width: `${top ? Math.max(1, (s.installs / top) * 100) : 0}%` }} />
-            </div>
-          </li>
-        )
-      })}
-    </ol>
   )
 }
 
@@ -245,12 +220,19 @@ export function AppPage({ slug }: { slug: string }) {
           </BlurFade>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title="Paywall funnel" sub="Installs reaching each step, this period">
-              <Funnel steps={d.funnel} />
+            <Panel title="Funnels" sub="Installs through each step in order, and how long each step took">
+              <CatalogFunnels slug={slug} />
             </Panel>
             <Panel title="Retention" sub="Came back at least N days after the first open">
               <Retention r={d.retention} />
             </Panel>
+          </div>
+
+          <Panel title="Cohorts" sub="Each week's new installs, and how many were still around in the weeks after">
+            <Cohorts slug={slug} />
+          </Panel>
+
+          <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Versions" sub="Installs seen on each version, this period">
               <BarList rows={d.versions.map((v) => ({ key: v.version, label: <span className="font-mono text-xs">{v.version}</span>, value: v.installs }))} />
             </Panel>
@@ -295,6 +277,10 @@ export function AppPage({ slug }: { slug: string }) {
               </Panel>
             )}
           </div>
+
+          <Panel title="Build a funnel" sub="Any events in order, optionally with a prop condition">
+            <FunnelBuilder slug={slug} events={d.events} />
+          </Panel>
 
           <Panel title="Explore" sub="Any event by any of its props: a paywall variant, a source, a product">
             <Explore slug={slug} events={d.events} />

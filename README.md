@@ -93,7 +93,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `DATABASE_URL` | Postgres. Migrations run at every boot, before listening. |
 | `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `openssl rand -hex 32`. |
 | `APPS` | Register apps at boot: `myapp=My App,other=Other`. |
-| `CATALOG_FILE` | Each app's known events and its highlight metric, as JSON (below). |
+| `CATALOG_FILE` | Each app's known events, highlight metric and funnels, as JSON (below). |
 | `CLIENT_IP_HEADER` | Header a trusted proxy sets with the caller's address (`cf-connecting-ip`, `x-forwarded-for`), for rate limits. Unset: the socket address. |
 | `COUNTRY_HEADER` | Header a trusted proxy sets with a two-letter country (`cf-ipcountry`). Unset: no country. |
 | `RESEND_API_KEY`, `MAIL_FROM` | Email through [Resend](https://resend.com): feedback alerts, and your replies to users who left an address. |
@@ -103,11 +103,25 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `PORT`, `MAIL_DRY_RUN` | `3000`; `1` logs mail instead of sending it. |
 
 The catalog names the events you expect (anything else is still stored,
-flagged as unknown on the dashboard) and one highlight: the event counted
-per period, and the prop that marks it done.
+flagged as unknown on the dashboard), one highlight (the event counted per
+period, and the prop that marks it done), and the funnels the dashboard
+shows. A funnel is ordered: each step must follow the one before, within
+`window_days` (default 7) of the first; a step can match props with `where`.
+Without funnels an app gets a paywall one; any funnel can also be built on
+the dashboard without touching the catalog.
 
 ```json
-{ "myapp": { "events": ["workout_completed"], "highlight": { "event": "workout_completed", "done_prop": "completed" } } }
+{
+  "myapp": {
+    "events": ["onboarding_completed", "workout_started", "workout_completed"],
+    "highlight": { "event": "workout_completed", "done_prop": "completed" },
+    "funnels": [
+      { "name": "First workout", "steps": ["app_first_opened", "onboarding_completed", "workout_completed"] },
+      { "name": "Paywall", "window_days": 3, "steps": ["paywall_viewed", "purchase_started",
+        { "event": "purchase_result", "where": { "result": "purchased" }, "label": "Purchased" }] }
+    ]
+  }
+}
 ```
 
 ## API
@@ -124,7 +138,8 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 
 The operator side, `Authorization: Bearer <ADMIN_TOKEN>`, is what the
 dashboard reads: `/admin/apps`, `/admin/apps/:app` (`?channel=`),
-`/admin/apps/:app/breakdown` and `/props`, `/admin/installs/:id` (+ `/forget`),
+`/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
+`/cohorts`, `/admin/installs/:id` (+ `/forget`),
 `/admin/tickets`, `/admin/tickets/:id` (+ `/reply`, `/status`),
 `/admin/revenue`. CLI:
 `node src/cli.mjs apps:add | keys:create | keys:list | keys:revoke | rc:* | migrate`.

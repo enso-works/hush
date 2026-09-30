@@ -80,6 +80,7 @@ export function stepsFromQuery(values) {
     }
     const step = parseStep({ event, where });
     if (typeof step === 'string') return step;
+    if (step.where) step.label += ` (${Object.entries(step.where).map(([k, v]) => `${k} = ${v}`).join(', ')})`;
     steps.push(step);
   }
   return steps;
