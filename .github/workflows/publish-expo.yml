@@ -1,0 +1,34 @@
+name: publish expo
+
+# Publishes @bavrk/hush-expo to npm when a tag expo-v<version> is pushed, e.g.
+#   (bump expo/package.json, commit)
+#   git tag expo-v0.1.1 && git push origin expo-v0.1.1
+# The tag must match expo/package.json. Uses the NPM_TOKEN secret, as the SDK does.
+
+on:
+  push:
+    tags: ['expo-v*']
+
+permissions:
+  contents: read
+  id-token: write # npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: expo
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: The tag matches the package version
+        run: test "expo-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      - run: npm install --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
