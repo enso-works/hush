@@ -13,11 +13,25 @@ hush.configure({
   // can silently pick up a local .env and ship the dev key. Dev builds read
   // one from the environment, or stay off.
   key: __DEV__ ? (process.env.EXPO_PUBLIC_HUSH_KEY ?? '') : 'hush_myapp_prod_REPLACE_ME',
+  // Which build this is, set per EAS build profile (production: app_store or
+  // play, preview: testflight or internal), so the dashboard can leave
+  // TestFlight out of the store numbers.
+  channel: process.env.EXPO_PUBLIC_HUSH_CHANNEL,
+  logLevel: __DEV__ ? 'debug' : 'silent',
   // Optional: give the flush on backgrounding real runway, with whatever
   // background-task module the app already has.
   // runInBackground: (work) => withBackgroundTask(work),
 });
 void hush.init();
+
+// Context every event should carry, e.g. the paywall copy under test.
+hush.setGlobalProps({ paywall_variant: Math.random() < 0.5 ? 'a' : 'b' });
+
+// --- the root layout, for links and notification taps
+
+export function onOpenedFromLink(url: string) {
+  hush.entry('link', { url }); // keeps utm_source / utm_campaign / ref, never the URL
+}
 
 // --- through the app
 
@@ -35,12 +49,28 @@ export function onCustomerInfo(info: { originalAppUserId: string; entitlements: 
   hush.identify({ rcId: info.originalAppUserId, pro: Object.keys(info.entitlements.active).length > 0 });
 }
 
+export function onOnboardingDone() {
+  hush.track('onboarding_completed', {}, { once: true });
+}
+
 export function onPaywallShown() {
   hush.track('paywall_viewed');
 }
 
 export function onPurchase(result: 'purchased' | 'cancelled' | 'failed', product: string) {
   hush.track('purchase_result', { result, product });
+}
+
+// --- Settings: the user's choices
+
+export function setShareUsage(share: boolean) {
+  if (share) hush.optIn();
+  else hush.optOut();
+}
+
+export async function deleteMyData() {
+  const r = await hush.forget();
+  return r.ok ? 'Deleted.' : 'Could not reach the server; try again later.';
 }
 
 // --- the support screen
