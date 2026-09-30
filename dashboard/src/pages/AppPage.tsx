@@ -17,6 +17,8 @@ import { usePrefs } from '@/lib/session'
 import { BreakdownBars, ChannelFilter, Engagement, Explore } from '@/pages/AppInsights'
 import { CatalogFunnels, Cohorts, FunnelBuilder } from '@/pages/Funnels'
 import { ErrorNote } from '@/pages/ErrorNote'
+import { AttributionPanel } from '@/pages/Attribution'
+import { Campaigns } from '@/pages/Campaigns'
 import { RevenuePanel } from '@/pages/Revenue'
 
 export function Panel({ title, sub, children, className }: { title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
@@ -214,6 +216,14 @@ export function AppPage({ slug }: { slug: string }) {
             <Cohorts slug={slug} />
           </Panel>
 
+          <Panel title="Campaigns" sub="Tagged links, an ad or a newsletter: who they brought, and how far those installs got">
+            <Campaigns slug={slug} />
+          </Panel>
+
+          <Panel title="Attribution" sub="New installs from ads and campaign links, as Apple reports them: aggregate, never one install">
+            <AttributionPanel slug={slug} />
+          </Panel>
+
           {d.breakdowns.length > 0 && (
             <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
               {d.breakdowns.map((b) => (
@@ -264,15 +274,6 @@ export function AppPage({ slug }: { slug: string }) {
             )}
             <Panel title="How sessions start" sub="The app's doors: launch, widget, notification, link...">
               <BreakdownBars slug={slug} event="session_started" prop="entry" empty="No sessions in this period." />
-            </Panel>
-            <Panel title="Campaigns" sub="Sessions opened from a link, by its utm_source">
-              <BreakdownBars
-                slug={slug}
-                event="session_started"
-                prop="utm_source"
-                taggedOnly
-                empty="No tagged links yet. SDK 2 keeps utm_* and ref from a link passed to entry('link', { url })."
-              />
             </Panel>
             {d.channels && d.channels.length > 0 && (
               <Panel title="Build channels" sub="Installs seen this period, by where their build came from">
