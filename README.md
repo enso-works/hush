@@ -52,6 +52,9 @@ hush.optOut();                                                  // the user's ch
 await hush.forget();                                            // "delete my data"
 ```
 
+On the web, a PWA or a Capacitor app: `npm install @bavrk/hush`, then
+`createWebHush({ version })` from `@bavrk/hush/web` gives the same API.
+
 Sessions are numbered and report their time in the app, links keep their
 campaign tags (never the URL), and the build channel keeps TestFlight out of
 the store numbers. The dashboard shows all of it, plus any event broken down
