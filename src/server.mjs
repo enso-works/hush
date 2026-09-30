@@ -11,6 +11,8 @@ import { fileURLToPath } from 'node:url';
 
 import { appDetail, breakdown, propKeys, summary } from './admin.mjs';
 import { forgetInstall, installDetail } from './installs.mjs';
+import { funnelsOf } from './catalog.mjs';
+import { cohorts, runFunnel, stepsFromQuery } from './funnels.mjs';
 import { cfg, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { clientKey, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
@@ -168,6 +170,33 @@ r.get('/admin/apps', async (_req, res, { url }) => json(res, 200, { apps: await 
 
 r.get('/admin/apps/:app', async (_req, res, { url, params }) =>
   json(res, 200, await appDetail({ app: params.app, days: days(url), env: envOf(url), channel: channelOf(url) })));
+
+// The app's funnels from the catalog (or the default paywall one), each run
+// over the period: installs at every step and the median time between steps.
+r.get('/admin/apps/:app/funnels', async (_req, res, { url, params }) => {
+  const scope = { app: params.app, env: envOf(url), days: days(url), channel: channelOf(url) };
+  const funnels = [];
+  for (const f of funnelsOf(params.app)) {
+    funnels.push({ name: f.name, window_days: f.window_days, steps: await runFunnel({ ...scope, steps: f.steps, windowDays: f.window_days }) });
+  }
+  return json(res, 200, { funnels });
+});
+
+// Any funnel, built on the dashboard: ?step=a&step=b:prop=value&window=7.
+r.get('/admin/apps/:app/funnel', async (_req, res, { url, params }) => {
+  const steps = stepsFromQuery(url.searchParams.getAll('step'));
+  if (typeof steps === 'string') return json(res, 400, { error: steps });
+  const windowDays = Math.min(Math.max(Number(url.searchParams.get('window') ?? 7) || 7, 1), 90);
+  return json(res, 200, {
+    window_days: windowDays,
+    steps: await runFunnel({ app: params.app, env: envOf(url), days: days(url), channel: channelOf(url), steps, windowDays }),
+  });
+});
+
+r.get('/admin/apps/:app/cohorts', async (_req, res, { url, params }) => {
+  const weeks = Math.min(Math.max(Number(url.searchParams.get('weeks') ?? 8) || 8, 2), 26);
+  return json(res, 200, { weeks, cohorts: await cohorts({ app: params.app, env: envOf(url), channel: channelOf(url), weeks }) });
+});
 
 r.get('/admin/apps/:app/props', async (_req, res, { url, params }) => {
   const event = str(url.searchParams.get('event'), 64);

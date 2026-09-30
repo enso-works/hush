@@ -9,18 +9,29 @@
 //   {
 //     "myapp": {
 //       "events": ["workout_started", "workout_completed"],
-//       "highlight": { "event": "workout_completed", "done_prop": "completed" }
+//       "highlight": { "event": "workout_completed", "done_prop": "completed" },
+//       "funnels": [
+//         { "name": "First workout", "steps": ["app_first_opened", "onboarding_completed", "workout_completed"] },
+//         { "name": "Paywall", "window_days": 3, "steps": [
+//           "paywall_viewed", "purchase_started",
+//           { "event": "purchase_result", "where": { "result": "purchased" }, "label": "Purchased" }
+//         ] }
+//       ]
 //     }
 //   }
 //
 // `events` adds to the common names below. `highlight` names the one event
 // the dashboard counts per period, and which boolean prop marks it as done
-// (the "completion rate"). Both are optional; an app missing from the file
-// still works, with only the common names known and no highlight.
+// (the "completion rate"). `funnels` are ordered: each step must follow the
+// one before, within `window_days` (default 7) of the first; a step may
+// match props with `where`. All optional; an app missing from the file still
+// works, with only the common names known, no highlight, and the default
+// paywall funnel.
 import { readFileSync } from 'node:fs';
 
 import { cfg } from './config.mjs';
 import { DEMO_CATALOG } from './demo.mjs';
+import { DEFAULT_FUNNELS, parseFunnels } from './funnels.mjs';
 
 // Every app gets the generic lifecycle names even before it has a catalog of
 // its own, so a newly wired app does not light up the "unknown events" list.
@@ -54,12 +65,13 @@ export function parseCatalog(raw) {
       }
       highlight = { event, doneProp };
     }
-    out[app] = { events, highlight };
+    const funnels = parseFunnels(spec.funnels, `catalog.${app}.funnels`);
+    out[app] = { events, highlight, funnels };
   }
   return out;
 }
 
-const catalog = cfg.catalogFile ? parseCatalog(readFileSync(cfg.catalogFile, 'utf8')) : cfg.demo ? DEMO_CATALOG : {};
+const catalog = cfg.catalogFile ? parseCatalog(readFileSync(cfg.catalogFile, 'utf8')) : cfg.demo ? parseCatalog(DEMO_CATALOG) : {};
 
 const known = new Map();
 export function isKnown(app, name) {
@@ -73,3 +85,6 @@ export function isKnown(app, name) {
 
 /** The app's highlight event, or null when the catalog names none. */
 export const highlightOf = (app) => catalog[app]?.highlight ?? null;
+
+/** The app's funnels from the catalog, or the default paywall funnel. */
+export const funnelsOf = (app) => catalog[app]?.funnels ?? DEFAULT_FUNNELS;
