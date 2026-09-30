@@ -76,6 +76,8 @@ export const {
 
 export { SDK_VERSION, createHush } from './core.ts';
 export type {
+  AttributionBridge,
+  ConversionValue,
   DeviceInfo,
   Entry,
   FlushResult,

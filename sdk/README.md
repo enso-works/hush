@@ -178,12 +178,33 @@ const hush = createHush({
 });
 ```
 
+## Ad attribution (iOS)
+
+With a native bridge, the SDK sets Apple's conversion value for
+SKAdNetwork and AdAttributionKit: it registers the install on first launch
+(value 0), then raises the value as the milestones in the server's catalog
+(`conversion_values`) happen, for the 35 days Apple listens. The value goes
+to Apple and to the ad network that won the install, aggregated; hush gets a
+copy of the postback, never anything per install. No App Tracking
+Transparency prompt is needed, and nothing is set for an opted-out user.
+
+```ts
+import * as hushExpo from '@bavrk/hush-expo'; // SKAdNetwork, AdAttributionKit, TestFlight detection
+
+hush.configure({ url, key, attribution: hushExpo.attribution, channel: hushExpo.channel() });
+```
+
+Link tags (`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`,
+`utm_content`, `ref`) from a link passed to `entry('link', { url })` join the
+session; anything else in the URL, a click id included, is dropped.
+
 ## Versions
 
 Semver. `SDK_VERSION` is sent with every batch and stored per install, so the
 dashboard can tell which SDK an install runs. Any 2.x works with any hush
 server that speaks `/v1`; `forget()` needs one with `/v1/forget`, and the
-web entry one that answers CORS. 2.1 added `@bavrk/hush/web`.
+web entry one that answers CORS. 2.1 added `@bavrk/hush/web`; 2.2 the
+`attribution` bridge (with `/v1/config` on the server) and `utm_term`.
 
 ## Privacy
 

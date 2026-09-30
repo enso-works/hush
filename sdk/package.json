@@ -1,6 +1,6 @@
 {
   "name": "@bavrk/hush",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "In-app feedback and anonymous usage tracking for React Native, Expo and the web, sent to your own hush server. No advertising ids, no IP addresses.",
   "license": "MIT",
   "author": "bavrk (https://bavrk.com)",

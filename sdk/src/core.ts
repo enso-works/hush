@@ -66,7 +66,25 @@ export type HushConfig = {
   logLevel?: 'silent' | 'error' | 'debug';
   /** Called after every send to /v1/events, for debug screens and tests. */
   onFlush?: (result: FlushResult) => void;
+  /**
+   * Apple's ad attribution (SKAdNetwork, AdAttributionKit), through a native
+   * bridge such as `@bavrk/hush-expo`. With it the SDK registers the install
+   * on first launch and, for the 35 days Apple listens, raises the conversion
+   * value as the milestones in the server's catalog happen (fetched from
+   * /v1/config). The value goes to Apple and the ad network, aggregated;
+   * nothing about it is sent to hush. Nothing happens for an opted-out user.
+   */
+  attribution?: AttributionBridge;
 };
+
+/** A conversion value: the fine value (0-63), the coarse one, and whether it ends the current window. */
+export type ConversionValue = { fine: number; coarse: 'low' | 'medium' | 'high'; lock: boolean };
+
+/** What a native module gives the SDK to set Apple's conversion value. */
+export type AttributionBridge = { update(value: ConversionValue): Promise<void> | void };
+
+/** A milestone from the catalog: reached when `event` happens with `where` matching its props. */
+type Milestone = { value: number; coarse: ConversionValue['coarse']; event: string; where: Record<string, string> | null; lock: boolean };
 
 /** One send's outcome. `willRetry`: the batch stays queued and goes again later. */
 export type FlushResult = {
@@ -78,7 +96,7 @@ export type FlushResult = {
 };
 
 /** Sent with every batch, and stored on the install: which SDK spoke. */
-export const SDK_VERSION = '2.1.0';
+export const SDK_VERSION = '2.2.0';
 
 const CHANNEL_RE = /^[a-z][a-z0-9_]{0,23}$/;
 // The server's rule for event names; anything else is dropped there anyway.
@@ -143,7 +161,7 @@ export type Entry = 'launch' | 'widget' | 'quick_action' | 'siri' | 'notificatio
 
 // The campaign tags worth keeping from a link that opened the app, and
 // nothing else from it: the URL itself may carry anything.
-const CAMPAIGN_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'ref'];
+const CAMPAIGN_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref'];
 
 function campaignOf(url: string): Props {
   const out: Props = {};
@@ -204,6 +222,8 @@ export function createHush(platform: HushPlatform) {
     ONCE_KEY = `${prefix}.once.v1`;
     OPTOUT_KEY = `${prefix}.optout.v1`;
     SESSIONS_KEY = `${prefix}.sessions.v1`;
+    ATTRIBUTION_KEY = `${prefix}.attribution.v1`;
+    attribution = config.attribution;
     if (config.runInBackground) withBackgroundTask = config.runInBackground;
     LOG_LEVEL = config.logLevel ?? 'silent';
     onFlush = config.onFlush;
@@ -215,6 +235,13 @@ export function createHush(platform: HushPlatform) {
 
   let enabled = false;
   let ready = false;
+  let ATTRIBUTION_KEY = 'hush.attribution.v1';
+  let attribution: AttributionBridge | undefined;
+  // Apple's conversion value: what this install has set (-1: not registered
+  // yet), since when, and the catalog's milestones as last fetched.
+  let conversion: { value: number; since: string; milestones: Milestone[] | null; fetchedAt: number } | null = null;
+  // Events seen before the milestones arrived, checked once they do.
+  let unchecked: { name: string; props: Props }[] = [];
   let installId = '';
   let sessionId = uuid();
   let backgroundedAt = 0;
@@ -354,8 +381,73 @@ export function createHush(platform: HushPlatform) {
     persistSoon();
     if (queue.length >= BATCH) void flush();
     else flushSoon();
+    if (attribution) reached(name, event.props);
     return event;
   }
+
+  // --- Apple's ad attribution (conversion values)
+
+  const ATTRIBUTION_DAYS = 35;
+  const CONFIG_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+  async function setConversion(value: ConversionValue): Promise<void> {
+    if (!attribution || !conversion || value.fine <= conversion.value) return;
+    // Raised before the native call returns, so two milestones in a row
+    // compare against the second's value, not the first's; put back if the
+    // call fails.
+    const before = conversion.value;
+    conversion.value = value.fine;
+    try {
+      await attribution.update(value);
+      void storage.setItem(ATTRIBUTION_KEY, JSON.stringify(conversion)).catch(() => {});
+      log('debug', `conversion value ${value.fine} (${value.coarse}${value.lock ? ', locked' : ''})`);
+    } catch (err) {
+      if (conversion.value === value.fine) conversion.value = before;
+      log('error', 'conversion value not set', err);
+    }
+  }
+
+  /** An event against the milestones: the highest one it reaches, if higher than what is set. */
+  function reached(name: string, props: Props): void {
+    if (optedOut) return;
+    if (!conversion?.milestones) {
+      if (unchecked.length < 50) unchecked.push({ name, props });
+      return;
+    }
+    if (Date.now() - Date.parse(conversion.since) > ATTRIBUTION_DAYS * 86400000) return;
+    let best: Milestone | null = null;
+    for (const m of conversion.milestones) {
+      if (m.event !== name || m.value <= conversion.value) continue;
+      if (m.where && !Object.entries(m.where).every(([k, v]) => props[k] !== undefined && String(props[k]) === v)) continue;
+      if (!best || m.value > best.value) best = m;
+    }
+    if (best) void setConversion({ fine: best.value, coarse: best.coarse, lock: best.lock });
+  }
+
+  /** At start: register the install with Apple (value 0) once, then fetch the milestones (cached for 12 hours). */
+  async function startAttribution(): Promise<void> {
+    if (!attribution || optedOut) return;
+    try {
+      const saved = await storage.getItem(ATTRIBUTION_KEY);
+      conversion = saved ? JSON.parse(saved) : { value: -1, since: new Date().toISOString(), milestones: null, fetchedAt: 0 };
+      if (conversion!.value < 0) await setConversion({ fine: 0, coarse: 'low', lock: false });
+      if (!conversion!.milestones || Date.now() - conversion!.fetchedAt > CONFIG_MAX_AGE_MS) {
+        const res = await doFetch(`${TELEMETRY_URL}/v1/config`, { headers: { Authorization: `Key ${TELEMETRY_KEY}` } }).catch(() => null);
+        if (res?.ok) {
+          const body = (await res.json()) as { conversion_values?: Milestone[] };
+          conversion!.milestones = Array.isArray(body.conversion_values) ? body.conversion_values : [];
+          conversion!.fetchedAt = Date.now();
+          void storage.setItem(ATTRIBUTION_KEY, JSON.stringify(conversion)).catch(() => {});
+        }
+      }
+      const pending = unchecked;
+      unchecked = [];
+      for (const e of pending) reached(e.name, e.props);
+    } catch (err) {
+      log('error', 'attribution did not start', err);
+    }
+  }
+
 
   /** Puts the held session_started into the queue with whatever entry it has. */
   function commitSession() {
@@ -496,6 +588,7 @@ export function createHush(platform: HushPlatform) {
         await storage.setItem(FIRST_KEY, new Date().toISOString());
       }
       startSession();
+      void startAttribution();
 
       platform.onAppState(onAppState);
       flushTimer ??= setInterval(() => {

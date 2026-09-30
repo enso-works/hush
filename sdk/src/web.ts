@@ -112,4 +112,4 @@ export function createWebHush(app: WebApp = {}) {
 }
 
 export { SDK_VERSION } from './core.ts';
-export type { DeviceInfo, Entry, FlushResult, Hush, HushConfig, Props, Ticket, TicketKind } from './core.ts';
+export type { AttributionBridge, ConversionValue, DeviceInfo, Entry, FlushResult, Hush, HushConfig, Props, Ticket, TicketKind } from './core.ts';

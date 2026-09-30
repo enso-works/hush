@@ -11,6 +11,9 @@ register('./sdk/hooks.mjs', import.meta.url);
 const h = (globalThis.__hush ??= { storage: new Map(), listeners: [] });
 let sent;
 let launches = 0;
+let configFetches = 0;
+// The catalog's conversion values, as /v1/config serves them.
+let milestones = [];
 let status = 200;
 
 beforeEach(() => {
@@ -22,6 +25,10 @@ beforeEach(() => {
   mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: Date.parse('2026-09-30T10:00:00Z') });
   globalThis.fetch = async (url, init) => {
     const body = init?.body ? JSON.parse(init.body) : null;
+    if (new URL(url).pathname === '/v1/config') {
+      configFetches++;
+      return { ok: true, status: 200, json: async () => ({ conversion_values: milestones }) };
+    }
     sent.push({ path: new URL(url).pathname, body });
     const n = body?.events?.length ?? 0;
     return { ok: status < 300, status, json: async () => ({ ok: true, accepted: n, duplicate: 0, rejected: 0 }) };
@@ -122,9 +129,9 @@ test('sessions are numbered and report the previous one\'s time in the foregroun
 
 test('a link entry keeps its campaign tags and nothing else from the URL', async () => {
   const sdk = await launch();
-  sdk.entry('link', { url: 'myapp://open/item/42?utm_source=newsletter&utm_campaign=autumn%20update&token=secret&ref=site#x' });
+  sdk.entry('link', { url: 'myapp://open/item/42?utm_source=meta&utm_campaign=autumn%20update&utm_term=broad&token=secret&fbclid=x&ref=site#x' });
   await sdk.flushNow();
-  assert.deepEqual(named('session_started')[0].props, { entry: 'link', n: 1, utm_source: 'newsletter', utm_campaign: 'autumn update', ref: 'site' });
+  assert.deepEqual(named('session_started')[0].props, { entry: 'link', n: 1, utm_source: 'meta', utm_campaign: 'autumn update', utm_term: 'broad', ref: 'site' });
 });
 
 test('opting out is remembered: nothing queued or sent until opting back in', async () => {
@@ -288,4 +295,57 @@ test('the web entry: localStorage, the page hiding as leaving, the device from t
     delete globalThis.localStorage;
     delete globalThis.document;
   }
+});
+
+test("Apple's conversion value: registered at 0 once, raised as the catalog's milestones happen, never lowered", async () => {
+  milestones = [
+    { value: 1, coarse: 'low', event: 'onboarding_completed', where: null, lock: false },
+    { value: 20, coarse: 'medium', event: 'purchase_result', where: { result: 'purchased' }, lock: false },
+    { value: 63, coarse: 'high', event: 'purchase_result', where: { result: 'purchased', product: 'lifetime' }, lock: true },
+  ];
+  configFetches = 0;
+  const updates = [];
+  const attribution = { update: async (v) => void updates.push(v) };
+  let sdk = await launch({ attribution });
+  assert.deepEqual(updates, [{ fine: 0, coarse: 'low', lock: false }], 'the install registers');
+  sdk.track('onboarding_completed');
+  sdk.track('purchase_result', { result: 'cancelled' });
+  sdk.track('purchase_result', { result: 'purchased', product: 'lifetime' });
+  sdk.track('onboarding_completed'); // lower than what is set: ignored
+  await settle();
+  assert.deepEqual(updates.map((u) => u.fine), [0, 1, 63]);
+  assert.deepEqual(updates.at(-1), { fine: 63, coarse: 'high', lock: true });
+
+  // The next launch neither registers again nor fetches the milestones again (cached for 12 hours).
+  sdk = await launch({ attribution });
+  assert.equal(updates.length, 3);
+  assert.equal(configFetches, 1);
+
+  // After Apple's 35 days, nothing is set.
+  const late = [];
+  h.storage.clear();
+  sdk = await launch({ attribution: { update: async (v) => void late.push(v) } });
+  mock.timers.tick(36 * 86400000);
+  sdk.track('onboarding_completed');
+  await settle();
+  assert.deepEqual(late.map((u) => u.fine), [0]);
+});
+
+test('an opted-out user sets no conversion value; events before the milestones arrive still count', async () => {
+  milestones = [{ value: 5, coarse: 'low', event: 'tutorial_done', where: null, lock: false }];
+  const updates = [];
+  const sdk = await import(`../sdk/src/index.ts?launch=${++launches}`);
+  sdk.configure({ url: 'https://hush.test', key: 'hush_app_prod_x', attribution: { update: (v) => void updates.push(v) } });
+  sdk.track('tutorial_done'); // before init: checked once the milestones are in
+  await sdk.init();
+  await settle();
+  assert.deepEqual(updates.map((u) => u.fine), [0, 5]);
+
+  h.storage.clear();
+  const quiet = [];
+  const next = await launch({ attribution: { update: (v) => void quiet.push(v) } });
+  next.optOut();
+  next.track('tutorial_done');
+  await settle();
+  assert.deepEqual(quiet.map((u) => u.fine), [0], 'registered before the choice, nothing after');
 });
