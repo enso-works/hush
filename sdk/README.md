@@ -1,37 +1,82 @@
 # @bavrk/hush (Expo, React Native, web)
 
+Server, dashboard and docs: [github.com/enso-works/hush](https://github.com/enso-works/hush)
+· [hush.bavrk.com/docs](https://hush.bavrk.com/docs). Native iOS companion:
+[`@bavrk/hush-expo`](https://www.npmjs.com/package/@bavrk/hush-expo).
+
 The SDK for [hush](https://hush.bavrk.com): in-app feedback and anonymous
 usage tracking, sent to your own hush server. It queues events on the device,
 sends them in small batches, and survives being offline, killed or
-backgrounded. It never throws into your app and never blocks a render: if the
-server is down or the key is missing, the app behaves exactly as without it.
+backgrounded. It never throws into your app (given a string `url`, and props
+as an object or left out) and never blocks a render: if the server is down or the key is missing, the app behaves
+exactly as without it.
+
+Expo:
 
 ```sh
 npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
 ```
 
-Plain JavaScript: it works in Expo Go and needs no native build. The peer
-dependencies are marked optional so that `@bavrk/hush/core` (below) installs
-without React Native; a React Native app needs all four.
+Plain JavaScript: in Expo it works in Expo Go and needs no native build. The
+peer dependencies are marked optional so that `@bavrk/hush/core` (below)
+installs without React Native; a React Native app needs all four.
 
-Moving from the copied one-file SDK: keep your install ids by passing the
-`storagePrefix` the copy used (e.g. `'bavrk.telemetry'`).
+Bare React Native (0.73+): the default entry reads the version, device and
+locale through Expo modules, so add them, then rebuild the native app.
+
+```sh
+npx install-expo-modules@latest
+npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
+npx pod-install
+```
+
+The version and build come from the Expo app config (`expo.version`,
+`expo.ios.buildNumber`, `expo.android.versionCode` in app.json), not the
+native project; keep them in step.
+
+Web, PWA or Capacitor: `npm install @bavrk/hush` and import
+`@bavrk/hush/web` ([below](#the-web-and-web-apps-shipped-as-native-ones)); no
+peers. Never import the default entry outside React Native. TypeScript needs
+`moduleResolution` set to `bundler`, `node16` or `nodenext` to see
+`@bavrk/hush/web` and `@bavrk/hush/core`.
+
+Upgrading an app that used the SDK copied into its source before this
+package existed: pass the `storagePrefix` that copy used (bavrk apps:
+`'bavrk.telemetry'`) to keep every install id.
 
 ## Setup
 
 ```ts
-import * as hush from '@/lib/hush';
+import * as hush from '@bavrk/hush';
 
 hush.configure({
   url: 'https://hush.example.com',
   // A write key ships inside the app bundle: it identifies the app, it is
-  // not a secret. Mint one per app and environment with keys:create.
-  key: __DEV__ ? '' : 'hush_myapp_prod_…',
+  // not a secret. Mint one per app and environment with keys:create. Release
+  // builds carry the prod key in code: an env var read at build time can
+  // pick up a local .env and ship the dev key.
+  key: __DEV__ ? (process.env.EXPO_PUBLIC_HUSH_KEY ?? '') : 'hush_myapp_prod_…',
 });
-hush.init(); // once, early; safe to call again, never throws
+hush.init(); // right after configure; safe to call again, never throws
 ```
 
 With an empty key the SDK stays off entirely: no storage, no requests.
+
+Four rules about timing and input in SDK 2.2:
+
+- Call `configure()` and then `init()` together, at startup, before any
+  `track()`, `screen()` or `entry()`. An event tracked more than about a
+  second before `init()` resolves overwrites the queue the last launch
+  saved, and its unsent events are lost.
+- Call `entry()` after `init()` has resolved and within 2.5 seconds:
+  `await hush.init(); hush.entry('link', { url })`. Called before `init()`
+  has resolved (in the same tick, say) or after those 2.5 seconds, it does
+  nothing and the link's tags are lost.
+- Call `identify({ pro })` as early as you know the answer, on every launch.
+  Until it runs, batches say `pro: false`.
+- Pass `url` as a string. `configure()` throws on `undefined`, so give an env
+  variable a fallback: `process.env.EXPO_PUBLIC_HUSH_URL ?? 'https://…'`.
+  Pass props as an object or leave them out: `track()` throws on `null`.
 
 ## Events
 
@@ -43,6 +88,10 @@ hush.entry('widget');                                 // how this session began
 hush.entry('link', { url });                          // a link: keeps its utm_* and ref tags, never the URL
 await hush.flushNow();                                // e.g. before a purchase sheet
 ```
+
+`entry()` claims the session that just started, under the timing rule
+above: pass the URL from `Linking.getInitialURL()`, or `'notification'` for
+the notification response that opened the app.
 
 ### Global props
 
@@ -66,9 +115,12 @@ hush.track('tip_seen', { tip: 'streaks' }, { once: 'streaks' }); // once per key
 For milestones a code path might fire twice. The SDK remembers what it sent
 (the last 200 keys), across launches.
 
-- Names are `snake_case`, props are one flat level of strings, numbers,
-  booleans or null (at most 40 keys, 2 KB). Anything else is dropped by the
-  server rather than stored.
+- Event names match `^[a-z][a-z0-9_]{1,63}$` (snake_case, 2-64
+  characters). Props are one flat level:
+  at most 40 keys (global props included), each key `^[a-z][a-z0-9_]{0,39}$`,
+  each value a string of up to 200 characters, a finite number, a boolean or
+  null, and 2 KB in all. An event that breaks any of these is rejected whole
+  by the server; `onFlush` reports it in `rejected`.
 - `app_first_opened` and `session_started` are sent for you. A session ends
   after 30 minutes in the background. `session_started` carries `entry`, `n`
   (this install's session number) and `prev_fg_s` (the previous session's
@@ -76,8 +128,12 @@ For milestones a code path might fire twice. The SDK remembers what it sent
   explicit "session ended" dies with the process when iOS kills an app).
 - An invalid event name is dropped on the device (the server would drop it
   anyway); with `logLevel: 'error'` the SDK says so in the console.
-- `identify({ pro })` is tri-state on the server: a batch that does not know
-  yet never downgrades a paid install; only an explicit `false` does.
+- `identify({ pro })`: the server keeps a paid install paid when a batch
+  carries no flag, but this SDK sends `pro: false` until `identify` runs, so
+  call it as early as possible on every launch (as soon as RevenueCat's
+  cached customerInfo is there).
+- `rcId`: `originalAppUserId` is anonymous only while the app never calls
+  `Purchases.logIn()` with its own user ids. If it does, leave `rcId` out.
 - Events are sent after a few seconds, every 30 s, in batches of 20, and on
   backgrounding. The queue keeps 500 events for up to 7 days.
 
@@ -108,7 +164,10 @@ hush.pause(); hush.resume();               // hold sends (not events), e.g. on a
 
 `onFlush` gets `{ status, accepted, duplicate, rejected, willRetry }` after
 every send. The dashboard's Installs page shows one install's latest events
-as they arrive.
+as they arrive. `installationId()` is the id synchronously (`''` before
+init); `telemetryAvailable()` says whether the SDK is on; `setEnabled(false)`
+turns it off for this launch (dev and tests); `flushNow()` sends one batch
+of up to 20.
 
 ## Support tickets
 
@@ -122,19 +181,23 @@ await hush.replyToTicket(ticket.id, 'Thanks!'); // error 'closed' once closed
 
 `kind` is `issue`, `feature` or `love`. A user can send five a day. Replies
 you send from the dashboard show up in `listTickets()`, flagged `unread`
-once.
+once. `listTickets()` marks every reply read as it fetches, so for an unread
+badge at launch keep your own seen list. A sent ticket and reply are tracked
+as `ticket_opened { kind }` and `ticket_replied`; add `ticket_replied` to
+your catalog.
 
 ## Options
 
 | | |
 |---|---|
-| `url` | the hush server, no trailing slash |
+| `url` | the hush server; must be a string (`configure` throws on undefined, so give env vars a fallback) |
 | `key` | a write key; empty turns the SDK off |
-| `storagePrefix` | AsyncStorage key prefix, default `hush`. Changing it gives every install a new id: an app moving from a copied SDK passes the prefix it used before. |
+| `storagePrefix` | Storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id: an app moving from a copied SDK passes the prefix it used before. It also forgets the user's opt-out, once-events, session count and the ad-attribution state. |
 | `runInBackground` | wraps the flush that runs when the app goes to the background, e.g. in a native background task, so the request is not cut off by suspension |
 | `channel` | where this build came from: `app_store`, `testflight`, `play`, `internal`... (snake_case, 24 chars). The dashboard filters by it, so TestFlight and dev-client builds on a prod key stop counting as store users. Pass it per EAS build profile, e.g. `process.env.EXPO_PUBLIC_HUSH_CHANNEL`. Default `dev` in `__DEV__` builds, otherwise not sent. |
 | `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name), `debug` (every send) |
 | `onFlush` | called after every send with its result |
+| `attribution` | a bridge `{ update({ fine, coarse, lock }) }` that sets Apple's conversion value, e.g. `hushExpo.attribution` from `@bavrk/hush-expo`; see [Ad attribution](#ad-attribution-ios) below |
 
 ## The web, and web apps shipped as native ones
 
@@ -145,16 +208,24 @@ model come from the user agent, coarsely. A page has no version of its own,
 so pass it; nothing else to install.
 
 ```ts
+import { Capacitor } from '@capacitor/core'; // Capacitor only
 import { createWebHush } from '@bavrk/hush/web';
 
 export const hush = createWebHush({
   version: import.meta.env.VITE_APP_VERSION,
   build: import.meta.env.VITE_APP_BUILD,
-  platform: Capacitor.isNativePlatform() ? 'ios' : 'web', // optional; read from the user agent otherwise
+  platform: Capacitor.getPlatform(), // Capacitor only: 'ios' | 'android' | 'web'; leave out to read the user agent
   dev: import.meta.env.DEV,
 });
-hush.configure({ url: 'https://hush.example.com', key: 'hush_mygame_prod_…', channel: 'testflight' });
-hush.init();
+hush.configure({
+  url: 'https://hush.example.com',
+  key: import.meta.env.DEV ? (import.meta.env.VITE_HUSH_KEY ?? '') : 'hush_mygame_prod_…',
+  channel: import.meta.env.VITE_HUSH_CHANNEL,
+});
+hush.init().then(() => {
+  // After init, within 2.5 s. Only a tagged link, so direct visits keep their entry.
+  if (/[?&](utm_|ref=)/i.test(location.search)) hush.entry('link', { url: location.href });
+});
 ```
 
 The hush server answers CORS on `/v1` for any origin (including Capacitor's
@@ -191,7 +262,12 @@ Transparency prompt is needed, and nothing is set for an opted-out user.
 ```ts
 import * as hushExpo from '@bavrk/hush-expo'; // SKAdNetwork, AdAttributionKit, TestFlight detection
 
-hush.configure({ url, key, attribution: hushExpo.attribution, channel: hushExpo.channel() });
+hush.configure({
+  url,
+  key,
+  attribution: hushExpo.attribution,
+  channel: hushExpo.channel() ?? process.env.EXPO_PUBLIC_HUSH_CHANNEL, // Android and internal builds from the EAS profile
+});
 ```
 
 Link tags (`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`,
@@ -215,4 +291,5 @@ nothing to declare for App Tracking Transparency, and it suits apps for
 children as well. From a link it keeps only the campaign tags, never the URL.
 
 SDK 2 talks to any hush server; an older server ignores the fields it does
-not know (`channel`, `sdk`), and `forget()` needs a server with `/v1/forget`. See the privacy model in the main README.
+not know (`channel`, `sdk`), and `forget()` needs a server with `/v1/forget`. See the privacy model in the
+[main README](https://github.com/enso-works/hush#what-is-collected).

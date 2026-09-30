@@ -1,7 +1,14 @@
 # hush
 
-In-app feedback and anonymous usage tracking for mobile apps. One small
-container, Postgres, a one-file SDK and a dashboard.
+[![npm: @bavrk/hush](https://img.shields.io/npm/v/@bavrk/hush?label=%40bavrk%2Fhush)](https://www.npmjs.com/package/@bavrk/hush)
+[![npm: @bavrk/hush-expo](https://img.shields.io/npm/v/@bavrk/hush-expo?label=%40bavrk%2Fhush-expo)](https://www.npmjs.com/package/@bavrk/hush-expo)
+[![test](https://github.com/enso-works/hush/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/enso-works/hush/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+In-app feedback and anonymous usage tracking for mobile and web apps: one small
+Node container, Postgres, a dashboard, and an SDK on npm (`@bavrk/hush`) for
+Expo, React Native, the web and Capacitor, with an optional native iOS
+companion (`@bavrk/hush-expo`).
 
 Built for our own apps ([bavrk](https://bavrk.com): Braele and friends), where
 it runs in production. It is public so you can read it, fork it or run it
@@ -11,15 +18,83 @@ and this page say. MIT.
 - **Feedback**: users write from inside the app (a problem, an idea, or kind
   words). You answer on the dashboard, and by email if they left an address;
   they read your reply in the app and can answer back.
-- **Anonymous tracking**: installs, sessions, screens, a paywall funnel,
-  retention, versions, and your own events with props. No account, no
-  advertising id, no IP address, so nothing to ask consent for.
+- **Anonymous tracking**: installs, numbered sessions and their time in the
+  app, screens, a paywall funnel, retention, versions, build channels (so
+  TestFlight stays out of the store numbers), and your own events with props,
+  broken down by any prop. No account, no advertising id, no IP address, so
+  nothing to ask consent for.
 - **Revenue** (optional): RevenueCat's own figures next to your usage.
 
 Site and docs: [hush.bavrk.com](https://hush.bavrk.com). See the dashboard on
 invented data: [live demo](https://hush.bavrk.com/demo/dashboard/).
 
-## Run it
+## Packages
+
+| Package | What it is for |
+|---|---|
+| [`@bavrk/hush`](https://www.npmjs.com/package/@bavrk/hush) | The SDK. `@bavrk/hush` for Expo and React Native, `@bavrk/hush/web` for web pages, PWAs and Capacitor, `@bavrk/hush/core` for any other JavaScript runtime. [Guide](sdk/README.md) |
+| [`@bavrk/hush-expo`](https://www.npmjs.com/package/@bavrk/hush-expo) | Optional, iOS, Expo development builds: Apple ad attribution, the TestFlight or App Store channel, background time for the last send. A no-op on Android, the web and in Expo Go. [Guide](expo/README.md) |
+| server (this repo, not on npm) | One Node 22 container with the dashboard, plus Postgres. [Run it](#run-the-server) with `docker compose` from `examples/`. |
+
+## Install the SDK
+
+```sh
+# Expo (works in Expo Go, no native build)
+npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
+
+# Bare React Native (0.73+): the SDK reads version, device and locale through Expo modules
+npx install-expo-modules@latest
+npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
+npx pod-install                       # then rebuild the app
+
+# Web, PWA or Capacitor: no peers; import createWebHush from '@bavrk/hush/web'
+npm install @bavrk/hush
+
+# Optional, iOS: ad attribution and the TestFlight channel; needs a development build
+npx expo install @bavrk/hush-expo
+```
+
+`@bavrk/hush-expo` needs an iOS deployment target of 16.4: the default on Expo
+SDK 56, set with `expo-build-properties` on 52-55 ([guide](expo/README.md)).
+In bare React Native it needs Expo SDK 52 or later (React Native 0.76+): set
+`platform :ios, '16.4'` in the Podfile, and write its two Info.plist keys by
+hand.
+
+Then, once, as the app starts:
+
+```ts
+import * as hush from '@bavrk/hush';
+
+hush.configure({
+  url: 'https://hush.example.com',
+  key: __DEV__ ? (process.env.EXPO_PUBLIC_HUSH_KEY ?? '') : 'hush_myapp_prod_…', // release builds: the prod key in code
+  channel: process.env.EXPO_PUBLIC_HUSH_CHANNEL, // per EAS profile: app_store, play, internal; `dev` in __DEV__
+});
+hush.init();                   // right after configure, before any track()
+hush.identify({ pro: isPro }); // isPro: your paid state, as early as you know it
+```
+
+Elsewhere in the app:
+
+```ts
+hush.track('onboarding_completed', {}, { once: true }); // when onboarding ends; at most once per install
+
+async function onSendFeedback(message: string) {
+  const r = await hush.createTicket({ kind: 'issue', message });
+  // r.ok, or r.error: 'offline' | 'too_many' | 'failed' | 'unavailable'
+}
+```
+
+One production build goes to TestFlight and then to the App Store, so an EAS
+profile cannot tell those two apart. On iOS,
+`hushExpo.channel() ?? process.env.EXPO_PUBLIC_HUSH_CHANNEL` from
+`@bavrk/hush-expo` does, and keeps TestFlight out of the store numbers.
+
+Call `entry()` only after `init()` has resolved, within 2.5 s. The
+[SDK guide](sdk/README.md) has the rest: screens, link tags, opt-out and
+`forget()`, the naming limits and the web entry.
+
+## Run the server
 
 ```bash
 git clone https://github.com/enso-works/hush && cd hush/examples
@@ -28,51 +103,44 @@ docker compose up -d            # http://localhost:3000
 
 docker compose exec hush node src/cli.mjs apps:add myapp "My App"
 docker compose exec hush node src/cli.mjs keys:create myapp prod   # prints the write key once
+docker compose exec hush node src/cli.mjs keys:create myapp dev
 ```
 
 Dashboard: `http://localhost:3000/dashboard/`, signed in with `ADMIN_TOKEN`.
 
-In the app ([SDK guide](sdk/README.md)):
-
-```sh
-npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
-```
-
-```ts
-import * as hush from '@bavrk/hush';
-
-hush.configure({ url: 'https://hush.example.com', key: 'hush_myapp_prod_…', channel: 'app_store' });
-hush.init();
-hush.setGlobalProps({ paywall_variant: 'b' });                   // on every event
-hush.screen('Home');
-hush.track('workout_completed', { minutes: 20, completed: true });
-hush.track('onboarding_completed', {}, { once: true });          // once per install
-await hush.createTicket({ kind: 'issue', message: 'The timer stops on lock' });
-hush.optOut();                                                  // the user's choice, remembered
-await hush.forget();                                            // "delete my data"
-```
-
-On the web, a PWA or a Capacitor app: `npm install @bavrk/hush`, then
-`createWebHush({ version })` from `@bavrk/hush/web` gives the same API.
-
-Sessions are numbered and report their time in the app, links keep their
-campaign tags (never the URL), and the build channel keeps TestFlight out of
-the store numbers. The dashboard shows all of it, plus any event broken down
-by any prop, and one install's events live.
-
 Before pointing real apps at it: put it behind a TLS proxy, expose only
-`/v1/*` and `/healthz` publicly, keep `/dashboard/` and `/admin/*` behind a VPN
-or an access proxy (the token is the second lock, not the only one), and back
-up Postgres; it is the only state. A proxy on a private network may also sign
-the dashboard in for its users, by adding `Authorization: Bearer <ADMIN_TOKEN>`
-or `ADMIN_PROXY_HEADER: <ADMIN_PROXY_SECRET>` to `/admin/*`: the dashboard
-then opens without a sign-in, and admin writes stay safe because the server
+`/v1/*`, `/healthz` and, for ad attribution, the two
+`/.well-known/.../report-attribution/` paths (below) publicly, keep
+`/dashboard/` and `/admin/*` behind a VPN or an access proxy (the token is
+the second lock, not the only one), and back up Postgres; it is the only
+state. A proxy on a private network may also sign the dashboard in for its
+users, by adding `Authorization: Bearer <ADMIN_TOKEN>` or
+`ADMIN_PROXY_HEADER: <ADMIN_PROXY_SECRET>` to `/admin/*`: the dashboard then
+opens without a sign-in, and admin writes stay safe because the server
 accepts only same-origin JSON for them.
+
+## With an AI coding agent
+
+The [hush plugin](plugins/hush/) for Claude Code:
+
+```
+/plugin marketplace add enso-works/hush
+/plugin install hush@hush
+```
+
+`hush:installer` wires hush into an app (`/hush:install` starts it),
+`hush:tracking-planner` designs its events, funnels and catalog, and the
+`hush` skill answers usage questions. For Cursor, Codex and other agents,
+`npx skills add enso-works/hush` installs the skill.
 
 ## What is collected
 
 - **An install id**: a random UUID the app creates on first launch. Deleting
-  the app deletes it. It is the only identifier.
+  the app deletes it. It is the only identifier hush creates.
+- **A paid flag**, `false` until the app calls `identify({ pro })`.
+- **RevenueCat's customer id**, only if the app calls `identify({ rcId })`:
+  pass RevenueCat's anonymous id, not your own account ids. Every batch also
+  carries the build channel and the SDK version.
 - **The app version and build, OS, device model, the phone's language**, and
   the events and props your app sends. Keep props to what the app did, not
   who did it.
@@ -98,7 +166,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | Variable | |
 |---|---|
 | `DATABASE_URL` | Postgres. Migrations run at every boot, before listening. |
-| `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `openssl rand -hex 32`. |
+| `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `openssl rand -hex 32`. The old name `TELEMETRY_ADMIN_TOKEN` still works. |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16+ characters), accepted on `/admin/*` instead of the token. Only when the proxy overwrites that header. |
 | `APPS` | Register apps at boot: `myapp=My App,other=Other`. |
 | `CATALOG_FILE` | Each app's known events, highlight metric and funnels, as JSON (below). |
@@ -107,9 +175,16 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `RESEND_API_KEY`, `MAIL_FROM` | Email through [Resend](https://resend.com): feedback alerts, and your replies to users who left an address. |
 | `ALERT_EMAIL`, `REPLY_HINT` | Where new feedback is announced (at most 30 an hour), and a last line saying where to answer. |
 | `RETENTION_DAYS` | Default 180. |
-| `RC_API_KEY`, `RC_PROJECTS`, `RC_CURRENCY` | RevenueCat v2 secret key with read-only scopes; see `src/revenuecat.mjs`. |
-| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` (or `_FILE`) | An App Store Connect API key, for campaign reports (below). The Admin role once, to create each app's report request; Sales and Reports after. |
+| `RC_API_KEY`, `RC_PROJECTS`, `RC_CURRENCY` | RevenueCat v2 secret key with read-only scopes; see `src/revenuecat.mjs`. `RC_STALE_MINUTES` (10), `RC_FLOOR_SECONDS` (60) and `RC_RATE_PER_MINUTE` (20) pace its refreshes. |
+| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` (or `_FILE`) | An App Store Connect API key, for campaign reports (below). The Admin role once, to create each app's report request; Sales and Reports after. `ASC_API_BASE` changes Apple's address, for tests. |
+| `DEMO` | `1`: a public read-only showcase with invented data. It wipes its database daily, so give it one of its own; it refuses a database with write keys. |
 | `PORT`, `MAIL_DRY_RUN` | `3000`; `1` logs mail instead of sending it. |
+
+`examples/docker-compose.yml` passes the rest of these through, except `PORT`
+(the container listens on 3000; `HUSH_PORT` picks the host port) and
+`DATABASE_URL`, which it builds from `POSTGRES_PASSWORD` for its own
+Postgres. `CATALOG_FILE` is a host path it mounts. It wants `ADMIN_TOKEN`
+under that name, not the old one.
 
 The catalog names the events you expect (anything else is still stored,
 flagged as unknown on the dashboard), one highlight (the event counted per
@@ -119,8 +194,11 @@ shows. A funnel is ordered: each step must follow the one before, within
 Without funnels an app gets a paywall one; any funnel can also be built on
 the dashboard without touching the catalog. `breakdowns` pin charts to the
 app's page: one event split by one prop, counted per event or, for an answer
-that can change later, once per install. `app_store_id` and `conversion_values` are for
-where installs come from (below).
+that can change later, once per install. `app_store_id` and
+`conversion_values` are for where installs come from (below); postbacks are
+matched to an app by `app_store_id` alone, so attribution needs it. The
+catalog is read once at boot and a mistake in it stops the boot, naming the
+path: restart after editing it. Leave out `funnels` rather than writing `[]`.
 
 ```json
 {
@@ -151,13 +229,11 @@ where installs come from (below).
 Three ways, all counted in aggregate: nothing here fingerprints anyone,
 reads an advertising id, or needs an App Tracking Transparency prompt.
 
-- **Link tags.** A link with `utm_*` tags (an ad's URL parameters, a
-  newsletter) passed to `entry('link', { url })` tags the session. The
-  dashboard's Campaigns panel counts each install once, for its first tagged
-  session, split by source, campaign, ad set (`utm_term`) or ad
-  (`utm_content`), and follows it through any funnel. On the web that is the
-  whole path from the ad; on iOS a link only opens an app already installed.
-  For a Meta ad: `utm_source=meta&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}`.
+- **Link tags.** A link with `utm_*` tags passed to `entry('link', { url })`
+  tags the session. The Campaigns panel counts each install once, for its
+  first tagged session, split by source, campaign, ad set (`utm_term`) or ad
+  (`utm_content`), through any funnel. On iOS a link only opens an app
+  already installed. For a Meta ad: `utm_source=meta&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}`.
 - **App Store campaigns.** App Store Connect counts views, first downloads,
   sessions and proceeds per campaign link (`apps.apple.com/app/id…?pt=…&ct=…`).
   With `ASC_*` set and the app's `app_store_id` in the catalog, hush imports
@@ -165,15 +241,13 @@ reads an advertising id, or needs an App Tracking Transparency prompt.
   `asc:sync` by hand). Apple hides anything under five users and adds noise.
 - **Ad attribution (SKAdNetwork, AdAttributionKit).** Apple tells the ad
   network which campaign won an install, with a conversion value the app
-  sets. The catalog's `conversion_values` are those milestones; the SDK reads
-  them from `/v1/config` and sets them through `@bavrk/hush-expo`. The app's
-  Info.plist asks iOS to send hush a copy of each postback: serve
+  sets through [`@bavrk/hush-expo`](expo/README.md) as the catalog's
+  `conversion_values` happen. iOS sends hush a copy of each postback: serve
   `/.well-known/skadnetwork/report-attribution/` and
   `/.well-known/appattribution/report-attribution/` on the registrable domain
-  you name there. hush verifies Apple's signature; one that does not verify is
-  kept and never counted, and Apple's test postbacks show only under dev.
-  Enter the same milestone table in the ad network (Meta: Events Manager) so
-  it reads the values the way hush does.
+  the app names. hush verifies Apple's signature and counts only what
+  verifies; test postbacks show under dev. Enter the same milestone table in
+  the ad network (Meta: Events Manager).
 
 ## API
 
@@ -182,9 +256,9 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 | | |
 |---|---|
 | `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. |
-| `POST /v1/tickets` | feedback: `{ install, kind: issue\|feature\|love, message, email?, subject? }` → 201. Five a day per install. |
-| `GET /v1/tickets?install=` | that install's feedback, with replies and `unread` |
-| `POST /v1/tickets/:id/reply` | `{ install, body }` → 201, or 409 once closed |
+| `POST /v1/tickets` | feedback: `{ install, kind: issue\|feature\|love, message, email?, subject?, rc_id?, diag? }` → 201 `{ id, created_at, status }`. Five a day per install; 400 on validation (message 1-4000, subject ≤120, email ≤160). |
+| `GET /v1/tickets?install=` | that install's feedback (last 50), with replies and `unread`; reading marks every reply read |
+| `POST /v1/tickets/:id/reply` | `{ install, body }` → 201, 409 once closed, 429 after 20 replies a day |
 | `POST /v1/forget` | `{ install }` → 200 `{ ok, deleted }`: that install's events, feedback and row, under the calling app |
 | `GET /v1/config` | the app's `conversion_values` from the catalog, for the SDK |
 
@@ -194,15 +268,14 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 no key, Apple's signature is the proof.
 
 The operator side, `Authorization: Bearer <ADMIN_TOKEN>`, is what the
-dashboard reads: `/admin/session` (asked first, to know whether to show
-the sign-in), `/admin/apps`, `/admin/apps/:app` (`?channel=`),
+dashboard reads: `/admin/session` (asked first, to know whether to show the
+sign-in), `/admin/apps`, `/admin/apps/:app` (`?channel=`),
 `/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
 `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
-`/admin/installs/:id` (+ `/forget`),
-`/admin/tickets`, `/admin/tickets/:id` (+ `/reply`, `/status`),
-`/admin/revenue` (`?refresh=1` asks RevenueCat now). Writes must be
-`Content-Type: application/json`. CLI:
-`node src/cli.mjs apps:add | keys:create | keys:list | keys:revoke | rc:* | asc:request | asc:sync | migrate`.
+`/admin/installs/:id` (+ `/forget`), `/admin/tickets`, `/admin/tickets/:id`
+(+ `/reply`, `/status`), `/admin/revenue` (`?refresh=1` asks RevenueCat
+now). Writes must be `Content-Type: application/json`. CLI:
+`node src/cli.mjs apps:list | apps:add <slug> <name> | keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id> | rc:projects | rc:link <app> <project_id> | rc:sync | rc:charts | rc:poll | asc:request <app> | asc:sync [app] | migrate`.
 
 Limits are honest about what this is: rate limits are in memory, per
 process, and reset on restart. One instance is plenty for small apps.
