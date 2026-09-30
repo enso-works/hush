@@ -108,6 +108,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `ALERT_EMAIL`, `REPLY_HINT` | Where new feedback is announced (at most 30 an hour), and a last line saying where to answer. |
 | `RETENTION_DAYS` | Default 180. |
 | `RC_API_KEY`, `RC_PROJECTS`, `RC_CURRENCY` | RevenueCat v2 secret key with read-only scopes; see `src/revenuecat.mjs`. |
+| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` (or `_FILE`) | An App Store Connect API key, for campaign reports (below). The Admin role once, to create each app's report request; Sales and Reports after. |
 | `PORT`, `MAIL_DRY_RUN` | `3000`; `1` logs mail instead of sending it. |
 
 The catalog names the events you expect (anything else is still stored,
@@ -118,7 +119,8 @@ shows. A funnel is ordered: each step must follow the one before, within
 Without funnels an app gets a paywall one; any funnel can also be built on
 the dashboard without touching the catalog. `breakdowns` pin charts to the
 app's page: one event split by one prop, counted per event or, for an answer
-that can change later, once per install.
+that can change later, once per install. `app_store_id` and `conversion_values` are for
+where installs come from (below).
 
 ```json
 {
@@ -133,10 +135,45 @@ that can change later, once per install.
     "breakdowns": [
       { "event": "workout_completed", "prop": "kind", "title": "Workouts by kind" },
       { "event": "onboarding_completed", "prop": "goal", "count": "installs" }
+    ],
+    "app_store_id": "1234567890",
+    "conversion_values": [
+      { "value": 1, "coarse": "low", "event": "onboarding_completed", "label": "Onboarded" },
+      { "value": 8, "coarse": "medium", "event": "workout_completed", "label": "First workout" },
+      { "value": 63, "coarse": "high", "event": "purchase_result", "where": { "result": "purchased" }, "label": "Purchased", "lock": true }
     ]
   }
 }
 ```
+
+## Where installs come from
+
+Three ways, all counted in aggregate: nothing here fingerprints anyone,
+reads an advertising id, or needs an App Tracking Transparency prompt.
+
+- **Link tags.** A link with `utm_*` tags (an ad's URL parameters, a
+  newsletter) passed to `entry('link', { url })` tags the session. The
+  dashboard's Campaigns panel counts each install once, for its first tagged
+  session, split by source, campaign, ad set (`utm_term`) or ad
+  (`utm_content`), and follows it through any funnel. On the web that is the
+  whole path from the ad; on iOS a link only opens an app already installed.
+  For a Meta ad: `utm_source=meta&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}`.
+- **App Store campaigns.** App Store Connect counts views, first downloads,
+  sessions and proceeds per campaign link (`apps.apple.com/app/id…?pt=…&ct=…`).
+  With `ASC_*` set and the app's `app_store_id` in the catalog, hush imports
+  those reports every six hours (`node src/cli.mjs asc:request <app>` once,
+  `asc:sync` by hand). Apple hides anything under five users and adds noise.
+- **Ad attribution (SKAdNetwork, AdAttributionKit).** Apple tells the ad
+  network which campaign won an install, with a conversion value the app
+  sets. The catalog's `conversion_values` are those milestones; the SDK reads
+  them from `/v1/config` and sets them through `@bavrk/hush-expo`. The app's
+  Info.plist asks iOS to send hush a copy of each postback: serve
+  `/.well-known/skadnetwork/report-attribution/` and
+  `/.well-known/appattribution/report-attribution/` on the registrable domain
+  you name there. hush verifies Apple's signature; one that does not verify is
+  kept and never counted, and Apple's test postbacks show only under dev.
+  Enter the same milestone table in the ad network (Meta: Events Manager) so
+  it reads the values the way hush does.
 
 ## API
 
@@ -149,16 +186,23 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 | `GET /v1/tickets?install=` | that install's feedback, with replies and `unread` |
 | `POST /v1/tickets/:id/reply` | `{ install, body }` → 201, or 409 once closed |
 | `POST /v1/forget` | `{ install }` → 200 `{ ok, deleted }`: that install's events, feedback and row, under the calling app |
+| `GET /v1/config` | the app's `conversion_values` from the catalog, for the SDK |
+
+`/v1` answers CORS for any origin, so web and Capacitor apps can send.
+`POST /.well-known/skadnetwork/report-attribution` and
+`/.well-known/appattribution/report-attribution` take Apple's postback copies:
+no key, Apple's signature is the proof.
 
 The operator side, `Authorization: Bearer <ADMIN_TOKEN>`, is what the
 dashboard reads: `/admin/session` (asked first, to know whether to show
 the sign-in), `/admin/apps`, `/admin/apps/:app` (`?channel=`),
 `/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
-`/cohorts`, `/admin/installs/:id` (+ `/forget`),
+`/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
+`/admin/installs/:id` (+ `/forget`),
 `/admin/tickets`, `/admin/tickets/:id` (+ `/reply`, `/status`),
 `/admin/revenue` (`?refresh=1` asks RevenueCat now). Writes must be
 `Content-Type: application/json`. CLI:
-`node src/cli.mjs apps:add | keys:create | keys:list | keys:revoke | rc:* | migrate`.
+`node src/cli.mjs apps:add | keys:create | keys:list | keys:revoke | rc:* | asc:request | asc:sync | migrate`.
 
 Limits are honest about what this is: rate limits are in memory, per
 process, and reset on restart. One instance is plenty for small apps.

@@ -68,3 +68,20 @@ are applied in order, by file name, each in a transaction, at every boot.
 
 The server: plain Node, no framework, one runtime dependency. Comments say
 why, not what.
+
+## The dashboard in a browser
+
+`dashboard/e2e/` drives the built dashboard in Chromium against a DEMO server:
+every page and panel, every switch, and any console error or failed `/admin`
+request fails it. With the test Postgres running:
+
+```sh
+cd dashboard && npx playwright install chromium && npm run e2e
+```
+
+## Releasing @bavrk/hush-expo
+
+Bump `expo/package.json`, commit, then `git tag expo-v<version> && git push
+origin expo-v<version>`; `.github/workflows/publish-expo.yml` publishes it
+with the same `NPM_TOKEN`. Its Swift is only compiled by an app: build one
+(Braele is the reference) for the simulator before tagging.
