@@ -26,6 +26,14 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 - **Braele, app-side, open.** `diagnostic_ping` arrives and is not in the
   catalog: add it, or stop sending it from release builds.
 - **dashboard.** "1 installs". Fixed: counts are singular at one.
+- **tennis game, open.** `listTickets()` marks every reply read on the server
+  as it fetches, so an app cannot check for replies at launch (for a badge)
+  without losing the unread state before anyone looked. Rallo keeps its own
+  unseen set in localStorage. Wanted: a peek, or an explicit `markRead(id)`.
+- **tennis game.** Picking event names meant writing the catalog first, then
+  finding two more while wiring (`practice_finished`, `lesson_skipped`) that
+  showed as unknown until the catalog caught up. The unknown-events warning did
+  its job; a CLI `catalog:check <app>` against a code grep would catch it earlier.
 - **tennis game.** No way to use hush from a web or Capacitor app: the npm
   package was React Native only and /v1 answered no CORS. Fixed:
   `@bavrk/hush/web` (2.1.0) and CORS on /v1.
