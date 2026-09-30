@@ -222,3 +222,32 @@ test('with an empty key the SDK is off: no storage, no requests', async () => {
   assert.equal(h.storage.size, 0);
   assert.deepEqual(await sdk.forget(), { ok: false, error: 'unavailable' });
 });
+
+test('the core runs on any platform: storage, lifecycle and device come from the caller', async () => {
+  const { createHush } = await import(`../sdk/src/core.ts?launch=${++launches}`);
+  const store = new Map();
+  let lifecycle;
+  const hush = createHush({
+    storage: { getItem: async (k) => store.get(k) ?? null, setItem: async (k, v) => void store.set(k, v), removeItem: async (k) => void store.delete(k) },
+    onAppState: (fn) => (lifecycle = fn),
+    device: () => ({ version: '9.9.9', build: '1', platform: 'web', os: 'macOS', device: 'browser', locale: 'de-DE' }),
+    isDev: () => true,
+  });
+  hush.configure({ url: 'https://hush.test', key: 'hush_web_prod_x' });
+  await hush.init();
+  hush.track('page_viewed');
+  lifecycle('background'); // leaving: commits the session and sends
+  await settle();
+  const batch = sent.at(-1).body;
+  assert.equal(batch.context.platform, 'web');
+  assert.equal(batch.context.channel, 'dev', 'isDev() gives the default channel');
+  assert.deepEqual(events().map((e) => e.name).sort(), ['app_first_opened', 'page_viewed', 'session_started']);
+  assert.ok(store.has('hush.install.v1'));
+});
+
+test('SDK_VERSION is the published package version', async () => {
+  const { SDK_VERSION } = await import(`../sdk/src/core.ts?launch=${++launches}`);
+  const { readFile } = await import('node:fs/promises');
+  const pkg = JSON.parse(await readFile(new URL('../sdk/package.json', import.meta.url), 'utf8'));
+  assert.equal(SDK_VERSION, pkg.version);
+});
