@@ -265,6 +265,39 @@
     }
   },
   {
+    "label": "tickets: an older app lists it after a closing reply",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "issue",
+          "subject": null,
+          "message": "Old app",
+          "status": "closed",
+          "created_at": "<time>",
+          "read_at": null,
+          "unread": true,
+          "replies": [
+            {
+              "author": "support",
+              "body": "Fixed.",
+              "at": "<time>"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: an older app replies on it once closed",
+    "status": 409,
+    "body": {
+      "error": "closed"
+    }
+  },
+  {
     "label": "tickets: list by install in the body",
     "status": 200,
     "body": {

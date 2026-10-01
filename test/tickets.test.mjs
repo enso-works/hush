@@ -22,8 +22,20 @@ before(async () => {
 });
 after(async () => {
   await srv?.stop();
+  await inProcess?.db.pool.end();
   await db?.drop();
 });
+
+// The server's periodic unlink sweep, run in this process against this
+// file's database.
+let inProcess;
+async function sweep() {
+  if (!inProcess) {
+    process.env.DATABASE_URL = db.url;
+    inProcess = { tickets: await import('../src/tickets.mjs'), db: await import('../src/db.mjs') };
+  }
+  return inProcess.tickets.unlinkOldClientTickets();
+}
 
 const ticket = (install, extra = {}) => ({
   install,
@@ -316,13 +328,25 @@ describe('a ticket with an email from an app version before SDK 2.3.0', () => {
     assert.deepEqual((await admin(srv.base).get(`/admin/installs/${install}`)).json.tickets.map((x) => String(x.id)), [String(r.json.id)]);
   });
 
-  test('closing it clears the install, by the status or by a reply that closes', async () => {
+  test('closing it keeps the install until that app has fetched the close; the sweep clears it then', async () => {
     const c = client(srv.base, key);
     const install = uuid();
     const a = await c.post('/v1/tickets', ticket(install, { email: 'old@example.com' }));
     const b = await c.post('/v1/tickets', ticket(install, { email: 'old@example.com' }));
     await admin(srv.base).post(`/admin/tickets/${a.json.id}/status`, { status: 'closed' });
     await admin(srv.base).post(`/admin/tickets/${b.json.id}/reply`, { body: 'Fixed in 2.0.2.', close: true });
+    await sweep();
+    assert.equal((await row(a.json.id)).install, install, 'not before the app has seen it closed');
+    assert.equal((await row(b.json.id)).install, install);
+
+    // The app as it was built: the closing reply shows, and a late reply is `closed`, not a 404.
+    const listed = (await c.get(`/v1/tickets?install=${install}`)).json.tickets;
+    assert.deepEqual(listed.map((t) => [String(t.id), t.status]), [[String(b.json.id), 'closed'], [String(a.json.id), 'closed']]);
+    assert.deepEqual(listed[0].replies.map((x) => x.body), ['Fixed in 2.0.2.']);
+    assert.equal(listed[0].unread, true);
+    assert.equal((await c.post(`/v1/tickets/${b.json.id}/reply`, { install, body: 'Thanks!' })).status, 409);
+
+    await sweep();
     assert.equal((await row(a.json.id)).install, null);
     assert.equal((await row(b.json.id)).install, null);
     assert.deepEqual((await c.get(`/v1/tickets?install=${install}`)).json, { tickets: [] });
@@ -330,27 +354,56 @@ describe('a ticket with an email from an app version before SDK 2.3.0', () => {
     assert.equal((await row(a.json.id)).install, null, 'reopening does not link it again');
   });
 
-  test('the sweep clears it 30 days after the last activity on the thread', async () => {
+  test('closed and never fetched again, it keeps the install for 7 days', async () => {
+    const c = client(srv.base, key);
+    const install = uuid();
+    const t = await c.post('/v1/tickets', ticket(install, { email: 'old@example.com' }));
+    await admin(srv.base).post(`/admin/tickets/${t.json.id}/reply`, { body: 'Done.', close: true });
+    await db.query("UPDATE tickets SET updated_at = now() - interval '6 days' WHERE id = $1", [t.json.id]);
+    await sweep();
+    assert.equal((await row(t.json.id)).install, install);
+    await db.query("UPDATE tickets SET updated_at = now() - interval '8 days' WHERE id = $1", [t.json.id]);
+    await sweep();
+    assert.equal((await row(t.json.id)).install, null);
+  });
+
+  test('the sweep clears it 30 days after the last activity, with the install\'s ticket events since it was opened', async () => {
     const c = client(srv.base, key);
     const [idle, active, plain] = [uuid(), uuid(), uuid()];
+    // What an older app sends around a ticket: ticket_opened as it is sent, ticket_replied for a reply.
+    const earlier = event(idle, 'ticket_opened', { props: { kind: 'feature' } });
+    await c.post('/v1/events', batch([earlier, event(idle, 'session_started')]));
     const old = await c.post('/v1/tickets', ticket(idle, { email: 'old@example.com' }));
+    const sibling = await c.post('/v1/tickets', ticket(idle));
+    await c.post('/v1/events', batch([event(idle, 'ticket_opened', { props: { kind: 'issue' } }), event(idle, 'ticket_opened', { props: { kind: 'issue' } })]));
+    await admin(srv.base).post(`/admin/tickets/${old.json.id}/reply`, { body: 'Which build?' });
+    await c.post(`/v1/tickets/${old.json.id}/reply`, { install: idle, body: 'Any news?' });
+    await c.post('/v1/events', batch([event(idle, 'ticket_replied'), event(idle, 'screen_viewed', { props: { screen: 'inbox' } })]));
+    await c.post('/v1/events', batch([event(active, 'ticket_opened', { props: { kind: 'issue' } })]));
+    // The app's inbox read both tickets in one request: the same read_at on each.
+    await c.get(`/v1/tickets?install=${idle}`);
     const recent = await c.post('/v1/tickets', ticket(active, { email: 'old@example.com' }));
     const noEmail = await c.post('/v1/tickets', ticket(plain));
-    await db.query("UPDATE tickets SET created_at = now() - interval '60 days', updated_at = now() - interval '31 days' WHERE id = ANY($1::bigint[])", [[old.json.id, noEmail.json.id]]);
-    await db.query("UPDATE tickets SET created_at = now() - interval '60 days', updated_at = now() - interval '29 days' WHERE id = $1", [recent.json.id]);
+    await db.query("UPDATE tickets SET updated_at = now() - interval '31 days' WHERE id = ANY($1::bigint[])", [[old.json.id, noEmail.json.id]]);
+    await db.query("UPDATE tickets SET updated_at = now() - interval '29 days' WHERE id = $1", [recent.json.id]);
+    // The ticket_opened from before this ticket was opened stays.
+    await db.query("UPDATE events SET received_at = now() - interval '2 days' WHERE id = $1", [earlier.id]);
+    await db.query("UPDATE tickets SET created_at = now() - interval '1 day' WHERE id = $1", [old.json.id]);
 
-    // The function the server's periodic sweep runs, against this database.
-    process.env.DATABASE_URL = db.url;
-    const { unlinkIdleTickets } = await import('../src/tickets.mjs');
-    const { pool } = await import('../src/db.mjs');
-    try {
-      assert.ok((await unlinkIdleTickets()) >= 1);
-    } finally {
-      await pool.end();
-    }
+    assert.ok((await sweep()) >= 1);
     assert.equal((await row(old.json.id)).install, null);
-    assert.equal((await row(recent.json.id)).install, active, 'a reply within 30 days keeps it');
+    assert.equal((await row(recent.json.id)).install, active, 'activity within 30 days keeps it');
     assert.equal((await row(noEmail.json.id)).install, plain, 'a ticket without an email keeps its install');
+
+    const names = async (install) => (await db.query('SELECT name FROM events WHERE install = $1 ORDER BY name', [install])).rows.map((x) => x.name);
+    assert.deepEqual(await names(idle), ['screen_viewed', 'session_started', 'ticket_opened'], 'its ticket events go; the rest stay');
+    assert.deepEqual(await names(active), ['ticket_opened'], 'another install\'s stay');
+
+    const readAts = (await db.query('SELECT id, read_at FROM tickets WHERE id = ANY($1::bigint[])', [[old.json.id, sibling.json.id]])).rows;
+    const at = (id) => readAts.find((x) => String(x.id) === String(id)).read_at?.getTime();
+    const support = (await db.query("SELECT created_at FROM ticket_replies WHERE ticket_id = $1 AND author = 'support'", [old.json.id])).rows[0].created_at;
+    assert.equal(at(old.json.id), support.getTime(), 'read_at is the reply it had seen, no longer the request time');
+    assert.notEqual(at(old.json.id), at(sibling.json.id));
   });
 });
 

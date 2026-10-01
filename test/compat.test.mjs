@@ -87,8 +87,13 @@ test('the /v1 surface answers exactly as shipped apps expect', async () => {
   const OLD = '33333333-3333-4333-8333-333333333333';
   const u = await step('tickets: create with an email, no install', n.post('/v1/tickets', { kind: 'issue', email: 'sam@example.com', message: 'Write back', diag: { version: '2.3.0', pro: false } }));
   await step('tickets: no install and no email', n.post('/v1/tickets', { kind: 'issue', message: 'x' }));
-  await step('tickets: an older app with an email and its install', n.post('/v1/tickets', { install: OLD, kind: 'issue', rc_id: '$RCAnonymousID:x', email: 'old@example.com', message: 'Old app' }));
+  const o = await step('tickets: an older app with an email and its install', n.post('/v1/tickets', { install: OLD, kind: 'issue', rc_id: '$RCAnonymousID:x', email: 'old@example.com', message: 'Old app' }));
   await step('tickets: an older app lists it by install', n.get(`/v1/tickets?install=${OLD}`));
+  // Closing it must not take it out of that app's inbox before it has shown
+  // the closing reply, and a late reply there is a 409, as on any ticket.
+  await admin(srv.base).post(`/admin/tickets/${o.json.id}/reply`, { body: 'Fixed.', close: true });
+  await step('tickets: an older app lists it after a closing reply', n.get(`/v1/tickets?install=${OLD}`));
+  await step('tickets: an older app replies on it once closed', n.post(`/v1/tickets/${o.json.id}/reply`, { install: OLD, body: 'Thanks' }));
   // SDK 2.3.0 lists an install's own tickets with the install in the body.
   const LISTED = '44444444-4444-4444-8444-444444444444';
   await n.post('/v1/tickets', { install: LISTED, kind: 'feature', message: 'Listed by POST' });

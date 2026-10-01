@@ -25,7 +25,7 @@ import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
 import { appStoreCampaigns, ascConfigured, syncAll } from './appstore.mjs';
 import {
   adminDelete, adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, forgetThreads, isThreadKey, KINDS,
-  MAX_PER_DAY, parseTicket, threadKeys, ticketsForInstall, ticketsForThreads, unlinkIdleTickets, userReply,
+  MAX_PER_DAY, parseTicket, threadKeys, ticketsForInstall, ticketsForThreads, unlinkOldClientTickets, userReply,
 } from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
@@ -484,7 +484,8 @@ const server = http.createServer(async (req, res) => {
 
 // Raw events age out; installs and tickets are kept (an install row is a
 // counter, a ticket is a conversation). A ticket with an email that an older
-// app version sent with its install loses the install once idle for 30 days.
+// app version sent with its install loses the install, and that install's
+// ticket events, once it is closed and seen or idle (unlinkOldClientTickets).
 async function sweep() {
   try {
     const { rowCount } = await q('DELETE FROM events WHERE at < now() - make_interval(days => $1)', [cfg.retentionDays]);
@@ -493,8 +494,8 @@ async function sweep() {
     log.warn('retention sweep failed', { err: String(err?.message ?? err) });
   }
   try {
-    const unlinked = await unlinkIdleTickets();
-    if (unlinked) log.info('idle tickets with an email unlinked from their install', { tickets: unlinked });
+    const unlinked = await unlinkOldClientTickets();
+    if (unlinked) log.info('tickets with an email unlinked from their install', { tickets: unlinked });
   } catch (err) {
     log.warn('ticket unlink sweep failed', { err: String(err?.message ?? err) });
   }

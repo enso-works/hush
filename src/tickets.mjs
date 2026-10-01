@@ -9,6 +9,9 @@ export const MAX_PER_DAY = 5;
 // How long a ticket with an email from an app version before SDK 2.3.0 keeps
 // its install id after the last activity on it (see createTicket).
 const UNLINK_AFTER_DAYS = 30;
+// How long such a ticket keeps it once closed, if that app has not fetched it
+// since: long enough for the closing reply to show in its inbox.
+const UNLINK_CLOSED_AFTER_DAYS = 7;
 // The most thread keys one request may name: an inbox page, like the install's.
 export const MAX_THREADS = 50;
 // Replies on one thread in a day. Generous: a conversation, not a form.
@@ -85,9 +88,9 @@ function alertMail(mail) {
  * gets a thread key instead, and the per-day cap is the caller's (server.mjs).
  * Older app versions still send the install and RevenueCat's id with it.
  * RevenueCat's id is dropped here; the install is kept only so their inbox
- * can list the ticket, and cleared when the ticket is closed or idle for
- * UNLINK_AFTER_DAYS. Without an email the install is the only way to answer,
- * and there is no identity on the ticket to link.
+ * can list the ticket, and unlinkOldClientTickets clears it once the ticket is
+ * closed and seen, or idle. Without an email the install is the only way to
+ * answer, and there is no identity on the ticket to link.
  *
  * Count and insert are one transaction behind an advisory lock keyed on the
  * install: without it, five concurrent submissions all read four and all
@@ -243,14 +246,36 @@ export async function forgetThreads(keys, app) {
 
 /**
  * The periodic half of the rule in createTicket: a ticket with an email that
- * an older app version sent with its install loses the install once nobody
- * has touched the thread for UNLINK_AFTER_DAYS. Returns how many.
+ * an older app version sent with its install loses the install once closed
+ * and fetched by that app since (or closed UNLINK_CLOSED_AFTER_DAYS ago), or
+ * once nobody has touched it for UNLINK_AFTER_DAYS. Not at the moment it
+ * closes: that app would never show the closing reply, and a reply from its
+ * thread screen would get a 404 it reads as a failure instead of `closed`.
+ *
+ * Those versions also tracked ticket_opened and ticket_replied with the
+ * install id at the moments the ticket was sent and answered, which would
+ * join it again. So the install's ticket events since the ticket was opened
+ * go with it, in the same statement. read_at goes back to the newest support
+ * reply it had acknowledged: as a request time it equals read_at on the
+ * install's other tickets. Returns how many tickets.
  */
-export async function unlinkIdleTickets() {
+export async function unlinkOldClientTickets() {
   const { rowCount } = await q(
-    `UPDATE tickets SET install = NULL
-     WHERE email IS NOT NULL AND install IS NOT NULL AND updated_at < now() - make_interval(days => $1)`,
-    [UNLINK_AFTER_DAYS],
+    `WITH due AS (
+       SELECT id, app, install, created_at FROM tickets
+        WHERE email IS NOT NULL AND install IS NOT NULL
+          AND (updated_at < now() - make_interval(days => $1)
+               OR (status = 'closed' AND (read_at > updated_at OR updated_at < now() - make_interval(days => $2))))
+        FOR UPDATE
+     ), ticket_events AS (
+       DELETE FROM events e USING due
+        WHERE e.install = due.install AND e.app = due.app
+          AND e.name IN ('ticket_opened', 'ticket_replied')
+          AND e.received_at >= due.created_at - interval '1 minute'
+     )
+     UPDATE tickets t SET install = NULL, read_at = (${NEWEST_SUPPORT_REPLY} AND r.created_at <= t.read_at)
+       FROM due WHERE t.id = due.id`,
+    [UNLINK_AFTER_DAYS, UNLINK_CLOSED_AFTER_DAYS],
   );
   return rowCount;
 }
@@ -260,8 +285,6 @@ export async function unlinkIdleTickets() {
 // for its inbox: nothing on the dashboard joins the two.
 const LINKS = `CASE WHEN t.email IS NULL THEN t.install END AS install,
                CASE WHEN t.email IS NULL THEN t.rc_id END AS rc_id`;
-// Closing a ticket with an email ends the transitional link (createTicket).
-const UNLINK_ON_CLOSE = "install = CASE WHEN $2 = 'closed' AND email IS NOT NULL THEN NULL ELSE install END";
 
 export async function adminList(status, kind) {
   const { rows } = await q(
@@ -309,7 +332,7 @@ export async function adminReply(id, body, { close = false } = {}) {
     );
     // read_at NULL marks the thread unread for the app; the reply is visible
     // there whether or not mail works, so `answered` is honest either way.
-    await client.query(`UPDATE tickets SET status = $2, updated_at = now(), read_at = NULL, ${UNLINK_ON_CLOSE} WHERE id = $1`, [id, close ? 'closed' : 'answered']);
+    await client.query('UPDATE tickets SET status = $2, updated_at = now(), read_at = NULL WHERE id = $1', [id, close ? 'closed' : 'answered']);
     return rows[0].id;
   });
 
@@ -326,7 +349,7 @@ export async function adminReply(id, body, { close = false } = {}) {
 }
 
 export async function adminStatus(id, status) {
-  const { rowCount } = await q(`UPDATE tickets SET status = $2, updated_at = now(), ${UNLINK_ON_CLOSE} WHERE id = $1`, [id, status]);
+  const { rowCount } = await q('UPDATE tickets SET status = $2, updated_at = now() WHERE id = $1', [id, status]);
   return rowCount > 0;
 }
 
