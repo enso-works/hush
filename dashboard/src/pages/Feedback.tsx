@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, Bug, Heart, Inbox, Lightbulb, Mail, MessageSquare, RotateCcw, Send, X } from 'lucide-react'
+import { ArrowLeft, Bug, Heart, Inbox, Lightbulb, Mail, MessageSquare, RotateCcw, Send, Trash2, X } from 'lucide-react'
 
 import { AppMark } from '@/components/Logo'
 import { PageHeader } from '@/components/PageHeader'
@@ -92,6 +92,20 @@ function Thread({ id, onChanged }: { id: number; onChanged: () => void }) {
       setBusy(false)
     }
   }
+  // For "please delete my message" by email: a ticket with an email is not
+  // linked to an install, so forgetting an install does not reach it.
+  const remove = async () => {
+    if (!confirm('Delete this message and every reply on it? The app no longer lists it. This cannot be undone.')) return
+    setBusy(true)
+    try {
+      await api(`/admin/tickets/${t.id}`, { method: 'DELETE' })
+      onChanged()
+      location.hash = href.feedback({ status: 'all' })
+    } catch (err) {
+      setNote(`Not deleted: ${(err as Error).message}`)
+      setBusy(false)
+    }
+  }
   const send = async () => {
     if (!body.trim() || busy) return
     setBusy(true)
@@ -131,16 +145,22 @@ function Thread({ id, onChanged }: { id: number; onChanged: () => void }) {
             </div>
           </div>
         </div>
-        {!demo &&
-          (t.status === 'closed' ? (
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => setStatus('open')}>
-              <RotateCcw className="size-3.5" /> Reopen
+        {!demo && (
+          <div className="flex items-center gap-2">
+            {t.status === 'closed' ? (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => setStatus('open')}>
+                <RotateCcw className="size-3.5" /> Reopen
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => setStatus('closed')}>
+                <X className="size-3.5" /> Close
+              </Button>
+            )}
+            <Button variant="destructive" size="sm" disabled={busy} onClick={remove}>
+              <Trash2 className="size-3.5" /> Delete
             </Button>
-          ) : (
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => setStatus('closed')}>
-              <X className="size-3.5" /> Close
-            </Button>
-          ))}
+          </div>
+        )}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-5">
@@ -168,16 +188,26 @@ function Thread({ id, onChanged }: { id: number; onChanged: () => void }) {
               Details: install, email, device
             </summary>
             <dl className="grid grid-cols-[max-content_1fr] gap-x-4 gap-y-1.5 px-3 py-3 text-xs">
+              {/* A ticket with an email is not linked to the install's usage
+                  data, so nothing here leads from it to an install page. */}
               <dt className="text-muted-foreground">Install</dt>
-              <dd className="truncate font-mono">
-                <a className="underline-offset-2 hover:underline" href={href.installs(t.install)}>
-                  {t.install}
-                </a>
-              </dd>
+              {t.install ? (
+                <dd className="truncate font-mono">
+                  <a className="underline-offset-2 hover:underline" href={href.installs(t.install)}>
+                    {t.install}
+                  </a>
+                </dd>
+              ) : (
+                <dd>{t.email ? 'Not linked to an install (email given)' : '–'}</dd>
+              )}
               <dt className="text-muted-foreground">Email</dt>
               <dd>{t.email ?? 'none given'}</dd>
-              <dt className="text-muted-foreground">Customer</dt>
-              <dd className="truncate font-mono">{t.rc_id ?? '–'}</dd>
+              {!t.email && (
+                <>
+                  <dt className="text-muted-foreground">Customer</dt>
+                  <dd className="truncate font-mono">{t.rc_id ?? '–'}</dd>
+                </>
+              )}
               {diag.map(([k, v]) => (
                 <div key={k} className="contents">
                   <dt className="text-muted-foreground">{k}</dt>

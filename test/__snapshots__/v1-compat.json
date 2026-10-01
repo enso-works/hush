@@ -217,5 +217,203 @@
       "ok": true,
       "db": "up"
     }
+  },
+  {
+    "label": "tickets: create with an email, no install",
+    "status": 201,
+    "body": {
+      "id": "<id>",
+      "created_at": "<time>",
+      "status": "open",
+      "thread": "<thread>"
+    }
+  },
+  {
+    "label": "tickets: no install and no email",
+    "status": 400,
+    "body": {
+      "error": "invalid install"
+    }
+  },
+  {
+    "label": "tickets: an older app with an email and its install",
+    "status": 201,
+    "body": {
+      "id": "<id>",
+      "created_at": "<time>",
+      "status": "open"
+    }
+  },
+  {
+    "label": "tickets: an older app lists it by install",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "issue",
+          "subject": null,
+          "message": "Old app",
+          "status": "open",
+          "created_at": "<time>",
+          "read_at": null,
+          "unread": false,
+          "replies": []
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: an older app lists it after a closing reply",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "issue",
+          "subject": null,
+          "message": "Old app",
+          "status": "closed",
+          "created_at": "<time>",
+          "read_at": null,
+          "unread": true,
+          "replies": [
+            {
+              "author": "support",
+              "body": "Fixed.",
+              "at": "<time>"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: an older app replies on it once closed",
+    "status": 409,
+    "body": {
+      "error": "closed"
+    }
+  },
+  {
+    "label": "tickets: list by install in the body",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "feature",
+          "subject": null,
+          "message": "Listed by POST",
+          "status": "open",
+          "created_at": "<time>",
+          "read_at": null,
+          "unread": false,
+          "replies": []
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: list by install in the body, invalid",
+    "status": 400,
+    "body": {
+      "error": "invalid install"
+    }
+  },
+  {
+    "label": "tickets: threads list (unread)",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "issue",
+          "subject": null,
+          "message": "Write back",
+          "status": "answered",
+          "created_at": "<time>",
+          "read_at": null,
+          "unread": true,
+          "replies": [
+            {
+              "author": "support",
+              "body": "Thanks, looking.",
+              "at": "<time>"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: threads list, other app",
+    "status": 200,
+    "body": {
+      "tickets": []
+    }
+  },
+  {
+    "label": "tickets: threads list, invalid",
+    "status": 400,
+    "body": {
+      "error": "invalid threads"
+    }
+  },
+  {
+    "label": "tickets: reply by thread",
+    "status": 201,
+    "body": {
+      "id": "<id>",
+      "created_at": "<time>",
+      "status": "open"
+    }
+  },
+  {
+    "label": "tickets: reply, wrong thread",
+    "status": 404,
+    "body": {
+      "error": "not found"
+    }
+  },
+  {
+    "label": "tickets: reply, invalid thread",
+    "status": 400,
+    "body": {
+      "error": "invalid thread"
+    }
+  },
+  {
+    "label": "forget: install and threads together",
+    "status": 400,
+    "body": {
+      "error": "install and threads go in separate requests"
+    }
+  },
+  {
+    "label": "forget: threads",
+    "status": 200,
+    "body": {
+      "ok": true,
+      "deleted": {
+        "tickets": 1
+      }
+    }
+  },
+  {
+    "label": "forget: install",
+    "status": 200,
+    "body": {
+      "ok": true,
+      "deleted": {
+        "events": 0,
+        "tickets": 1,
+        "installs": 0
+      }
+    }
   }
 ]

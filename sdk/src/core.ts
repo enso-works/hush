@@ -8,6 +8,8 @@
  * `@bavrk/hush` (the default entry) is that for React Native and Expo.
  *
  * The only identifier is an install UUID it generates and keeps in storage.
+ * A feedback ticket sent with an email never carries it: the server hands
+ * back a key for that one ticket instead (see createTicket).
  * Nothing here may ever break the app: every call is fire-and-forget, every
  * failure is swallowed, and a batch the server refuses is dropped rather than
  * retried forever.
@@ -41,9 +43,9 @@ export type HushConfig = {
   /** A write key minted with `keys:create <app> <env>`. Empty: the SDK stays off. */
   key: string;
   /**
-   * Prefix for the three AsyncStorage keys (install id, queue, first-open
-   * marker). Changing it gives every install a new id, so an app moving from
-   * a copied SDK to this package must pass the prefix it used before.
+   * Prefix for the storage keys (install id, queue, first-open marker, and
+   * the rest). Changing it gives every install a new id, so an app moving
+   * from a copied SDK to this package must pass the prefix it used before.
    */
   storagePrefix?: string;
   /**
@@ -96,7 +98,7 @@ export type FlushResult = {
 };
 
 /** Sent with every batch, and stored on the install: which SDK spoke. */
-export const SDK_VERSION = '2.2.2';
+export const SDK_VERSION = '2.3.0';
 
 const CHANNEL_RE = /^[a-z][a-z0-9_]{0,23}$/;
 // The server's rule for event names; anything else is dropped there anyway.
@@ -170,6 +172,13 @@ const uuid = (): string => {
   });
 };
 
+// A ticket's thread key, as the server mints it: 32 random bytes, base64url.
+const THREAD_KEY = /^[A-Za-z0-9_-]{43}$/;
+// The most thread keys one request may name (the server's limit).
+const MAX_THREADS = 50;
+// Ticket ids are bigint strings: by length, then by digits, is numeric order.
+const newestFirst = (a: string, b: string) => b.length - a.length || (a < b ? 1 : a > b ? -1 : 0);
+
 const MAX_ONCE = 200;
 // How long after a session starts its entry can still be claimed.
 const ENTRY_WINDOW_MS = 2500;
@@ -221,6 +230,7 @@ export function createHush(platform: HushPlatform) {
   let ONCE_KEY = 'hush.once.v1';
   let OPTOUT_KEY = 'hush.optout.v1';
   let SESSIONS_KEY = 'hush.sessions.v1';
+  let THREADS_KEY = 'hush.threads.v1';
   let withBackgroundTask: (work: () => Promise<void>) => Promise<void> = (work) => work();
   let CHANNEL: string | undefined;
   let LOG_LEVEL: 'silent' | 'error' | 'debug' = 'silent';
@@ -255,6 +265,8 @@ export function createHush(platform: HushPlatform) {
     ONCE_KEY = `${prefix}.once.v1`;
     OPTOUT_KEY = `${prefix}.optout.v1`;
     SESSIONS_KEY = `${prefix}.sessions.v1`;
+    THREADS_KEY = `${prefix}.threads.v1`;
+    unsaved = Object.create(null);
     ATTRIBUTION_KEY = `${prefix}.attribution.v1`;
     attribution = config.attribution && typeof config.attribution.update === 'function' ? config.attribution : undefined;
     if (typeof config.runInBackground === 'function') withBackgroundTask = config.runInBackground;
@@ -881,10 +893,13 @@ export function createHush(platform: HushPlatform) {
   }
 
   /**
-   * The user's "delete my data": the server deletes everything stored about
-   * this install (events, feedback), then the SDK starts over with a new
-   * install id, as a fresh install would, but without counting a new one.
-   * Offline or refused: nothing changes, and the app can offer to try again.
+   * The user's "delete my data": the server deletes the tickets sent with an
+   * email whose keys this device holds, then everything stored about this
+   * install (events, feedback), and the SDK starts over with a new install
+   * id, as a fresh install would, but without counting a new one. Offline or
+   * refused: the install and its data stay, and the app can offer to try
+   * again; tickets with an email already deleted on the way stay deleted, and
+   * a retry finishes the rest.
    */
   function forget(): Promise<ForgetResult> {
     // A second tap while the first is out gets the first's answer.
@@ -906,6 +921,24 @@ export function createHush(platform: HushPlatform) {
     forgetting = true;
     try {
       await sending;
+      // The tickets sent with an email first, by their keys, in requests of
+      // their own: the install id and the keys never travel together. A key
+      // is dropped once the server has deleted its ticket.
+      const map = await readThreads();
+      // Keys that cannot be read now may still be stored: forgetting the
+      // install without them would report done while those tickets stay.
+      if (!map) return { ok: false, error: 'failed' };
+      const ids = Object.keys(map);
+      for (let i = 0; i < ids.length; i += MAX_THREADS) {
+        const chunk = ids.slice(i, i + MAX_THREADS);
+        const sent = await post('/v1/forget', { threads: chunk.map((id) => map[id]) });
+        if (!sent) return { ok: false, error: 'offline' };
+        if (!sent.ok) return { ok: false, error: 'failed' };
+        for (const id of chunk) delete unsaved[id];
+        await updateThreads((stored) => {
+          for (const id of chunk) delete stored[id];
+        });
+      }
       const res = await post('/v1/forget', { install: installId });
       if (!res) return { ok: false, error: 'offline' };
       if (!res.ok) return { ok: false, error: 'failed' };
@@ -958,6 +991,76 @@ export function createHush(platform: HushPlatform) {
 
   // --- support tickets
 
+  // Tickets sent with an email: ticket id -> thread key, the app's only handle
+  // on them, kept in storage and read again on every use. A copy held in
+  // memory went stale (a second tab on the web, a read that failed once) and
+  // the next save wrote it over every other key, which loses those tickets
+  // for good.
+  //
+  // Keys the server handed out in this process and not saved yet, because
+  // the write or the read before it failed: part of every read, and saved by
+  // the next write that works.
+  let unsaved: Record<string, string> = Object.create(null);
+  // Writes go one at a time, each on a fresh read.
+  let threadsWrite: Promise<unknown> = Promise.resolve();
+
+  /**
+   * The stored keys and the unsaved ones. Null when storage could not be read:
+   * unlike a value that does not parse, that is no reason to start over, so
+   * nothing is written on it and the next call reads again.
+   */
+  async function readThreads(): Promise<Record<string, string> | null> {
+    let raw: string | null;
+    try {
+      raw = await storage.getItem(THREADS_KEY);
+    } catch (err) {
+      log('error', `${THREADS_KEY} could not be read`, err);
+      return null;
+    }
+    let stored: unknown = null;
+    try {
+      stored = raw == null ? null : JSON.parse(raw);
+    } catch (err) {
+      log('error', `${THREADS_KEY} could not be parsed: starting it empty`, err);
+    }
+    // No prototype: an id such as "constructor" must not find a key.
+    const out: Record<string, string> = Object.create(null);
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+      for (const [id, key] of Object.entries(stored)) {
+        if (/^[1-9][0-9]*$/.test(id) && typeof key === 'string' && THREAD_KEY.test(key)) out[id] = key;
+      }
+    }
+    return Object.assign(out, unsaved);
+  }
+
+  /** Applies `change` to a fresh read and saves the result. False when it could not read or write. */
+  function updateThreads(change: (map: Record<string, string>) => void): Promise<boolean> {
+    const run = threadsWrite.then(async () => {
+      const map = await readThreads();
+      if (!map) return false;
+      change(map);
+      try {
+        await storage.setItem(THREADS_KEY, JSON.stringify(map));
+      } catch (err) {
+        log('error', `${THREADS_KEY} could not be saved`, err);
+        return false;
+      }
+      for (const id of Object.keys(unsaved)) if (map[id] === unsaved[id]) delete unsaved[id];
+      return true;
+    });
+    threadsWrite = run.catch(() => false);
+    return run;
+  }
+
+  /**
+   * Sends feedback. With an email the ticket is contact info, so it must not
+   * be joinable to this install's usage data: it goes without the install id
+   * and RevenueCat's id, no ticket_opened marks the moment, and the server
+   * answers with a thread key for it, kept on the device. A server from
+   * before SDK 2.3.0 refuses a ticket without an install; that is `failed`,
+   * and the SDK does not retry with the install. Without an email the install
+   * id is how the answer finds its way back, as before.
+   */
   async function createTicket(input: {
     kind: TicketKind;
     email?: string;
@@ -965,6 +1068,27 @@ export function createHush(platform: HushPlatform) {
     message: string;
   }): Promise<{ ok: boolean; id?: string; error?: string }> {
     if (!enabled) return { ok: false, error: 'unavailable' };
+    // Version, build, OS, device and the paid flag describe the build, not the person.
+    const diag = (({ version, build, os, device }) => ({ version, build, os, device, pro: isPro }))(platform.device());
+    if (input.email) {
+      const res = await post('/v1/tickets', {
+        kind: input.kind,
+        email: input.email,
+        subject: input.subject || undefined,
+        message: input.message,
+        diag,
+      });
+      if (!res) return { ok: false, error: 'offline' };
+      if (res.status === 429) return { ok: false, error: 'too_many' };
+      if (!res.ok) return { ok: false, error: 'failed' };
+      const created = (await res.json().catch(() => null)) as { id?: string | number; thread?: unknown } | null;
+      const id = created?.id !== undefined ? String(created.id) : undefined;
+      if (id && typeof created?.thread === 'string' && THREAD_KEY.test(created.thread)) {
+        unsaved[id] = created.thread;
+        await updateThreads(() => {});
+      }
+      return { ok: true, id };
+    }
     if (!installId) await init();
     const res = await post('/v1/tickets', {
       install: installId,
@@ -973,10 +1097,9 @@ export function createHush(platform: HushPlatform) {
       // itself: a report from a paying user should be recognisable as one
       // without asking them who they are.
       rc_id: rcId,
-      email: input.email || undefined,
       subject: input.subject || undefined,
       message: input.message,
-      diag: (({ version, build, os, device }) => ({ version, build, os, device, pro: isPro }))(platform.device()),
+      diag,
     });
     if (!res) return { ok: false, error: 'offline' };
     if (res.status === 429) return { ok: false, error: 'too_many' };
@@ -990,36 +1113,72 @@ export function createHush(platform: HushPlatform) {
   /**
    * A reply on one of this install's tickets. The thread stays open for as long
    * as the ops side keeps it open; a closed one refuses, and the app offers a
-   * new message instead.
+   * new message instead. On a ticket sent with an email it goes by that
+   * ticket's thread key, and no ticket_replied is tracked.
    */
   async function replyToTicket(
     id: string,
     body: string,
   ): Promise<{ ok: boolean; error?: 'unavailable' | 'offline' | 'closed' | 'too_many' | 'failed' }> {
     if (!enabled) return { ok: false, error: 'unavailable' };
-    if (!installId) await init();
-    const res = await post(`/v1/tickets/${encodeURIComponent(id)}/reply`, { install: installId, body });
+    const thread = ((await readThreads()) ?? unsaved)[String(id)];
+    if (!thread && !installId) await init();
+    const res = await post(`/v1/tickets/${encodeURIComponent(id)}/reply`, thread ? { thread, body } : { install: installId, body });
     if (!res) return { ok: false, error: 'offline' };
     if (res.status === 409) return { ok: false, error: 'closed' };
     if (res.status === 429) return { ok: false, error: 'too_many' };
     if (!res.ok) return { ok: false, error: 'failed' };
-    enqueue('ticket_replied');
+    if (!thread) enqueue('ticket_replied');
     return { ok: true };
   }
 
+  /** One list request: its status (0 offline) and the tickets in it. */
+  async function fetchTickets(path: string, body?: unknown): Promise<{ status: number; tickets: Ticket[] }> {
+    try {
+      const res = await doFetch(`${TELEMETRY_URL}${path}`, {
+        ...(body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }),
+        headers: { Authorization: `Key ${TELEMETRY_KEY}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      });
+      if (!res.ok) return { status: res.status, tickets: [] };
+      const json = (await res.json()) as { tickets?: Ticket[] };
+      return { status: res.status, tickets: Array.isArray(json?.tickets) ? json.tickets : [] };
+    } catch {
+      return { status: 0, tickets: [] };
+    }
+  }
+
+  /**
+   * This install's own tickets, with the install in the body: in a URL, a
+   * proxy's access log would put it next to a reply on a ticket sent with an
+   * email, from the same address. A server from before 2.3.0 has no such
+   * route (404); there the install goes in the query, as it always did.
+   */
+  async function ownTickets(): Promise<Ticket[]> {
+    const listed = await fetchTickets('/v1/tickets/list', { install: installId });
+    if (listed.status !== 404) return listed.tickets;
+    return (await fetchTickets(`/v1/tickets?install=${encodeURIComponent(installId)}`)).tickets;
+  }
+
+  /**
+   * This install's tickets and the ones it sent with an email, newest first.
+   * Two requests, never one: the install's by its id, the others by their
+   * thread keys (the newest 50), so no request carries both.
+   */
   async function listTickets(): Promise<Ticket[]> {
     if (!enabled) return [];
     if (!installId) await init();
-    try {
-      const res = await doFetch(`${TELEMETRY_URL}/v1/tickets?install=${encodeURIComponent(installId)}`, {
-        headers: { Authorization: `Key ${TELEMETRY_KEY}` },
-      });
-      if (!res.ok) return [];
-      const body = (await res.json()) as { tickets: Ticket[] };
-      return body.tickets ?? [];
-    } catch {
-      return [];
-    }
+    const stored = await readThreads();
+    // Storage reads again: a good moment to save a key a failed write left behind.
+    if (stored && Object.keys(unsaved).length) void updateThreads(() => {});
+    const map = stored ?? unsaved;
+    const keys = Object.keys(map).sort(newestFirst).slice(0, MAX_THREADS).map((id) => map[id]);
+    const [own, keyed] = await Promise.all([
+      ownTickets(),
+      keys.length ? fetchTickets('/v1/tickets/threads', { threads: keys }).then((r) => r.tickets) : [],
+    ]);
+    const byId = new Map<string, Ticket>();
+    for (const t of [...own, ...keyed]) if (t && !byId.has(String(t.id))) byId.set(String(t.id), t);
+    return [...byId.values()].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
   }
 
   const telemetryAvailable = (): boolean => enabled;

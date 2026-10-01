@@ -168,6 +168,21 @@ describe('the rest', () => {
     await page.close();
   });
 
+  test('feedback: a thread with an email is not linked to an install; one without links to its install', async () => {
+    const { page, problems } = await open('#/feedback?status=all');
+    const details = page.locator('details');
+    await page.getByRole('link', { name: /Restore purchase/ }).click();
+    await details.locator('summary').click();
+    await details.getByText('Not linked to an install (email given)').waitFor();
+    assert.equal(await details.locator('a[href^="#/installs"]').count(), 0, 'nothing leads to an install page');
+    await page.getByRole('link', { name: /Sleep sounds after a session/ }).click();
+    await page.getByRole('heading', { name: 'Sleep sounds after a session' }).waitFor();
+    if (!(await details.evaluate((d) => d.open))) await details.locator('summary').click();
+    await details.locator('a[href^="#/installs"]').waitFor();
+    assert.deepEqual(problems, []);
+    await page.close();
+  });
+
   test('installs: the lookup page, and dark mode everywhere', async () => {
     const { page, problems } = await open('#/installs');
     await page.getByRole('heading', { name: /Installs/ }).first().waitFor();

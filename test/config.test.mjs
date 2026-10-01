@@ -100,6 +100,8 @@ test('rate limits count the socket address unless CLIENT_IP_HEADER names a trust
     codes.push(r.status);
   }
   assert.ok(codes.includes(429), `spoofed headers must not dodge the limit: ${codes}`);
+  // From loopback with no header, as behind a proxy that hush cannot see: said once.
+  assert.equal(srv.logs.join('').split('CLIENT_IP_HEADER is unset').length - 1, 1);
   await srv.stop();
 
   // A trusted header: each address gets its own bucket.
@@ -110,5 +112,6 @@ test('rate limits count the socket address unless CLIENT_IP_HEADER names a trust
     spread.push(r.status);
   }
   assert.ok(!spread.includes(429), `distinct addresses must not share a bucket: ${spread}`);
+  assert.ok(!srv.logs.join('').includes('CLIENT_IP_HEADER is unset'));
   await srv.stop();
 });

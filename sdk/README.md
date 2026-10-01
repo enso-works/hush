@@ -175,9 +175,16 @@ const r = await hush.forget(); // "delete my data"
 
 hush collects nothing personal, so neither is required, but both are cheap
 to offer in Settings. `forget()` asks the server to delete everything stored
-about this install (events, feedback and replies), then starts over with a
-new install id without counting a new install. A batch already on its way
-lands before the delete, and nothing is sent until the server has answered.
+about this install (events, feedback and replies) and the tickets sent with
+an email whose keys are on the device, then starts over with a new install
+id without counting a new install. A batch already on its way lands before
+the delete, and nothing is sent until the server has answered. On `offline`
+or `failed` the install and its data stay; tickets with an email it had
+already deleted on the way stay deleted, and calling it again finishes the
+rest. It cannot reach a message sent with an email from a build before
+2.3.0 once the server has unlinked it, or one whose key went with a
+reinstall, so have your "delete my data" text give your support address for
+messages sent with an email.
 A choice made before `init()` has read storage (the app applying a stored
 consent at startup) wins over the stored one. Feedback keeps working after
 `optOut()`: a user sends that on purpose.
@@ -213,7 +220,64 @@ once. `listTickets()` marks every reply read as it fetches, so for an unread
 badge at launch keep your own seen list. A sent ticket and reply are tracked
 as `ticket_opened { kind }` and `ticket_replied`, both names every hush
 server knows (a server from before `ticket_replied` joined them lists it as
-unknown: add it to the catalog there).
+unknown: add it to the catalog there). Neither is tracked for a ticket with
+an email (below).
+
+### A ticket with an email is not linked to the install
+
+An email is contact info, and the install id ties a person to everything
+their app sends. From 2.3.0 a ticket with an email is kept apart from the
+install, so usage data stays "not linked to you" for the people who write in
+too:
+
+- `createTicket` with an `email` sends no install id and no RevenueCat id.
+  The server answers with a thread key for that one ticket, and the SDK keeps
+  it on the device (`<prefix>.threads.v1`). The diagnostics (version, build,
+  OS, device, paid flag) still go: they describe the build, not the person.
+- No `ticket_opened` is tracked for it, and no `ticket_replied` for a reply
+  on it: either event would put the install next to the ticket.
+- `listTickets()` makes two requests: the install's tickets by its id
+  (`POST /v1/tickets/list`, so the id is in no URL or access log), and the
+  others by their keys (`POST /v1/tickets/threads`, the newest 50). It
+  merges them, newest first. No request carries the install id and a key
+  together. Reading by key records which reply the app has shown, not when
+  it asked. `replyToTicket` sends the key, and `forget()` deletes those
+  tickets by their keys, in a request of its own, before it forgets the
+  install.
+- Without an email nothing changes: the install id is how your answer gets
+  back to the user, and the ticket carries nothing that says who they are.
+
+Nothing hush stores joins such a ticket to the install. Its time and
+diagnostics can still narrow it down for someone with the database, so leave
+the feedback and inbox screens out of `screen()` (or give them a name other
+screens share), and put nothing about a ticket in an event.
+
+The five a day count by the caller's address and app for a ticket with an
+email, since there is no install to count by; behind a proxy that needs the
+server's `CLIENT_IP_HEADER`, or all users share one count. The keys live in
+the app's storage: deleting the app, or a new `storagePrefix`, loses them,
+and with them the app's view of those threads. Your reply still reaches the
+person by email.
+
+**Server.** This needs a hush server with migration `007_unlinked_tickets.sql`
+(October 2026), which adds `POST /v1/tickets/threads` and
+`POST /v1/tickets/list`. An older server refuses a ticket with an email and
+no install: `createTicket` returns `failed`, and the SDK does not fall back
+to sending the install. On such a server `listTickets()` asks for the
+install's tickets by the query, as before. Update the server before the
+app.
+
+**Apps on 2.2.x or older** (and SDKs copied into an app before the package)
+still send the install id and RevenueCat's id with an email, and track
+`ticket_opened` and `ticket_replied` with it. A current server drops the
+RevenueCat id at once, and keeps the install id only so that the app's inbox
+can list the ticket. It clears it once the ticket is closed and the app has
+fetched it since (or 7 days after it closed), or 30 days after the last
+activity on it, and with it deletes that install's ticket events since the
+ticket was opened. Until then the ticket is linked to the install. Once it
+is cleared, the app's `forget()` no longer reaches the ticket: the operator
+deletes it on request. The dashboard never shows an install on a ticket with
+an email.
 
 ## Options
 
@@ -221,7 +285,7 @@ unknown: add it to the catalog there).
 |---|---|
 | `url` | the hush server; missing or not a string turns the SDK off (2.2.1 and older throw), so give env vars a fallback |
 | `key` | a write key; empty or missing turns the SDK off |
-| `storagePrefix` | Storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id: an app moving from a copied SDK passes the prefix it used before. It also forgets the user's opt-out, once-events, session count and the ad-attribution state. |
+| `storagePrefix` | Storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id: an app moving from a copied SDK passes the prefix it used before. It also forgets the user's opt-out, once-events, session count, the ad-attribution state and the keys of tickets sent with an email. |
 | `runInBackground` | wraps the flush that runs when the app goes to the background, e.g. in a native background task, so the request is not cut off by suspension |
 | `channel` | where this build came from: `app_store`, `testflight`, `play`, `internal`... (snake_case, 24 chars). The dashboard filters by it, so TestFlight and dev-client builds on a prod key stop counting as store users. Pass it per EAS build profile, e.g. `process.env.EXPO_PUBLIC_HUSH_CHANNEL`. Default `dev` in `__DEV__` builds, otherwise not sent. |
 | `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name or a missing url), `debug` (every send) |
@@ -306,9 +370,16 @@ session; anything else in the URL, a click id included, is dropped.
 
 Semver. `SDK_VERSION` is sent with every batch and stored per install, so the
 dashboard can tell which SDK an install runs. Any 2.x works with any hush
-server that speaks `/v1`; `forget()` needs one with `/v1/forget`, and the
-web entry one that answers CORS. 2.1 added `@bavrk/hush/web`; 2.2 the
+server that speaks `/v1`; `forget()` needs one with `/v1/forget`, the web
+entry one that answers CORS, and from 2.3.0 a ticket with an email one with
+migration 007. 2.1 added `@bavrk/hush/web`; 2.2 the
 `attribution` bridge (with `/v1/config` on the server) and `utm_term`.
+2.3.0 keeps a ticket with an email apart from the install ([Support
+tickets](#a-ticket-with-an-email-is-not-linked-to-the-install)), and the
+install id out of every URL. No call in the app changes for it, though the
+support screens and the "delete my data" text above deserve a look.
+Messages sent with an email from earlier builds leave `forget()`'s reach
+when the server unlinks them, starting with the server's update.
 2.2.2 makes the order of calls at startup safe: an early `entry()` is held for
 its session, early events keep the launch's session id and the last launch's
 queue, the paid flag is left out until `identify()`, a missing `url` turns the
@@ -323,6 +394,11 @@ the app version and build, the OS, the device model and the phone's language,
 and nothing else. It reads no advertising or device identifiers, so there is
 nothing to declare for App Tracking Transparency, and it suits apps for
 children as well. From a link it keeps only the campaign tags, never the URL.
+A ticket with an email carries neither the install id nor RevenueCat's id
+(2.3.0 and later): nothing hush stores joins the usage data to the person
+who wrote, and the dashboard offers no way to. Timing and build details can
+still narrow a ticket down for someone with the database; an app keeps
+"not linked" true by never trying.
 
 SDK 2 talks to any hush server; an older server ignores the fields it does
 not know (`channel`, `sdk`), and `forget()` needs a server with `/v1/forget`. See the privacy model in the

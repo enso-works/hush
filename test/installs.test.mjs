@@ -53,6 +53,42 @@ describe('POST /v1/forget', () => {
     assert.equal((await client(srv.base).post('/v1/forget', { install: uuid() })).status, 401);
     assert.equal((await client(srv.base, key).post('/v1/forget', { install: 'nope' })).status, 400);
   });
+
+  test('{ threads } forgets the tickets sent with an email, with their replies, in a request of its own', async () => {
+    const c = client(srv.base, key);
+    const ticket = { kind: 'issue', message: 'Please delete my message', email: 'me@example.com' };
+    const a = (await c.post('/v1/tickets', ticket)).json;
+    const b = (await c.post('/v1/tickets', ticket)).json;
+    const kept = (await c.post('/v1/tickets', ticket)).json;
+    await c.post(`/v1/tickets/${a.id}/reply`, { thread: a.thread, body: 'and this reply' });
+
+    const foreign = await client(srv.base, otherKey).post('/v1/forget', { threads: [a.thread] });
+    assert.deepEqual(foreign.json, { ok: true, deleted: { tickets: 0 } }, "another app's key reaches nothing");
+
+    const r = await c.post('/v1/forget', { threads: [a.thread, b.thread] });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json, { ok: true, deleted: { tickets: 2 } });
+    assert.equal(await count('SELECT count(*)::int AS n FROM tickets WHERE id = ANY($1::bigint[])', [[a.id, b.id]]), 0);
+    assert.equal(await count('SELECT count(*)::int AS n FROM ticket_replies WHERE ticket_id = $1', [a.id]), 0, 'replies go with the ticket');
+    assert.equal(await count('SELECT count(*)::int AS n FROM tickets WHERE id = $1', [kept.id]), 1);
+    assert.deepEqual((await c.post('/v1/forget', { threads: [a.thread] })).json, { ok: true, deleted: { tickets: 0 } }, 'idempotent');
+
+    const both = await c.post('/v1/forget', { install: uuid(), threads: [kept.thread] });
+    assert.equal(both.status, 400, 'the install and the keys never travel together');
+    assert.equal(await count('SELECT count(*)::int AS n FROM tickets WHERE id = $1', [kept.id]), 1);
+    assert.equal((await c.post('/v1/forget', { threads: ['short'] })).status, 400);
+    assert.equal((await c.post('/v1/forget', { threads: 'x' })).status, 400);
+  });
+
+  test('{ install } does not reach a ticket sent with an email', async () => {
+    const c = client(srv.base, key);
+    const install = uuid();
+    await c.post('/v1/events', batch([event(install, 'session_started')]));
+    const t = (await c.post('/v1/tickets', { kind: 'issue', message: 'Hi', email: 'me@example.com' })).json;
+    const r = await c.post('/v1/forget', { install });
+    assert.equal(r.json.deleted.tickets, 0);
+    assert.equal(await count('SELECT count(*)::int AS n FROM tickets WHERE id = $1', [t.id]), 1);
+  });
 });
 
 describe('one install, from the dashboard', () => {

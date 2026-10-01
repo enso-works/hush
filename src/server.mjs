@@ -16,14 +16,17 @@ import { aakRow, postbackSummary, skanRow, storePostback } from './attribution.m
 import { CAMPAIGN_KEYS, campaignFunnel, cohorts, runFunnel, stepsFromQuery } from './funnels.mjs';
 import { cfg, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
-import { clientKey, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
+import { clientKey, dailyLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { migrate } from './migrate.mjs';
 import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
 import { appStoreCampaigns, ascConfigured, syncAll } from './appstore.mjs';
-import { adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, KINDS, parseTicket, ticketsForInstall, userReply } from './tickets.mjs';
+import {
+  adminDelete, adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, forgetThreads, isThreadKey, KINDS,
+  MAX_PER_DAY, parseTicket, threadKeys, ticketsForInstall, ticketsForThreads, unlinkOldClientTickets, userReply,
+} from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
 // Checked before the write key is even looked up, so a flood of made-up keys
@@ -35,6 +38,9 @@ const v1Limit = rateLimiter(120);
 const ingestLimit = rateLimiter(60);
 const ticketLimit = rateLimiter(10);
 const forgetLimit = rateLimiter(10);
+// A ticket sent with an email has no install to count five a day by, so the
+// same five count by caller address and app, in memory like the limits above.
+const unlinkedTicketLimit = dailyLimiter(MAX_PER_DAY);
 
 const r = router();
 
@@ -103,12 +109,29 @@ r.post('/v1/events', async (req, res, { key, country }) => {
 });
 
 // --- public: tickets
+//
+// A ticket with an email is contact info, so it must not be joinable to the
+// install's usage data. SDK 2.3.0 and later send one without the install, and
+// the answer adds `thread`: a key that is the app's only handle on that
+// ticket (reading, answering, forgetting it). Without an email the install id
+// is the only way back to the user, as it always was, and there is no
+// identity on the ticket. Older app versions send the install with an email
+// too; createTicket handles them.
 r.post('/v1/tickets', async (req, res, { key }) => {
   if (!ticketLimit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
   const body = await readJson(req, MAX_BODY);
-  if (!isUuid(body?.install)) return json(res, 400, { error: 'invalid install' });
+  const linked = body?.install != null;
+  // Without an install there must be an email, or nobody could ever read the answer.
+  if (linked ? !isUuid(body.install) : !(typeof body?.email === 'string' && body.email.trim())) {
+    return json(res, 400, { error: 'invalid install' });
+  }
   const parsed = parseTicket(body);
   if (typeof parsed === 'string') return json(res, 400, { error: `invalid ${parsed}` });
+  if (!linked) {
+    if (!unlinkedTicketLimit(`${key.app} ${clientKey(req)}`)) return json(res, 429, { error: 'too many tickets today' });
+    const ticket = await createTicket({ app: key.app, ...parsed, install: null });
+    return json(res, 201, { id: ticket.id, created_at: ticket.created_at, status: 'open', thread: ticket.thread });
+  }
   // An install id belongs to exactly one app. A key for another app quoting
   // it is spoofing, not a user.
   if (await belongsToAnotherApp(body.install, key.app)) return json(res, 403, { error: 'install belongs to another app' });
@@ -117,18 +140,22 @@ r.post('/v1/tickets', async (req, res, { key }) => {
   return json(res, 201, { id: ticket.id, created_at: ticket.created_at, status: 'open' });
 });
 
+// The thread key for a ticket sent with an email, the install otherwise.
 r.post('/v1/tickets/:id/reply', async (req, res, { key, params }) => {
   if (!ticketLimit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
   const body = await readJson(req, MAX_BODY);
-  if (!isUuid(body?.install)) return json(res, 400, { error: 'invalid install' });
+  const thread = body?.thread ?? null;
+  if (thread !== null && !isThreadKey(thread)) return json(res, 400, { error: 'invalid thread' });
+  if (thread === null && !isUuid(body?.install)) return json(res, 400, { error: 'invalid install' });
   const text = str(body.body, 4000);
   if (!text) return json(res, 400, { error: 'invalid body' });
   const id = Number(params.id);
   if (!Number.isInteger(id) || id <= 0) return json(res, 404, { error: 'not found' });
-  // The ticket must belong to this install and this app: the query inside
-  // userReply checks both, so a key for another app cannot write into a
-  // thread by guessing its id.
-  const out = await userReply({ id, install: body.install, app: key.app, body: text });
+  // The ticket must belong to this install (or key) and this app: the query
+  // inside userReply checks both, so a key for another app cannot write into
+  // a thread by guessing its id. A wrong thread key is a 404 like a wrong
+  // install.
+  const out = await userReply({ id, app: key.app, body: text, ...(thread !== null ? { thread } : { install: body.install }) });
   if (out === 'not_found') return json(res, 404, { error: 'not found' });
   if (out === 'closed') return json(res, 409, { error: 'closed' });
   if (out === 'too_many') return json(res, 429, { error: 'too many replies today' });
@@ -138,9 +165,22 @@ r.post('/v1/tickets/:id/reply', async (req, res, { key, params }) => {
 // --- public: forget. A user's "delete my data": everything stored about the
 // calling install under the calling app. The SDK then starts over with a new
 // install id. Idempotent: an install with nothing stored gets the same 200.
+//
+// Tickets sent with an email are not the install's: they are forgotten by
+// their thread keys, `{ threads: [...] }`, in a request of their own. One
+// request naming both would join what the keys exist to keep apart, so it is
+// refused.
 r.post('/v1/forget', async (req, res, { key }) => {
   if (!forgetLimit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
   const body = await readJson(req, MAX_BODY);
+  if (body?.threads != null) {
+    if (body.install != null) return json(res, 400, { error: 'install and threads go in separate requests' });
+    const threads = threadKeys(body.threads);
+    if (!threads) return json(res, 400, { error: 'invalid threads' });
+    const tickets = await forgetThreads(threads, key.app);
+    log.info('threads forgotten', { app: key.app, tickets });
+    return json(res, 200, { ok: true, deleted: { tickets } });
+  }
   if (!isUuid(body?.install)) return json(res, 400, { error: 'invalid install' });
   if (await belongsToAnotherApp(body.install, key.app)) return json(res, 403, { error: 'install belongs to another app' });
   const deleted = await forgetInstall(body.install, key.app);
@@ -163,6 +203,26 @@ r.get('/v1/tickets', async (_req, res, { url, key }) => {
   // so without this any app's key could read another app's tickets by
   // quoting an install id.
   return json(res, 200, { tickets: await ticketsForInstall(install, key.app) });
+});
+
+// The same, with the install in the body (SDK 2.3.0). A proxy's access log
+// keeps the URL and the caller's address: with the install in the query, it
+// would put the install next to the POST /v1/tickets/:id/reply that answers
+// a ticket sent with an email, from the same address seconds apart.
+r.post('/v1/tickets/list', async (req, res, { key }) => {
+  const body = await readJson(req, MAX_BODY);
+  if (!isUuid(body?.install)) return json(res, 400, { error: 'invalid install' });
+  return json(res, 200, { tickets: await ticketsForInstall(body.install, key.app) });
+});
+
+// The tickets an app sent with an email, by their thread keys (up to 50):
+// the same answer as GET /v1/tickets, and read the same way. A POST so the
+// keys never sit in a URL or an access log.
+r.post('/v1/tickets/threads', async (req, res, { key }) => {
+  const body = await readJson(req, MAX_BODY);
+  const threads = threadKeys(body?.threads);
+  if (!threads) return json(res, 400, { error: 'invalid threads' });
+  return json(res, 200, { tickets: await ticketsForThreads(threads, key.app) });
 });
 
 // --- admin (docker network only)
@@ -268,9 +328,10 @@ r.get('/admin/apps/:app/breakdown', async (_req, res, { url, params }) => {
   return json(res, 200, { rows: await breakdown({ app: params.app, env: envOf(url), days: days(url), event, prop, channel: channelOf(url) }) });
 });
 
-// One install: its row, latest events and tickets. For checking that a build
-// sends what it should (paste the id the app shows in a debug screen) and for
-// answering a data request.
+// One install: its row, latest events and tickets (never one with an email:
+// those are not linked to an install). For checking that a build sends what
+// it should (paste the id the app shows in a debug screen) and for answering
+// a data request.
 r.get('/admin/installs/:id', async (_req, res, { url, params }) => {
   if (!isUuid(params.id)) return json(res, 404, { error: 'not found' });
   const limit = Math.min(Math.max(Number(url.searchParams.get('limit') ?? 100) || 100, 1), 500);
@@ -325,6 +386,16 @@ r.post('/admin/tickets/:id/status', async (req, res, { params }) => {
   const body = await readJson(req, MAX_BODY);
   if (!['open', 'answered', 'closed'].includes(body?.status)) return json(res, 400, { error: 'invalid status' });
   const ok = await adminStatus(ticketId(params), body.status);
+  return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'not found' });
+});
+
+// One ticket and its replies, for a "please delete my message" that arrives
+// by email: a ticket with an email is not linked to an install, so forgetting
+// an install does not reach it.
+r.delete('/admin/tickets/:id', async (_req, res, { params }) => {
+  if (!ticketId(params)) return json(res, 404, { error: 'not found' });
+  const ok = await adminDelete(ticketId(params));
+  if (ok) log.info('ticket deleted by the operator', { id: ticketId(params) });
   return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'not found' });
 });
 
@@ -412,13 +483,21 @@ const server = http.createServer(async (req, res) => {
 });
 
 // Raw events age out; installs and tickets are kept (an install row is a
-// counter, a ticket is a conversation).
+// counter, a ticket is a conversation). A ticket with an email that an older
+// app version sent with its install loses the install, and that install's
+// ticket events, once it is closed and seen or idle (unlinkOldClientTickets).
 async function sweep() {
   try {
     const { rowCount } = await q('DELETE FROM events WHERE at < now() - make_interval(days => $1)', [cfg.retentionDays]);
     if (rowCount) log.info('retention sweep', { deleted: rowCount, days: cfg.retentionDays });
   } catch (err) {
     log.warn('retention sweep failed', { err: String(err?.message ?? err) });
+  }
+  try {
+    const unlinked = await unlinkOldClientTickets();
+    if (unlinked) log.info('tickets with an email unlinked from their install', { tickets: unlinked });
+  } catch (err) {
+    log.warn('ticket unlink sweep failed', { err: String(err?.message ?? err) });
   }
 }
 

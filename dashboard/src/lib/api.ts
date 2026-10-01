@@ -116,7 +116,8 @@ export type TicketSummary = {
   id: number
   app: string
   kind: TicketKind
-  install: string
+  /** Null for a ticket with an email: it is not linked to an install, and neither is a customer id. */
+  install: string | null
   rc_id: string | null
   email: string | null
   subject: string | null

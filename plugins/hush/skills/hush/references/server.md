@@ -52,7 +52,7 @@ what its `environment:` block lists.
 | `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `TELEMETRY_ADMIN_TOKEN` is an older alias. |
 | `APPS` | Apps registered at boot: `myapp=My App,other=Other`. Slugs match `^[a-z][a-z0-9-]{0,39}$`; a malformed entry stops the boot. Existing apps keep their name. |
 | `CATALOG_FILE` | The catalog (section 5). The compose file mounts it at `/config/catalog.json`. |
-| `CLIENT_IP_HEADER` | Header a trusted proxy sets with the caller's address (`cf-connecting-ip`, `x-forwarded-for`), for rate limits. Unset: the socket address. |
+| `CLIENT_IP_HEADER` | Header a trusted proxy sets with the caller's address (`cf-connecting-ip`, `x-forwarded-for`), for rate limits. Unset: the socket address. Behind a proxy, set it: otherwise every caller shares the proxy's limits, and one app takes five tickets with an email a day from all its users. The server warns once when a request comes from a private address and it is unset. |
 | `COUNTRY_HEADER` | Header a trusted proxy sets with a two-letter country (`cf-ipcountry`). Unset: no country. |
 | `RESEND_API_KEY`, `MAIL_FROM` | Mail through Resend: feedback alerts, and replies to users who left an address. |
 | `ALERT_EMAIL`, `REPLY_HINT` | Where new feedback is announced (at most 30 mails an hour; tickets are always stored), and a last line saying where to answer. |
@@ -182,7 +182,10 @@ does not:
   split by `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`,
   `utm_content` or `ref`, and runs a catalog funnel from that session on.
 - The Installs page shows one install's latest events: paste the id from
-  `getInstallationId()`.
+  `getInstallationId()`. It never lists a ticket with an email, and a ticket
+  with an email shows "Not linked to an install (email given)" and no
+  customer id. A "please delete my message" that comes by email is the
+  ticket's Delete button.
 - Every view takes the prod/dev switch and the channel filter.
 
 ## 8. The /v1 API
@@ -192,15 +195,28 @@ Apps send `Authorization: Key <write key>`. The SDK does this.
 | Route | Body and answer |
 |---|---|
 | `POST /v1/events` | `{ sent_at, sdk, context, events }`, up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429: drop the batch. 429 and 5xx: retry. |
-| `POST /v1/tickets` | `{ install, kind, message, email?, subject?, rc_id?, diag? }`. 201 `{ id, created_at, status }`. 429 after five a day. |
+| `POST /v1/tickets` | `{ install?, kind, message, email?, subject?, rc_id?, diag? }`. 201 `{ id, created_at, status }`. With an email and no install (SDK 2.3.0): stored with no install and no `rc_id`, and the answer adds `thread`, the key for that ticket (only its sha256 is stored). Without an email, `install` is required. 429 after five a day, per install, or per caller address and app without one. |
 | `GET /v1/tickets?install=` | That install's tickets under this app, with replies and `unread`. Marks replies read. |
-| `POST /v1/tickets/:id/reply` | `{ install, body }`. 201, or 409 once closed. |
-| `POST /v1/forget` | `{ install }`. 200 `{ ok, deleted }`: the install's events, tickets and row under this app. |
+| `POST /v1/tickets/list` | `{ install }`. The same as the GET, with the install out of the URL and the access log (SDK 2.3.0). |
+| `POST /v1/tickets/threads` | `{ threads: [key, …] }`, up to 50. The same answer as `GET /v1/tickets` for those tickets under this app. Marks replies read by the time of the newest reply shown, never the time of the request, which would match the install's own tickets. A POST so keys stay out of URLs and logs. |
+| `POST /v1/tickets/:id/reply` | `{ install, body }` or `{ thread, body }`. 201, 404 for a wrong install or key, 409 once closed. |
+| `POST /v1/forget` | `{ install }`: 200 `{ ok, deleted }`, the install's events, tickets and row under this app. Or `{ threads }` alone: 200 `{ ok, deleted: { tickets } }`. Both in one request is a 400. |
 | `GET /v1/config` | `{ conversion_values: [{ value, coarse, event, where, lock }] }` from the catalog. |
 
 `/v1` answers CORS for any origin. An install id that belongs to another app
 gets 403 on tickets and forget. **The `/v1` contract is frozen**: shipped apps
 cannot be redeployed, so a change there is a breaking change.
+
+A ticket with an email from an app on SDK 2.2.x or older still arrives with
+the install id and `rc_id`, and that app tracks `ticket_opened` and
+`ticket_replied` with the install. The server drops `rc_id` at once and keeps
+the install only so that app's inbox can list the ticket. The sweep (every
+6 hours) clears it once the ticket is closed and the app has fetched it since
+(or 7 days after it closed), or 30 days after its last activity, and deletes
+that install's `ticket_opened` and `ticket_replied` events since the ticket
+was opened. Migration `007_unlinked_tickets.sql` did the same for the tickets
+stored before it. Once unlinked, the app's `forget()` no longer reaches the
+ticket: the operator deletes it with Delete, on request.
 
 ## 9. The admin API and the CLI
 
@@ -209,8 +225,10 @@ The dashboard reads the admin API with `Authorization: Bearer <ADMIN_TOKEN>`:
 (`?channel=`), `/admin/apps/:app/funnels`, `/funnel?step=…`, `/breakdown?event=&prop=`,
 `/props?event=`, `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
 `/admin/installs/:id` (and `POST …/forget`), `/admin/tickets`,
-`/admin/tickets/:id` (and `POST …/reply`, `…/status`), `/admin/revenue`
-(`?refresh=1`). Reads are GETs. Replies, status changes and forget are writes.
+`/admin/tickets/:id` (and `POST …/reply`, `…/status`, `DELETE` for one
+ticket and its replies), `/admin/revenue` (`?refresh=1`). Reads are GETs.
+Replies, status changes, deletes and forget are writes, and every write is
+`Content-Type: application/json`.
 
 CLI, `node src/cli.mjs <command>`: `apps:list`, `apps:add`, `keys:create`,
 `keys:list`, `keys:revoke`, `rc:projects`, `rc:link <app> <project_id>`,

@@ -3,6 +3,7 @@
 // is Node's mock timers. Each test loads a fresh copy of the module, the way
 // each app launch starts with fresh memory and the same storage.
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
 import { register } from 'node:module';
 import { beforeEach, mock, test } from 'node:test';
 
@@ -18,6 +19,7 @@ let status = 200;
 
 beforeEach(() => {
   h.storage.clear();
+  h.failReads = {};
   h.listeners.length = 0;
   sent = [];
   status = 200;
@@ -923,4 +925,283 @@ test('a runInBackground that throws still sends as the app leaves', async () => 
   await assert.doesNotReject(appState('background'));
   await settle();
   assert.equal(named('journal_written').length, 1);
+});
+
+/**
+ * A hush server for tickets, as 2.3.0 talks to it: a ticket without an
+ * install gets a thread key, and the key reads, answers and forgets it.
+ * `legacy`: a server from before that, which wants an install on every ticket.
+ */
+function ticketServer({ legacy = false } = {}) {
+  const tickets = [];
+  const calls = [];
+  // Every thread key handed out, deleted or not.
+  const minted = [];
+  let next = 1;
+  let offline = null;
+  globalThis.fetch = async (url, init) => {
+    const u = new URL(url);
+    const method = init?.method ?? 'GET';
+    const body = init?.body ? JSON.parse(init.body) : null;
+    if (offline?.(u.pathname, body)) throw new Error('offline');
+    calls.push({ method, path: u.pathname, query: u.search, body });
+    sent.push({ path: u.pathname, body });
+    const reply = (status, json) => ({ ok: status < 300, status, json: async () => json });
+    const view = ({ install: _i, thread: _t, ...t }) => t;
+    if (u.pathname === '/v1/events') return reply(200, { accepted: body.events.length, duplicate: 0, rejected: 0 });
+    if (u.pathname === '/v1/tickets' && method === 'POST') {
+      if (legacy ? !body.install : !body.install && !body.email) return reply(400, { error: 'invalid install' });
+      const id = String(next++);
+      const t = {
+        id, install: body.install ?? null, thread: body.install ? null : randomBytes(32).toString('base64url'),
+        kind: body.kind, subject: body.subject ?? null, message: body.message, status: 'open',
+        created_at: new Date(Date.now() + Number(id) * 1000).toISOString(), unread: false, replies: [],
+      };
+      tickets.push(t);
+      if (t.thread) minted.push(t.thread);
+      return reply(201, { id, created_at: t.created_at, status: 'open', ...(t.thread ? { thread: t.thread } : {}) });
+    }
+    if (u.pathname === '/v1/tickets/list') {
+      if (legacy) return reply(404, { error: 'not found' });
+      return reply(200, { tickets: tickets.filter((t) => t.install === body.install).reverse().map(view) });
+    }
+    if (u.pathname === '/v1/tickets') {
+      const install = u.searchParams.get('install');
+      return reply(200, { tickets: tickets.filter((t) => t.install === install).reverse().map(view) });
+    }
+    if (u.pathname === '/v1/tickets/threads') {
+      if (legacy) return reply(404, { error: 'not found' });
+      return reply(200, { tickets: tickets.filter((t) => t.thread && body.threads.includes(t.thread)).reverse().map(view) });
+    }
+    const m = /^\/v1\/tickets\/(\d+)\/reply$/.exec(u.pathname);
+    if (m) {
+      const t = tickets.find((x) => x.id === m[1] && (body.thread ? x.thread === body.thread : x.install === body.install));
+      if (!t) return reply(404, { error: 'not found' });
+      t.replies.push({ author: 'user', body: body.body, at: new Date().toISOString() });
+      return reply(201, { id: '1', created_at: new Date().toISOString(), status: 'open' });
+    }
+    if (u.pathname === '/v1/forget') {
+      const gone = tickets.filter((t) => (body.threads ? body.threads.includes(t.thread) : t.install === body.install));
+      for (const t of gone) tickets.splice(tickets.indexOf(t), 1);
+      return reply(200, { ok: true, deleted: body.threads ? { tickets: gone.length } : { events: 0, tickets: gone.length, installs: 1 } });
+    }
+    return reply(404, { error: 'not found' });
+  };
+  // The requests that carried the install id and a thread key together: there must be none.
+  const together = (installId) =>
+    calls.filter((c) => {
+      const text = `${c.query} ${JSON.stringify(c.body)}`;
+      return text.includes(installId) && minted.some((k) => text.includes(k));
+    });
+  return { tickets, calls, together, goOffline: (when) => (offline = when) };
+}
+const storedThreads = () => JSON.parse(h.storage.get('hush.threads.v1') ?? '{}');
+
+test('a ticket with an email goes without the install id or RevenueCat id, tracks nothing, and keeps its thread key', async () => {
+  const server = ticketServer();
+  const sdk = await launch();
+  sdk.identify({ rcId: '$RCAnonymousID:abc', pro: true });
+  const r = await sdk.createTicket({ kind: 'issue', message: 'It froze', email: 'sam@example.com', subject: 'Timer' });
+  assert.deepEqual(r, { ok: true, id: '1' });
+  const call = server.calls.find((c) => c.path === '/v1/tickets');
+  assert.deepEqual(Object.keys(call.body).sort(), ['diag', 'email', 'kind', 'message', 'subject']);
+  assert.deepEqual(call.body.diag, { version: '1.2.3', build: '45', os: 'ios 18.6', device: 'iPhone17,1', pro: true }, 'the build, not the person');
+  assert.deepEqual(storedThreads(), { 1: server.tickets[0].thread });
+  await sdk.flushNow();
+  assert.equal(named('ticket_opened').length, 0, 'no event marks the moment');
+  assert.ok(server.calls.some((c) => c.path === '/v1/events'), 'events went out meanwhile');
+  assert.deepEqual(server.together(sdk.installationId()), []);
+});
+
+test('without an email nothing changes: the install id and RevenueCat id go with the ticket, and ticket_opened is tracked', async () => {
+  const server = ticketServer();
+  const sdk = await launch();
+  sdk.identify({ rcId: '$RCAnonymousID:abc' });
+  const r = await sdk.createTicket({ kind: 'feature', message: 'Dark mode please' });
+  assert.equal(r.ok, true);
+  const call = server.calls.find((c) => c.path === '/v1/tickets');
+  assert.equal(call.body.install, sdk.installationId());
+  assert.equal(call.body.rc_id, '$RCAnonymousID:abc');
+  assert.ok(!('email' in call.body));
+  assert.equal(h.storage.has('hush.threads.v1'), false);
+  await sdk.flushNow();
+  assert.deepEqual(named('ticket_opened').map((e) => e.props), [{ kind: 'feature' }]);
+});
+
+test('listTickets: the install\'s tickets and the ones sent with an email, newest first, in two requests, across launches', async () => {
+  const server = ticketServer();
+  let sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'one, by install' });
+  await sdk.createTicket({ kind: 'issue', message: 'two, with an email', email: 'sam@example.com' });
+  await sdk.createTicket({ kind: 'love', message: 'three, by install' });
+  server.calls.length = 0;
+  const list = await sdk.listTickets();
+  assert.deepEqual(list.map((t) => t.message), ['three, by install', 'two, with an email', 'one, by install']);
+  assert.ok(list.every((t) => !('thread' in t) && !('install' in t)), 'the Ticket type gains no identifier');
+  const [byInstall, byThread] = [server.calls.find((c) => c.path === '/v1/tickets/list'), server.calls.find((c) => c.path === '/v1/tickets/threads')];
+  assert.deepEqual(byInstall.body, { install: sdk.installationId() });
+  assert.ok(server.calls.every((c) => !c.query.includes(sdk.installationId())), 'the install id in no URL');
+  assert.deepEqual(byThread.body, { threads: [server.tickets[1].thread] });
+  assert.deepEqual(server.together(sdk.installationId()), []);
+
+  sdk = await launch(); // the keys are on the device
+  assert.equal((await sdk.listTickets()).length, 3);
+});
+
+test('without stored thread keys listTickets makes one request, by the install', async () => {
+  const server = ticketServer();
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'by install' });
+  server.calls.length = 0;
+  assert.equal((await sdk.listTickets()).length, 1);
+  assert.deepEqual(server.calls.map((c) => `${c.method} ${c.path}`), ['POST /v1/tickets/list']);
+});
+
+test('on a server from before 2.3.0, listTickets asks by the query, as it always did', async () => {
+  const server = ticketServer({ legacy: true });
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'by install' });
+  server.calls.length = 0;
+  assert.equal((await sdk.listTickets()).length, 1);
+  assert.deepEqual(server.calls.map((c) => `${c.method} ${c.path}${c.query}`), ['POST /v1/tickets/list', `GET /v1/tickets?install=${sdk.installationId()}`]);
+});
+
+test('replyToTicket: by the thread key on a ticket sent with an email, with no ticket_replied; by the install otherwise', async () => {
+  const server = ticketServer();
+  const sdk = await launch();
+  const keyed = await sdk.createTicket({ kind: 'issue', message: 'with an email', email: 'sam@example.com' });
+  const own = await sdk.createTicket({ kind: 'issue', message: 'by install' });
+  server.calls.length = 0;
+  assert.deepEqual(await sdk.replyToTicket(keyed.id, 'Still frozen'), { ok: true });
+  assert.deepEqual(server.calls.at(-1).body, { thread: server.tickets[0].thread, body: 'Still frozen' });
+  assert.deepEqual(await sdk.replyToTicket(own.id, 'Thanks'), { ok: true });
+  assert.deepEqual(server.calls.at(-1).body, { install: sdk.installationId(), body: 'Thanks' });
+  await sdk.flushNow();
+  assert.equal(named('ticket_replied').length, 1, 'only the reply by install');
+  assert.deepEqual(server.together(sdk.installationId()), []);
+  assert.deepEqual(await sdk.replyToTicket('constructor', 'x'), { ok: false, error: 'failed' }, 'an id that is not a ticket finds no key');
+});
+
+test('forget(): the tickets sent with an email go by their keys in a request of their own, then the install', async () => {
+  const server = ticketServer();
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'with an email', email: 'sam@example.com' });
+  await sdk.createTicket({ kind: 'issue', message: 'by install' });
+  const before = sdk.installationId();
+  const key = server.tickets[0].thread;
+  server.calls.length = 0;
+  assert.deepEqual(await sdk.forget(), { ok: true });
+  const forgets = server.calls.filter((c) => c.path === '/v1/forget').map((c) => c.body);
+  assert.deepEqual(forgets, [{ threads: [key] }, { install: before }]);
+  assert.deepEqual(server.tickets, [], 'both deleted on the server');
+  assert.deepEqual(storedThreads(), {}, 'and the keys gone from the device');
+  server.calls.length = 0;
+  assert.deepEqual(await sdk.listTickets(), []);
+  assert.ok(!server.calls.some((c) => c.path === '/v1/tickets/threads'));
+});
+
+test('forget() that fails on the install after the keys: those tickets stay deleted, and a retry finishes', async () => {
+  const server = ticketServer();
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'with an email', email: 'sam@example.com' });
+  await sdk.createTicket({ kind: 'issue', message: 'by install' });
+  const before = sdk.installationId();
+  server.goOffline((path, body) => path === '/v1/forget' && 'install' in body);
+  assert.deepEqual(await sdk.forget(), { ok: false, error: 'offline' });
+  assert.equal(sdk.installationId(), before);
+  assert.deepEqual(server.tickets.map((t) => t.message), ['by install'], 'the one with an email is gone already');
+  assert.deepEqual(storedThreads(), {});
+  server.goOffline(null);
+  assert.deepEqual(await sdk.forget(), { ok: true });
+  assert.deepEqual(server.tickets, []);
+});
+
+test('forget() offline on the keys changes nothing: the install id and the keys stay', async () => {
+  const server = ticketServer();
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'with an email', email: 'sam@example.com' });
+  const before = sdk.installationId();
+  server.goOffline((path) => path === '/v1/forget');
+  assert.deepEqual(await sdk.forget(), { ok: false, error: 'offline' });
+  assert.equal(sdk.installationId(), before);
+  assert.equal(Object.keys(storedThreads()).length, 1);
+  assert.equal(server.tickets.length, 1);
+});
+
+test('optOut() leaves feedback alone: the keys stay, and tickets still list and send', async () => {
+  ticketServer();
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'with an email', email: 'sam@example.com' });
+  sdk.optOut();
+  assert.equal(Object.keys(storedThreads()).length, 1);
+  assert.equal((await sdk.listTickets()).length, 1);
+  assert.equal((await sdk.createTicket({ kind: 'love', message: 'still here', email: 'sam@example.com' })).ok, true);
+  assert.equal(Object.keys(storedThreads()).length, 2);
+});
+
+test('an older server refuses a ticket without an install: failed, and the SDK does not send the install instead', async () => {
+  const server = ticketServer({ legacy: true });
+  const sdk = await launch();
+  assert.deepEqual(await sdk.createTicket({ kind: 'issue', message: 'with an email', email: 'sam@example.com' }), { ok: false, error: 'failed' });
+  const tries = server.calls.filter((c) => c.path === '/v1/tickets');
+  assert.equal(tries.length, 1);
+  assert.ok(!('install' in tries[0].body));
+  assert.equal(server.tickets.length, 0);
+  assert.equal(h.storage.has('hush.threads.v1'), false);
+  assert.equal((await sdk.createTicket({ kind: 'issue', message: 'without an email' })).ok, true, 'without an email it works as before');
+});
+
+test('saved thread keys that cannot be read start over empty; malformed entries are dropped', async () => {
+  const server = ticketServer();
+  h.storage.set('hush.threads.v1', '{"1":');
+  let sdk = await launch();
+  assert.equal((await sdk.createTicket({ kind: 'issue', message: 'with an email', email: 'sam@example.com' })).ok, true);
+  assert.deepEqual(storedThreads(), { 1: server.tickets[0].thread }, 'the unreadable value is replaced');
+
+  h.storage.set('hush.threads.v1', JSON.stringify({ 1: server.tickets[0].thread, 2: 'short', x: server.tickets[0].thread, 3: 42 }));
+  sdk = await launch();
+  server.calls.length = 0;
+  assert.equal((await sdk.listTickets()).length, 1);
+  assert.deepEqual(server.calls.find((c) => c.path === '/v1/tickets/threads').body, { threads: [server.tickets[0].thread] });
+});
+
+test('thread keys that cannot be read this time are not taken for none: nothing is written over them, and forget() fails', async () => {
+  const server = ticketServer();
+  let sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'first', email: 'sam@example.com' });
+  const first = server.tickets[0].thread;
+
+  sdk = await launch();
+  h.failReads['hush.threads.v1'] = 1;
+  assert.equal((await sdk.createTicket({ kind: 'issue', message: 'second', email: 'sam@example.com' })).ok, true);
+  assert.deepEqual(storedThreads(), { 1: first }, 'the stored key is not written over');
+  const second = server.tickets[1].thread;
+  assert.deepEqual(await sdk.replyToTicket('2', 'and more'), { ok: true }, 'the new key is held in memory meanwhile');
+  assert.deepEqual(server.calls.at(-1).body, { thread: second, body: 'and more' });
+
+  // The next read works: both tickets list, and the new key is saved with the first.
+  assert.deepEqual((await sdk.listTickets()).map((t) => t.message), ['second', 'first']);
+  await settle();
+  assert.deepEqual(storedThreads(), { 1: first, 2: second });
+
+  const before = sdk.installationId();
+  h.failReads['hush.threads.v1'] = 1;
+  assert.deepEqual(await sdk.forget(), { ok: false, error: 'failed' }, 'not done while keys may be stored');
+  assert.equal(sdk.installationId(), before);
+  assert.equal(server.tickets.length, 2);
+  assert.deepEqual(await sdk.forget(), { ok: true });
+  assert.deepEqual(server.tickets, []);
+  assert.deepEqual(storedThreads(), {});
+});
+
+test('two writers on one storage (two tabs on the web) keep each other\'s keys', async () => {
+  const server = ticketServer();
+  const tabA = await launch();
+  const tabB = await launch();
+  await tabA.createTicket({ kind: 'issue', message: 'from A', email: 'sam@example.com' });
+  await tabB.createTicket({ kind: 'issue', message: 'from B', email: 'sam@example.com' });
+  await tabA.createTicket({ kind: 'issue', message: 'from A again', email: 'sam@example.com' });
+  assert.deepEqual(Object.keys(storedThreads()).sort(), ['1', '2', '3']);
+  assert.equal(server.tickets.length, 3);
+  assert.equal((await tabB.listTickets()).length, 3);
 });

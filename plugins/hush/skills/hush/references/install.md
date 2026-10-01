@@ -252,27 +252,37 @@ live in memory, so set them each launch.
 Name screens by route pattern. A concrete path carries ids (`item/8f3a…`,
 `redeem/SPRING24`), which then land on the server.
 
+Leave the feedback and inbox screens out. A ticket sent with an email
+carries no install id, but a `screen_viewed` for the feedback route a moment
+before it points at the install all the same. List the app's routes for
+them in `UNTRACKED` (or report them under a name other screens share).
+
 Expo Router, in the root layout:
 
 ```tsx
+// The app's feedback and inbox routes, as screen() would name them.
+const UNTRACKED = new Set(['feedback', 'support', 'support/[id]']);
+
 const pathname = usePathname();
 const segments = useSegments(); // ["(tabs)", "item", "[id]"]: the file path, not the values
 
 useEffect(() => {
-  hush.screen(segments.filter((s) => !s.startsWith('(')).join('/') || 'home');
+  const name = segments.filter((s) => !s.startsWith('(')).join('/') || 'home';
+  if (!UNTRACKED.has(name)) hush.screen(name);
 }, [pathname]);
 ```
 
 React Navigation, on the container:
 
 ```tsx
+const UNTRACKED = new Set(['Feedback', 'Support', 'SupportThread']);
 const navigationRef = useNavigationContainerRef();
+const track = () => {
+  const name = navigationRef.getCurrentRoute()?.name ?? 'unknown';
+  if (!UNTRACKED.has(name)) hush.screen(name);
+};
 
-<NavigationContainer
-  ref={navigationRef}
-  onReady={() => hush.screen(navigationRef.getCurrentRoute()?.name ?? 'unknown')}
-  onStateChange={() => hush.screen(navigationRef.getCurrentRoute()?.name ?? 'unknown')}
->
+<NavigationContainer ref={navigationRef} onReady={track} onStateChange={track}>
 ```
 
 Web: use the router's pattern (React Router's matched route `path`, the file
@@ -388,8 +398,12 @@ A feedback screen:
 - A kind picker (`issue`, `feature`, `love`), a message (required, up to 4000
   characters), an optional email (up to 160) and subject (up to 120).
 - `await hush.createTicket({ kind, message, email, subject })`. On `ok: false`,
-  show `error`: `offline` (try again), `too_many` (five a day per install),
-  `unavailable` (no key), `failed`.
+  show `error`: `offline` (try again), `too_many` (five a day per install;
+  with an email, five a day per caller address), `unavailable` (no key),
+  `failed`.
+- The email is optional. From SDK 2.3.0 a ticket with one carries no install
+  id, so the app's usage data stays not linked to the person; it needs a hush
+  server with migration 007, or `createTicket` returns `failed`.
 - Hide the entry point when `hush.telemetryAvailable()` is false: with an empty
   key every call returns `unavailable`.
 
@@ -399,15 +413,20 @@ An inbox:
   reply read. For a badge, keep a local set of reply timestamps the user has
   seen.
 - `hush.replyToTicket(id, body)`. On `error: 'closed'`, offer a new message.
-- The SDK tracks `ticket_replied` for a reply. A hush server from before it
-  joined the built-in names lists it as unknown: add it to the catalog there.
+- The SDK tracks `ticket_replied` for a reply (not on a ticket sent with an
+  email). A hush server from before it joined the built-in names lists it as
+  unknown: add it to the catalog there.
 
 Settings rows:
 
 - "Share anonymous usage": a switch bound to `!hush.isOptedOut()` (read it after
   `hushReady`), calling `optOut()` or `optIn()`. Feedback keeps working.
 - "Delete my data": `await hush.forget()`. On `ok: false` (`offline`,
-  `failed`), nothing changed; offer to try again.
+  `failed`), the install's data is still there; offer to try again (tickets
+  with an email it had already deleted stay deleted). Say in the row's text
+  that messages sent with an email are deleted on request at the support
+  address: `forget()` reaches them only while the device holds their keys,
+  and a message from a build before 2.3.0 only until the server unlinks it.
 
 ## 11. @bavrk/hush-expo (optional)
 
@@ -484,7 +503,7 @@ run. Set `NSAdvertisingAttributionReportEndpoint` and
    mismatched versions.
 3. **Runtime** (the user runs it, unless they asked you to): set
    `logLevel: 'debug'` in development, start the app, and look for
-   `[hush] ready: install <uuid>, sdk 2.2.2, channel dev` and
+   `[hush] ready: install <uuid>, sdk 2.3.0, channel dev` and
    `[hush] sent N: { status: 200, …, rejected: 0 }`. Put `logLevel` back to
    `'error'` afterwards.
 4. **Dashboard**: switch to dev, open Installs, and paste the id from
@@ -512,8 +531,9 @@ End with:
   - set `EXPO_PUBLIC_HUSH_CHANNEL` per platform in `eas.json`
     (`build.<profile>.android.env`, `build.<profile>.ios.env`), not in a
     profile's top-level `env`;
-  - update the privacy policy and the store's privacy answers: anonymous usage
-    data (product interaction), and customer support content plus email when
-    the feedback form asks for one; not linked to identity, not used for
-    tracking.
+  - update the privacy policy and the store's privacy answers (SKILL.md, "App
+    Privacy answers"): Usage Data (Product Interaction), not linked; when the
+    feedback form asks for an email, Contact Info (Email Address) and User
+    Content (Customer Support), linked; none of it used for tracking. Without
+    an email field, Customer Support is not linked either.
 - **Anything skipped**, and why.
