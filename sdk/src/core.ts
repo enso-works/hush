@@ -1132,18 +1132,31 @@ export function createHush(platform: HushPlatform) {
     return { ok: true };
   }
 
-  async function fetchTickets(path: string, request?: { method: 'POST'; body: string }): Promise<Ticket[]> {
+  /** One list request: its status (0 offline) and the tickets in it. */
+  async function fetchTickets(path: string, body?: unknown): Promise<{ status: number; tickets: Ticket[] }> {
     try {
       const res = await doFetch(`${TELEMETRY_URL}${path}`, {
-        ...request,
-        headers: { Authorization: `Key ${TELEMETRY_KEY}`, ...(request ? { 'Content-Type': 'application/json' } : {}) },
+        ...(body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) }),
+        headers: { Authorization: `Key ${TELEMETRY_KEY}`, ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
       });
-      if (!res.ok) return [];
-      const body = (await res.json()) as { tickets?: Ticket[] };
-      return Array.isArray(body?.tickets) ? body.tickets : [];
+      if (!res.ok) return { status: res.status, tickets: [] };
+      const json = (await res.json()) as { tickets?: Ticket[] };
+      return { status: res.status, tickets: Array.isArray(json?.tickets) ? json.tickets : [] };
     } catch {
-      return [];
+      return { status: 0, tickets: [] };
     }
+  }
+
+  /**
+   * This install's own tickets, with the install in the body: in a URL, a
+   * proxy's access log would put it next to a reply on a ticket sent with an
+   * email, from the same address. A server from before 2.3.0 has no such
+   * route (404); there the install goes in the query, as it always did.
+   */
+  async function ownTickets(): Promise<Ticket[]> {
+    const listed = await fetchTickets('/v1/tickets/list', { install: installId });
+    if (listed.status !== 404) return listed.tickets;
+    return (await fetchTickets(`/v1/tickets?install=${encodeURIComponent(installId)}`)).tickets;
   }
 
   /**
@@ -1160,8 +1173,8 @@ export function createHush(platform: HushPlatform) {
     const map = stored ?? unsaved;
     const keys = Object.keys(map).sort(newestFirst).slice(0, MAX_THREADS).map((id) => map[id]);
     const [own, keyed] = await Promise.all([
-      fetchTickets(`/v1/tickets?install=${encodeURIComponent(installId)}`),
-      keys.length ? fetchTickets('/v1/tickets/threads', { method: 'POST', body: JSON.stringify({ threads: keys }) }) : [],
+      ownTickets(),
+      keys.length ? fetchTickets('/v1/tickets/threads', { threads: keys }).then((r) => r.tickets) : [],
     ]);
     const byId = new Map<string, Ticket>();
     for (const t of [...own, ...keyed]) if (t && !byId.has(String(t.id))) byId.set(String(t.id), t);

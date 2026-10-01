@@ -961,6 +961,10 @@ function ticketServer({ legacy = false } = {}) {
       if (t.thread) minted.push(t.thread);
       return reply(201, { id, created_at: t.created_at, status: 'open', ...(t.thread ? { thread: t.thread } : {}) });
     }
+    if (u.pathname === '/v1/tickets/list') {
+      if (legacy) return reply(404, { error: 'not found' });
+      return reply(200, { tickets: tickets.filter((t) => t.install === body.install).reverse().map(view) });
+    }
     if (u.pathname === '/v1/tickets') {
       const install = u.searchParams.get('install');
       return reply(200, { tickets: tickets.filter((t) => t.install === install).reverse().map(view) });
@@ -1034,8 +1038,9 @@ test('listTickets: the install\'s tickets and the ones sent with an email, newes
   const list = await sdk.listTickets();
   assert.deepEqual(list.map((t) => t.message), ['three, by install', 'two, with an email', 'one, by install']);
   assert.ok(list.every((t) => !('thread' in t) && !('install' in t)), 'the Ticket type gains no identifier');
-  const [byInstall, byThread] = [server.calls.find((c) => c.method === 'GET'), server.calls.find((c) => c.path === '/v1/tickets/threads')];
-  assert.equal(byInstall.query, `?install=${sdk.installationId()}`);
+  const [byInstall, byThread] = [server.calls.find((c) => c.path === '/v1/tickets/list'), server.calls.find((c) => c.path === '/v1/tickets/threads')];
+  assert.deepEqual(byInstall.body, { install: sdk.installationId() });
+  assert.ok(server.calls.every((c) => !c.query.includes(sdk.installationId())), 'the install id in no URL');
   assert.deepEqual(byThread.body, { threads: [server.tickets[1].thread] });
   assert.deepEqual(server.together(sdk.installationId()), []);
 
@@ -1043,13 +1048,22 @@ test('listTickets: the install\'s tickets and the ones sent with an email, newes
   assert.equal((await sdk.listTickets()).length, 3);
 });
 
-test('without stored thread keys listTickets makes the one request it always made', async () => {
+test('without stored thread keys listTickets makes one request, by the install', async () => {
   const server = ticketServer();
   const sdk = await launch();
   await sdk.createTicket({ kind: 'issue', message: 'by install' });
   server.calls.length = 0;
   assert.equal((await sdk.listTickets()).length, 1);
-  assert.deepEqual(server.calls.map((c) => `${c.method} ${c.path}`), ['GET /v1/tickets']);
+  assert.deepEqual(server.calls.map((c) => `${c.method} ${c.path}`), ['POST /v1/tickets/list']);
+});
+
+test('on a server from before 2.3.0, listTickets asks by the query, as it always did', async () => {
+  const server = ticketServer({ legacy: true });
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'by install' });
+  server.calls.length = 0;
+  assert.equal((await sdk.listTickets()).length, 1);
+  assert.deepEqual(server.calls.map((c) => `${c.method} ${c.path}${c.query}`), ['POST /v1/tickets/list', `GET /v1/tickets?install=${sdk.installationId()}`]);
 });
 
 test('replyToTicket: by the thread key on a ticket sent with an email, with no ticket_replied; by the install otherwise', async () => {
