@@ -56,8 +56,10 @@ four besides `react-native`.
 
 ## Usage rules
 
-These rules are for SDK 2.2.2. Install that version or later; for an app on
-2.2.1 or older, see the note after the list.
+These rules are for SDK 2.2.2 and later. Install 2.3.0 or later, which also
+keeps a ticket with an email apart from the install ([App Privacy
+answers](#app-privacy-answers)); for an app on 2.2.1 or older, see the note
+after the list.
 
 1. **Call `configure()` and then `init()` at startup, in one module.** Nothing
    is tracked before `configure()`. After it the order is free: events tracked
@@ -255,11 +257,11 @@ Pass `version`, or the dashboard shows version `unknown`;
 | `entry(source, { url? })` | How the session began: `'link'`, `'notification'`, `'widget'`, `'quick_action'`, `'siri'` or another label. A link keeps only its `utm_*` and `ref` tags. Held until the session exists. |
 | `identify({ rcId?, pro? })` | RevenueCat's customer id and the paid flag, sent with every batch once set. |
 | `setGlobalProps(props)`, `removeGlobalProp(key)`, `clearGlobalProps()` | Props merged into every later event. Memory only: set them each launch. |
-| `createTicket({ kind, message, email?, subject? })` | Sends feedback. `kind` is `issue`, `feature` or `love`. Returns `{ ok, id?, error? }`. |
-| `listTickets()` | This install's tickets, with replies and `unread`. Marks replies read. |
+| `createTicket({ kind, message, email?, subject? })` | Sends feedback. `kind` is `issue`, `feature` or `love`. Returns `{ ok, id?, error? }`. With an email it sends no install id and keeps a thread key for the ticket instead (2.3.0). |
+| `listTickets()` | This install's tickets and the ones it sent with an email, with replies and `unread`. Marks replies read. |
 | `replyToTicket(id, body)` | The user's answer. `error: 'closed'` once the ticket is closed. |
 | `optOut()`, `optIn()`, `isOptedOut()` | The user's choice, remembered. Feedback keeps working. |
-| `forget()` | Deletes this install's data on the server and starts over with a new id. |
+| `forget()` | Deletes this install's data and the tickets it sent with an email on the server, and starts over with a new id. |
 | `getInstallationId()` | The install id, for a debug screen and the dashboard's Installs page. |
 | `flushNow()`, `pause()`, `resume()` | Send one batch now (after one in flight); hold sends; send again. |
 | `telemetryAvailable()` | Whether the SDK is on (a url and a non-empty key). |
@@ -267,6 +269,34 @@ Pass `version`, or the dashboard shows version `unknown`;
 Options: `url`, `key`, `channel`, `logLevel` (`silent`, `error`, `debug`),
 `onFlush`, `storagePrefix`, `runInBackground`, `attribution`. Types, defaults
 and edge cases are in [references/sdk-api.md](references/sdk-api.md).
+
+## App Privacy answers
+
+What an app on hush can declare in App Store Connect's App Privacy section,
+with SDK 2.3.0 or later and a hush server with migration 007:
+
+| Data type | Collected | Linked to the user | Used for tracking | Purpose |
+|---|---|---|---|---|
+| Usage Data: Product Interaction | Yes: events, sessions, screens | No | No | Analytics |
+| Contact Info: Email Address | Only when the feedback form asks for one | Yes | No | App Functionality |
+| User Content: Customer Support | When the user sends feedback | Yes, when an email is given | No | App Functionality |
+
+Why usage data is not linked: the install id is a random UUID made on the
+device, and a ticket with an email carries neither it nor RevenueCat's id, so
+nothing joins the person who wrote to what their app sends. The SDK tracks no
+`ticket_opened` or `ticket_replied` for such a ticket either. A ticket without
+an email carries the install id, which is how the answer gets back, and
+nothing that says who wrote it. So Contact Info and Customer Support are
+linked only for people who write in with an email.
+
+- An app without an email field: Customer Support is not linked either.
+- Other SDKs in the app (RevenueCat, a crash reporter) have answers of their
+  own.
+- Versions already in users' hands on 2.2.x or older still send the install
+  id with an email. The server drops RevenueCat's id at once, and the install
+  id when the ticket is closed or idle for 30 days; until then that one
+  ticket is linked to that install. The answers above hold in full for
+  builds on 2.3.0 or later.
 
 ## The server side
 

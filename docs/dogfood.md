@@ -8,6 +8,20 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
 ## 2026-10-01
 
+- **Braele.** Braele declares its usage data "Not linked to you" on the App
+  Store, but a ticket with an email also carried the install id and
+  RevenueCat's id. The dashboard's install page, the alert mail and the
+  `ticket_opened` event (same install, same moment) each joined the person who
+  wrote to that install's events, so the answer was not true for anyone who
+  wrote to support with an email. Braele 2.1.0 adds a "How did you find
+  Braele?" answer to every event, which makes it matter more. Fixed in
+  `3343a95` (server, migration 007), `1dc440c` (dashboard) and `d6d9912`
+  (SDK 2.3.0): a ticket with an email carries neither id, the app holds a key
+  for that ticket instead, and a ticket from an older app version loses the
+  install id when it is closed or idle for 30 days.
+- **Braele, app-template, open.** They move to SDK 2.3.0, and their App
+  Privacy answers and the hush docs site follow, once 2.3.0 is published.
+
 Wiring Braele to SDK 2.2.1 and hush-expo 0.1.2 meant following four timing
 rules from the README, and an audit of the SDK against them found more. All
 fixed in `b8b4df2` (SDK 2.2.2) unless marked otherwise.

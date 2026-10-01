@@ -83,6 +83,7 @@ End with, in this order:
   profile's top-level `env`; for hush-expo, rebuild the native app, and for
   attribution add `app_store_id` and `conversion_values` and route the
   `.well-known` paths; check the runtime log with `logLevel: 'debug'`; update
-  the privacy policy and the store's privacy answers.
+  the privacy policy and the store's privacy answers (the skill's "App
+  Privacy answers").
 - **Skipped**, and why.
 - **Checks run**, each with its result.

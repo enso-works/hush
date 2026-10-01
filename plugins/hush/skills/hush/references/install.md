@@ -390,6 +390,9 @@ A feedback screen:
 - `await hush.createTicket({ kind, message, email, subject })`. On `ok: false`,
   show `error`: `offline` (try again), `too_many` (five a day per install),
   `unavailable` (no key), `failed`.
+- The email is optional. From SDK 2.3.0 a ticket with one carries no install
+  id, so the app's usage data stays not linked to the person; it needs a hush
+  server with migration 007, or `createTicket` returns `failed`.
 - Hide the entry point when `hush.telemetryAvailable()` is false: with an empty
   key every call returns `unavailable`.
 
@@ -399,8 +402,9 @@ An inbox:
   reply read. For a badge, keep a local set of reply timestamps the user has
   seen.
 - `hush.replyToTicket(id, body)`. On `error: 'closed'`, offer a new message.
-- The SDK tracks `ticket_replied` for a reply. A hush server from before it
-  joined the built-in names lists it as unknown: add it to the catalog there.
+- The SDK tracks `ticket_replied` for a reply (not on a ticket sent with an
+  email). A hush server from before it joined the built-in names lists it as
+  unknown: add it to the catalog there.
 
 Settings rows:
 
@@ -512,8 +516,9 @@ End with:
   - set `EXPO_PUBLIC_HUSH_CHANNEL` per platform in `eas.json`
     (`build.<profile>.android.env`, `build.<profile>.ios.env`), not in a
     profile's top-level `env`;
-  - update the privacy policy and the store's privacy answers: anonymous usage
-    data (product interaction), and customer support content plus email when
-    the feedback form asks for one; not linked to identity, not used for
-    tracking.
+  - update the privacy policy and the store's privacy answers (SKILL.md, "App
+    Privacy answers"): Usage Data (Product Interaction), not linked; when the
+    feedback form asks for an email, Contact Info (Email Address) and User
+    Content (Customer Support), linked; none of it used for tracking. Without
+    an email field, Customer Support is not linked either.
 - **Anything skipped**, and why.

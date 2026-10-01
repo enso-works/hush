@@ -151,17 +151,52 @@ The [hush plugin](plugins/hush/) for Claude Code:
 - **Country**, only if you set `COUNTRY_HEADER` behind a proxy that provides a
   trusted one. The dashboard folds any country under ten installs into
   "other".
-- **An email address**, only when a user types one into feedback.
+- **An email address**, only when a user types one into feedback. That
+  ticket is kept apart from the install ([below](#what-a-ticket-carries)).
 - **No IP address**, anywhere. Rate limits count a salted hash that lives in
   memory only.
 - **No advertising or device identifiers**: nothing for App Tracking
   Transparency to ask about. From a link, only its `utm_*` and `ref` tags.
 
 Raw events are deleted after `RETENTION_DAYS` (180); install rows and
-feedback threads are kept until the install is forgotten (the SDK's
-`forget()`, or the dashboard's Installs page). The write key ships inside the app, so it is not a
+feedback threads are kept until they are forgotten: the SDK's `forget()`
+(which also deletes the tickets the app sent with an email), the dashboard's
+Installs page, or Delete on one ticket. The write key ships inside the app, so it is not a
 secret: it identifies the app, can be revoked, and can read nothing but the
-calling install's own feedback.
+calling install's own feedback, or a ticket whose key the caller holds.
+
+### What a ticket carries
+
+An email is contact info. A ticket that carries one never carries the
+install id or RevenueCat's id, so nothing joins the person who wrote to what
+their app sends. The app reaches that ticket with a key of its own, which the
+server keeps only as a hash. A ticket without an email carries the install
+id, because the app is the only way the answer gets back, and nothing that
+says who wrote it.
+
+| | Without an email | With an email (SDK 2.3.0 and later) |
+|---|---|---|
+| Message, kind, subject | yes | yes |
+| App version, build, OS, device model, paid flag | yes | yes |
+| Install id | yes | no: a thread key for that ticket instead |
+| RevenueCat's customer id | when the app has passed one | no |
+| Email | no | yes |
+| `ticket_opened` and `ticket_replied` events | yes | no |
+
+So an app on hush can answer Apple's App Privacy questions like this. Usage
+Data (Product Interaction) is collected and not linked to the user. Contact
+Info (Email Address) and User Content (Customer Support) are collected and
+linked to the user, and only for people who write in with an email; without
+an email field, Customer Support is not linked either. None of it is used for
+tracking. Other SDKs in the app answer for themselves.
+
+App versions built with SDK 2.2.x or older still send the install id and
+RevenueCat's id with an email. The server drops RevenueCat's id when the
+ticket arrives, and keeps the install id only so that the app's inbox can
+list the ticket: it is cleared when the ticket is closed, or 30 days after the
+last activity on it. Until then that ticket is linked to that install. The
+dashboard never shows an install on a ticket with an email, and an install's
+page never lists one.
 
 ## Configuration
 
@@ -260,10 +295,11 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 | | |
 |---|---|
 | `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. |
-| `POST /v1/tickets` | feedback: `{ install, kind: issue\|feature\|love, message, email?, subject?, rc_id?, diag? }` → 201 `{ id, created_at, status }`. Five a day per install; 400 on validation (message 1-4000, subject ≤120, email ≤160). |
+| `POST /v1/tickets` | feedback: `{ install?, kind: issue\|feature\|love, message, email?, subject?, rc_id?, diag? }` → 201 `{ id, created_at, status }`. With an email and no install, stored with neither install nor `rc_id`, and the answer adds `thread`: the key to that ticket. Without an email, `install` is required. Five a day per install, or per caller address without one; 400 on validation (message 1-4000, subject ≤120, email ≤160). |
 | `GET /v1/tickets?install=` | that install's feedback (last 50), with replies and `unread`; reading marks every reply read |
-| `POST /v1/tickets/:id/reply` | `{ install, body }` → 201, 409 once closed, 429 after 20 replies a day |
-| `POST /v1/forget` | `{ install }` → 200 `{ ok, deleted }`: that install's events, feedback and row, under the calling app |
+| `POST /v1/tickets/threads` | `{ threads: [key, …] }` (up to 50) → the same answer for the tickets those keys open |
+| `POST /v1/tickets/:id/reply` | `{ install, body }` or `{ thread, body }` → 201, 404 for a wrong install or key, 409 once closed, 429 after 20 replies a day |
+| `POST /v1/forget` | `{ install }` → 200 `{ ok, deleted }`: that install's events, feedback and row, under the calling app. `{ threads }` on its own → 200 `{ ok, deleted: { tickets } }`; both in one request is a 400 |
 | `GET /v1/config` | the app's `conversion_values` from the catalog, for the SDK |
 
 `/v1` answers CORS for any origin, so web and Capacitor apps can send.
@@ -277,7 +313,7 @@ sign-in), `/admin/apps`, `/admin/apps/:app` (`?channel=`),
 `/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
 `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
 `/admin/installs/:id` (+ `/forget`), `/admin/tickets`, `/admin/tickets/:id`
-(+ `/reply`, `/status`), `/admin/revenue` (`?refresh=1` asks RevenueCat
+(+ `/reply`, `/status`, and `DELETE`), `/admin/revenue` (`?refresh=1` asks RevenueCat
 now). Writes must be `Content-Type: application/json`. CLI:
 `node src/cli.mjs apps:list | apps:add <slug> <name> | keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id> | rc:projects | rc:link <app> <project_id> | rc:sync | rc:charts | rc:poll | asc:request <app> | asc:sync [app] | migrate`.
 
