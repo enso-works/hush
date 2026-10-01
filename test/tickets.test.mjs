@@ -207,6 +207,30 @@ describe('a ticket with an email (SDK 2.3.0)', () => {
     assert.deepEqual((await c.post('/v1/tickets/threads', { threads: [] })).json, { tickets: [] });
   });
 
+  test('read by its key, it records the time of the reply shown, never the time of the request', async () => {
+    const c = client(srv.base, key);
+    const install = uuid();
+    const own = (await c.post('/v1/tickets', ticket(install))).json;
+    const { json: t } = await create(c, withEmail());
+    const readAt = async (id) => (await db.query('SELECT read_at FROM tickets WHERE id = $1', [id])).rows[0].read_at;
+
+    // Nothing to read yet: nothing recorded.
+    await c.post('/v1/tickets/threads', { threads: [t.thread] });
+    assert.equal(await readAt(t.id), null);
+
+    await admin(srv.base).post(`/admin/tickets/${own.id}/reply`, { body: 'Thanks.' });
+    await admin(srv.base).post(`/admin/tickets/${t.id}/reply`, { body: 'On it.' });
+    const replied = (await db.query("SELECT created_at FROM ticket_replies WHERE ticket_id = $1 AND author = 'support'", [t.id])).rows[0].created_at;
+    // As SDK 2.3.0 lists them: both requests at once, from one device.
+    for (let poll = 0; poll < 3; poll++) {
+      await Promise.all([c.post('/v1/tickets/list', { install }), c.post('/v1/tickets/threads', { threads: [t.thread] })]);
+      assert.equal((await readAt(t.id)).getTime(), replied.getTime(), 'the support reply\'s own time');
+      assert.notEqual((await readAt(own.id)).getTime(), (await readAt(t.id)).getTime());
+    }
+    const listed = (await c.post('/v1/tickets/threads', { threads: [t.thread] })).json.tickets[0];
+    assert.equal(listed.unread, false, 'unread works as before');
+  });
+
   test('a wrong key is a 404 like a wrong install; a malformed key or list is a 400', async () => {
     const c = client(srv.base, key);
     const { json: t } = await create(c, withEmail());
@@ -248,6 +272,7 @@ describe('a ticket with an email (SDK 2.3.0)', () => {
     assert.equal(one.json.rc_id, null);
     assert.equal(one.json.email, 'sam@example.com');
     assert.ok(!('thread_hash' in one.json), 'the key hash stays in the database');
+    assert.ok(!('read_at' in one.json), 'nor when an app last read a ticket');
     const listed = (await admin(srv.base).get('/admin/tickets?status=all')).json.tickets.find((x) => String(x.id) === String(t.id));
     assert.equal(listed.install, null);
     assert.deepEqual((await admin(srv.base).get(`/admin/installs/${install}`)).json.tickets, []);

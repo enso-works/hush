@@ -180,17 +180,37 @@ export async function belongsToAnotherApp(install, app) {
   return rowCount > 0;
 }
 
+// The newest support reply on ticket t, for a subquery; callers add a bound.
+const NEWEST_SUPPORT_REPLY = "SELECT max(r.created_at) FROM ticket_replies r WHERE r.ticket_id = t.id AND r.author = 'support'";
+
 /**
  * Everything one install may see: its own tickets under the calling app, with
  * replies, newest first. Scoped by app so a write key from one app cannot read
- * another app's tickets by guessing an install id.
+ * another app's tickets by guessing an install id. Marked read at the
+ * request's cutoff, as they always were: these tickets carry the install.
  */
-export const ticketsForInstall = (install, app) => ticketsWhere('install = $1', install, app);
+export const ticketsForInstall = (install, app) =>
+  ticketsWhere('install = $1', install, app, {
+    readAt: '$3',
+    when: '(t.read_at IS NULL OR t.read_at < $3)',
+  });
 
-/** The same for the tickets an app holds thread keys for (sent with an email). */
-export const ticketsForThreads = (keys, app) => ticketsWhere('thread_hash = ANY($1::text[])', keys.map(hashThread), app);
+/**
+ * The same for the tickets an app holds thread keys for (sent with an email),
+ * except how they are marked read: read_at becomes the time of the newest
+ * support reply the app was shown, and only moves when there is one it had
+ * not seen. Never the time of the request: the SDK fetches these and the
+ * install's own tickets together, so a request time would be the same on
+ * both, to the millisecond, and join the email to the install.
+ */
+export const ticketsForThreads = (keys, app) =>
+  ticketsWhere('thread_hash = ANY($1::text[])', keys.map(hashThread), app, {
+    readAt: `(${NEWEST_SUPPORT_REPLY} AND r.created_at <= $3)`,
+    when: `EXISTS (SELECT 1 FROM ticket_replies r WHERE r.ticket_id = t.id AND r.author = 'support'
+                    AND r.created_at <= $3 AND r.created_at > COALESCE(t.read_at, '-infinity'::timestamptz))`,
+  });
 
-async function ticketsWhere(match, value, app) {
+async function ticketsWhere(match, value, app, { readAt, when }) {
   // The cutoff is taken before the select, and acknowledgement never moves
   // past it: a reply that lands mid-request keeps a timestamp after the
   // cutoff, so it is still unread on the next poll rather than silently
@@ -211,11 +231,7 @@ async function ticketsWhere(match, value, app) {
     [value, app, cutoff],
   );
 
-  await q(
-    `UPDATE tickets SET read_at = $3
-     WHERE ${match} AND app = $2 AND (read_at IS NULL OR read_at < $3)`,
-    [value, app, cutoff],
-  );
+  await q(`UPDATE tickets t SET read_at = ${readAt} WHERE t.${match} AND t.app = $2 AND ${when}`, [value, app, cutoff]);
   return rows;
 }
 
@@ -265,7 +281,7 @@ export async function adminList(status, kind) {
 export async function adminGet(id) {
   const { rows } = await q(
     `SELECT t.id, t.app, t.kind, ${LINKS}, t.email, t.subject, t.message, t.diag, t.status,
-            t.created_at, t.updated_at, t.read_at,
+            t.created_at, t.updated_at,
             COALESCE(
               (SELECT json_agg(json_build_object('id', r.id, 'author', r.author, 'body', r.body, 'at', r.created_at, 'emailed', r.emailed) ORDER BY r.created_at)
                FROM ticket_replies r WHERE r.ticket_id = t.id),
