@@ -39,7 +39,8 @@ function normalize(value) {
   return JSON.parse(
     JSON.stringify(value)
       .replace(/"\d{4}-\d{2}-\d{2}T[0-9:.]+(Z|[+-]\d{2}:\d{2})"/g, '"<time>"')
-      .replace(/"(id)":"?\d+"?/g, '"$1":"<id>"'),
+      .replace(/"(id)":"?\d+"?/g, '"$1":"<id>"')
+      .replace(/"thread":"[A-Za-z0-9_-]{43}"/g, '"thread":"<thread>"'),
   );
 }
 
@@ -77,6 +78,27 @@ test('the /v1 surface answers exactly as shipped apps expect', async () => {
   await step('tickets: reply on closed', c.post(`/v1/tickets/${t.json.id}/reply`, { install: INSTALL, body: 'late' }));
   await step('unknown route', c.get('/v1/nothing'));
   await step('healthz', client(srv.base).get('/healthz'));
+
+  // Added with SDK 2.3.0 (2026-10-01): a ticket with an email is not linked
+  // to the install. Every step above is unchanged; these are new paths and
+  // new fields, from a second caller so the per-address ticket limit of the
+  // first is not in play.
+  const n = client(srv.base, key);
+  const OLD = '33333333-3333-4333-8333-333333333333';
+  const u = await step('tickets: create with an email, no install', n.post('/v1/tickets', { kind: 'issue', email: 'sam@example.com', message: 'Write back', diag: { version: '2.3.0', pro: false } }));
+  await step('tickets: no install and no email', n.post('/v1/tickets', { kind: 'issue', message: 'x' }));
+  await step('tickets: an older app with an email and its install', n.post('/v1/tickets', { install: OLD, kind: 'issue', rc_id: '$RCAnonymousID:x', email: 'old@example.com', message: 'Old app' }));
+  await step('tickets: an older app lists it by install', n.get(`/v1/tickets?install=${OLD}`));
+  await admin(srv.base).post(`/admin/tickets/${u.json.id}/reply`, { body: 'Thanks, looking.' });
+  await step('tickets: threads list (unread)', n.post('/v1/tickets/threads', { threads: [u.json.thread] }));
+  await step('tickets: threads list, other app', client(srv.base, otherKey).post('/v1/tickets/threads', { threads: [u.json.thread] }));
+  await step('tickets: threads list, invalid', n.post('/v1/tickets/threads', { threads: 'nope' }));
+  await step('tickets: reply by thread', n.post(`/v1/tickets/${u.json.id}/reply`, { thread: u.json.thread, body: 'Still broken' }));
+  await step('tickets: reply, wrong thread', n.post(`/v1/tickets/${u.json.id}/reply`, { thread: 'A'.repeat(43), body: 'hi' }));
+  await step('tickets: reply, invalid thread', n.post(`/v1/tickets/${u.json.id}/reply`, { thread: 'nope', body: 'hi' }));
+  await step('forget: install and threads together', n.post('/v1/forget', { install: OLD, threads: [u.json.thread] }));
+  await step('forget: threads', n.post('/v1/forget', { threads: [u.json.thread] }));
+  await step('forget: install', n.post('/v1/forget', { install: OLD }));
 
   if (!existsSync(SNAPSHOT) || process.env.UPDATE_SNAPSHOTS === '1') {
     writeFileSync(SNAPSHOT, `${JSON.stringify(steps, null, 2)}\n`);
