@@ -87,7 +87,9 @@ after the list.
 7. **Never change `storagePrefix` in a shipped app.** Every user becomes a new
    install, and their opt-out is forgotten.
 8. **Name screens by route pattern (`item/[id]`), never by a concrete path.**
-   Ids, codes and tokens never go into screen names or props.
+   Ids, codes and tokens never go into screen names or props. Leave the
+   feedback and inbox screens out (or give them a name other screens share):
+   next to a ticket sent with an email, their timing points at the install.
 9. **Do not call `listTickets()` at launch for a badge.** Fetching marks every
    reply read on the server. Keep a local seen-set instead.
 
@@ -155,6 +157,9 @@ import { useEffect } from 'react';
 
 import * as hush from '@/lib/hush';
 
+// The app's feedback and inbox routes, as screen() would name them.
+const UNTRACKED = new Set(['feedback', 'support', 'support/[id]']);
+
 export default function RootLayout() {
   const pathname = usePathname();
   const segments = useSegments();
@@ -168,9 +173,11 @@ export default function RootLayout() {
     });
   }, []);
 
-  // Screens by route pattern ("item/[id]"), groups such as "(tabs)" dropped.
+  // Screens by route pattern ("item/[id]"), groups such as "(tabs)" dropped,
+  // except the feedback and inbox routes (rule 8).
   useEffect(() => {
-    hush.screen(segments.filter((s) => !s.startsWith('(')).join('/') || 'home');
+    const name = segments.filter((s) => !s.startsWith('(')).join('/') || 'home';
+    if (!UNTRACKED.has(name)) hush.screen(name);
   }, [pathname]);
 
   // ...the app's navigator
@@ -261,7 +268,7 @@ Pass `version`, or the dashboard shows version `unknown`;
 | `listTickets()` | This install's tickets and the ones it sent with an email, with replies and `unread`. Marks replies read. |
 | `replyToTicket(id, body)` | The user's answer. `error: 'closed'` once the ticket is closed. |
 | `optOut()`, `optIn()`, `isOptedOut()` | The user's choice, remembered. Feedback keeps working. |
-| `forget()` | Deletes this install's data and the tickets it sent with an email on the server, and starts over with a new id. |
+| `forget()` | Deletes this install's data, and the tickets sent with an email whose keys are on the device, on the server; starts over with a new id. A failure after the keyed tickets went leaves them deleted; call it again. It cannot reach a ticket a build before 2.3.0 sent with an email once the server has unlinked it. |
 | `getInstallationId()` | The install id, for a debug screen and the dashboard's Installs page. |
 | `flushNow()`, `pause()`, `resume()` | Send one batch now (after one in flight); hold sends; send again. |
 | `telemetryAvailable()` | Whether the SDK is on (a url and a non-empty key). |
@@ -282,21 +289,34 @@ with SDK 2.3.0 or later and a hush server with migration 007:
 | User Content: Customer Support | When the user sends feedback | Yes, when an email is given | No | App Functionality |
 
 Why usage data is not linked: the install id is a random UUID made on the
-device, and a ticket with an email carries neither it nor RevenueCat's id, so
-nothing joins the person who wrote to what their app sends. The SDK tracks no
-`ticket_opened` or `ticket_replied` for such a ticket either. A ticket without
-an email carries the install id, which is how the answer gets back, and
-nothing that says who wrote it. So Contact Info and Customer Support are
-linked only for people who write in with an email.
+device, and a ticket with an email carries neither it nor RevenueCat's id.
+hush stores no id or key that joins such a ticket to an install, the
+dashboard offers no way to do it, and the SDK tracks no `ticket_opened` or
+`ticket_replied` for it. A ticket without an email carries the install id,
+which is how the answer gets back, and nothing that says who wrote it. So
+Contact Info and Customer Support are linked only for people who write in
+with an email.
 
+- The ticket's time and diagnostics (version, build, OS, device, paid flag)
+  are also on the install's row and events, so someone with the database
+  could still narrow a ticket down to one install on a small app. Apple
+  counts data as not linked only while nobody tries to link it back: never
+  do, leave the feedback and inbox screens out of `screen()` (usage rule 8),
+  and put nothing about a ticket in an event.
 - An app without an email field: Customer Support is not linked either.
 - Other SDKs in the app (RevenueCat, a crash reporter) have answers of their
   own.
 - Versions already in users' hands on 2.2.x or older still send the install
-  id with an email. The server drops RevenueCat's id at once, and the install
-  id when the ticket is closed or idle for 30 days; until then that one
-  ticket is linked to that install. The answers above hold in full for
-  builds on 2.3.0 or later.
+  id with an email, and track `ticket_opened` and `ticket_replied` with it.
+  The server drops RevenueCat's id at once. It clears the install id, and
+  deletes that install's ticket events since the ticket was opened, once the
+  ticket is closed and that app has fetched it since (or 7 days after it
+  closed), or after 30 idle days; until then that one ticket is linked to
+  that install. The answers above hold in full for builds on 2.3.0 or later.
+- "Delete my data" (`forget()`) reaches the tickets sent with an email only
+  while the device holds their keys, and a 2.2.x ticket only until the server
+  unlinks it. Give the support address in that setting for messages sent
+  with an email; the operator deletes those with Delete on the ticket.
 
 ## The server side
 

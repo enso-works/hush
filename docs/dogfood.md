@@ -8,6 +8,23 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
 ## 2026-10-01
 
+- **Braele, review of the fix below.** A review found four joins the first
+  fix left, and one thing it broke. Reading tickets stamped `read_at` with
+  the time of the request, and the SDK reads the install's tickets and the
+  ones by key together, so both carried the same millisecond. Builds on
+  2.2.x also tracked `ticket_opened` and `ticket_replied` with the install,
+  and clearing the install on the ticket left those events in place. The
+  install id still went in a URL (`GET /v1/tickets?install=`), which a
+  proxy's access log could pair with a reply by key from the same address.
+  And clearing the install at close took the thread out of an older app's
+  inbox before it showed the closing reply, so a late reply got a 404
+  instead of `closed`. Fixed in `93ee0f9` (`read_at` is the reply shown),
+  `ad73edc` (the sweep unlinks once the close is seen, with the ticket
+  events) and `02e1b8c` with `fff5b79` (`POST /v1/tickets/list`). Also
+  `07fb80a`: a failed read of the stored thread keys no longer lets the next
+  save write over them. What no id can hide, a ticket's time and build
+  details, is now named in the docs, with the screens to leave out of
+  `screen()`.
 - **Braele.** Braele declares its usage data "Not linked to you" on the App
   Store, but a ticket with an email also carried the install id and
   RevenueCat's id. The dashboard's install page, the alert mail and the
@@ -21,6 +38,9 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
   install id when it is closed or idle for 30 days.
 - **Braele, app-template, open.** They move to SDK 2.3.0, and their App
   Privacy answers and the hush docs site follow, once 2.3.0 is published.
+  Their screen wiring leaves the feedback and inbox routes out, and their
+  "delete my data" row gives the support address for messages sent with an
+  email, which `forget()` does not reach once unlinked.
 
 Wiring Braele to SDK 2.2.1 and hush-expo 0.1.2 meant following four timing
 rules from the README, and an audit of the SDK against them found more. All

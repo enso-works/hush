@@ -72,8 +72,9 @@ claude plugin validate ./plugins/hush
   shipped SDK version handles, and say why in the commit.
 - **Usage data is not linked.** A ticket with an email never carries the
   install id or RevenueCat's id, no request carries an install id and a
-  thread key together, and nothing on the dashboard, in an alert mail or in
-  the log puts an install id next to an email. Apps answer the App Store's
+  thread key together, nothing stored on such a ticket records when an app
+  read it, and nothing on the dashboard, in an alert mail or in the log puts
+  an install id next to an email. Apps answer the App Store's
   privacy questions on that ([README](README.md#what-a-ticket-carries)).
 - **Never commit secrets**: `.env`, `examples/.env`, `ADMIN_TOKEN`, App Store
   Connect `.p8` keys, RevenueCat or Resend keys, npm tokens. Never print them.
