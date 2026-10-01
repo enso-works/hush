@@ -6,6 +6,44 @@ anything else, and later the evidence for what a hosted hush has to be.
 
 Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
+## 2026-10-01
+
+Wiring Braele to SDK 2.2.1 and hush-expo 0.1.2 meant following four timing
+rules from the README, and an audit of the SDK against them found more. All
+fixed in `b8b4df2` (SDK 2.2.2) unless marked otherwise.
+
+- **Braele.** A link or widget that opened the app was lost when `entry()`
+  ran before `init()` resolved, and a warm return's link arrives before
+  `active`. The SDK now holds an early `entry()` for its session.
+- **Braele.** A cold launch was spread over two session ids: events tracked
+  before `init()` and `app_first_opened` carried one, `session_started`
+  another. They share one now, and the start sorts first.
+- **Braele.** An event tracked before `init()` could overwrite the last
+  launch's unsent queue on disk. Nothing is written until `init()` has
+  merged it.
+- **Braele.** Batches said `pro: false` until `identify()` ran, which marked
+  a paid install unpaid. The flag is left out until the app says.
+- **Braele.** `configure({ url: undefined })` (an env variable unset in one
+  build profile) threw at startup, and so did `track(name, null)`. A missing
+  url now turns the SDK off and says so; null props count as none.
+- **Braele.** Every ticket reply showed under unknown events:
+  `ticket_replied` was not a built-in name. Fixed in `54e11a2`: it is one,
+  and migration 006 marks the stored rows known.
+- **hush SDK.** `forget()` did not wait for a send in flight, and a send
+  removed events by position: the old install's events could land after the
+  delete, and new ones were dropped. A privacy choice made before `init()`
+  had read storage was lost. A circular prop (a press event) stopped every
+  send for the rest of the launch. A delivered batch reached the disk a
+  second late, so a process killed right after sent it again.
+- **hush SDK, documented.** A cold relaunch always starts a new session, even
+  minutes after the last one; only a live process continues one within 30
+  minutes. The README now says so.
+- **Braele.** `npx expo-doctor` reported `expo-modules-core` as a missing
+  peer of hush-expo. Fixed in `62f9801` (hush-expo 0.1.3): its only peer is
+  `expo`.
+- **Braele, open.** The hush docs site (hush.bavrk.com/docs) still describes
+  the 2.2.1 rules; it is updated with the 2.2.2 release.
+
 ## 2026-09-30
 
 - **ops, operator.** The dashboard needed its own sign-in on ops, next to the

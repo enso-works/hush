@@ -56,23 +56,23 @@ four besides `react-native`.
 
 ## Usage rules
 
-SDK 2.2.1 behaves as follows. Follow these rules exactly.
+These rules are for SDK 2.2.2. Install that version or later; for an app on
+2.2.1 or older, see the note after the list.
 
-1. **Call `configure()` and then `init()` at startup, in one module, before any
-   `track()`, `screen()` or `entry()`.** `init()` before `configure()` does
-   nothing. An event tracked well before `init()` resolves can overwrite the
-   previous launch's unsent events.
-2. **Call `entry()` after `init()` has resolved, and within 2.5 s.** The SDK
-   holds `session_started` for 2.5 s so that `entry()` can claim it. Called in
-   the same tick as `init()`, or later than the window, the entry and the
-   link's campaign tags are lost.
-3. **Call `identify({ pro })` early, every launch.** Until it runs, every batch
-   says `pro: false`, which marks a paying install unpaid. Call it with a
-   cached value right after `configure()` if the app keeps one, and again when
-   RevenueCat answers.
-4. **`url` must be a string.** `configure()` throws on `undefined`, at import
-   time, and crashes the app. Write `process.env.X ?? 'https://…'`, never
-   `process.env.X` alone.
+1. **Call `configure()` and then `init()` at startup, in one module.** Nothing
+   is tracked before `configure()`. After it the order is free: events tracked
+   before `init()` resolves belong to the launch's session and join the queue
+   the last launch saved.
+2. **Call `entry()` as soon as the app knows how the session began**: the URL
+   from `getInitialURL()` or the `url` event, a notification response, a
+   widget marker. Made before the session exists, it is held for it. It claims
+   a session for 2.5 s after the session starts; a tap inside a running
+   session is not its entry and is ignored.
+3. **Call `identify({ pro })` whenever RevenueCat answers.** Until then batches
+   carry no paid flag, and the server keeps the one it has.
+4. **Give an env-provided `url` a string fallback**:
+   `process.env.X ?? 'https://…'`. A missing or non-string `url` or `key`
+   turns the SDK off (`logLevel: 'error'` says why); it never throws.
 5. **Release builds carry the prod key in code.** Read a dev key from the
    environment in development only. `EXPO_PUBLIC_*` and `VITE_*` variables are
    inlined at build time, so a local `.env` can ship the dev key in a release
@@ -88,6 +88,16 @@ SDK 2.2.1 behaves as follows. Follow these rules exactly.
    Ids, codes and tokens never go into screen names or props.
 9. **Do not call `listTickets()` at launch for a badge.** Fetching marks every
    reply read on the server. Keep a local seen-set instead.
+
+On 2.2.1 and older, upgrade. Until then these workarounds apply: call
+`init()` right after `configure()` and before any `track()` (an event tracked
+about a second before `init()` resolves overwrites the last launch's unsent
+queue); call `entry()` only after `init()` has resolved and within 2.5 s, and
+for a link that brings the app back, hold it and call `entry()` again on the
+next AppState `active`; call `identify({ pro })` early with a cached value
+(until it runs, batches say `pro: false`, which marks a paying install
+unpaid); never pass `undefined` as `url` (`configure()` throws at import time)
+or `null` as props (`track()` throws).
 
 ## Minimal wiring: Expo
 
@@ -147,11 +157,11 @@ export default function RootLayout() {
   const pathname = usePathname();
   const segments = useSegments();
 
-  // How this session began: after init() resolves, within 2.5 s. Links and
-  // notification taps that bring the app back: references/install.md step 8.
+  // How this session began. Held for the session if init() has not resolved
+  // yet. Links and notification taps that bring the app back:
+  // references/install.md step 8.
   useEffect(() => {
-    void hush.hushReady.then(async () => {
-      const url = await Linking.getInitialURL();
+    void Linking.getInitialURL().then((url) => {
       if (url) hush.entry('link', { url });
     });
   }, []);
@@ -191,12 +201,10 @@ if (browser) {
   });
 }
 
-// How the session began: a link with campaign tags, after init() resolves.
-export const hushReady = browser
-  ? hush.init().then(() => {
-      if (/[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link', { url: location.href });
-    })
-  : Promise.resolve();
+export const hushReady = browser ? hush.init() : Promise.resolve();
+
+// How the session began: a link with campaign tags. Held until the session exists.
+if (browser && /[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link', { url: location.href });
 ```
 
 Pass `version`, or the dashboard shows version `unknown`;
@@ -214,10 +222,12 @@ Pass `version`, or the dashboard shows version `unknown`;
   numbers, booleans or `null`. Keys match `^[a-z][a-z0-9_]{0,39}$`, so
   `durationMs` is invalid and `duration_ms` is right. At most 40 keys, global
   props included, and at most 2048 bytes as JSON.
-- **Any prop violation makes the server reject the whole event.** The SDK only
-  warns about nesting and more than 40 keys. Check that `onFlush` reports
+- **Any prop violation makes the server reject the whole event.** The SDK
+  drops an event with a value that is not flat (an object, an array, a press
+  event) on the device, and warns about more than 40 keys; the server rejects
+  bad keys, long strings and oversize props. Check that `onFlush` reports
   `rejected: 0`.
-- Pass an object or nothing as props. `null` throws.
+- Pass an object, `null` or nothing as props.
 - Prefer a prop on an existing event to a new name:
   `feature_used { feature: 'share' }`.
 - A milestone that code might fire twice: `track(name, props, { once: true })`,
@@ -228,8 +238,9 @@ Pass `version`, or the dashboard shows version `unknown`;
   `purchase_started` and `purchase_result { result: 'purchased' }` (or
   `'cancelled'`, `'failed'`), plus `restore_result { result }`.
 - Every event name the app sends goes into the server's catalog, or the
-  dashboard lists it as unknown. Add `ticket_replied` too when the app lets
-  users reply.
+  dashboard lists it as unknown. The server knows the SDK's own names without
+  it; a server from before `ticket_replied` joined them needs it in the
+  catalog when the app lets users reply.
 - **Never track** emails, names, phone numbers, account or backend ids, text a
   user typed, precise location, or URLs and paths that carry ids.
 
@@ -241,8 +252,8 @@ Pass `version`, or the dashboard shows version `unknown`;
 | `init()` | Reads storage, sends `app_first_opened` once, starts a session and the flush timer. Returns a promise, never throws. |
 | `track(name, props?, { once? })` | Queues an event. |
 | `screen(name)` | Queues `screen_viewed { screen }`. |
-| `entry(source, { url? })` | How the session began: `'link'`, `'notification'`, `'widget'`, `'quick_action'`, `'siri'` or another label. A link keeps only its `utm_*` and `ref` tags. |
-| `identify({ rcId?, pro? })` | RevenueCat's customer id and the paid flag, sent with every batch. |
+| `entry(source, { url? })` | How the session began: `'link'`, `'notification'`, `'widget'`, `'quick_action'`, `'siri'` or another label. A link keeps only its `utm_*` and `ref` tags. Held until the session exists. |
+| `identify({ rcId?, pro? })` | RevenueCat's customer id and the paid flag, sent with every batch once set. |
 | `setGlobalProps(props)`, `removeGlobalProp(key)`, `clearGlobalProps()` | Props merged into every later event. Memory only: set them each launch. |
 | `createTicket({ kind, message, email?, subject? })` | Sends feedback. `kind` is `issue`, `feature` or `love`. Returns `{ ok, id?, error? }`. |
 | `listTickets()` | This install's tickets, with replies and `unread`. Marks replies read. |
@@ -250,8 +261,8 @@ Pass `version`, or the dashboard shows version `unknown`;
 | `optOut()`, `optIn()`, `isOptedOut()` | The user's choice, remembered. Feedback keeps working. |
 | `forget()` | Deletes this install's data on the server and starts over with a new id. |
 | `getInstallationId()` | The install id, for a debug screen and the dashboard's Installs page. |
-| `flushNow()`, `pause()`, `resume()` | Send one batch now; hold sends; send again. |
-| `telemetryAvailable()` | Whether the SDK is on (a non-empty key). |
+| `flushNow()`, `pause()`, `resume()` | Send one batch now (after one in flight); hold sends; send again. |
+| `telemetryAvailable()` | Whether the SDK is on (a url and a non-empty key). |
 
 Options: `url`, `key`, `channel`, `logLevel` (`silent`, `error`, `debug`),
 `onFlush`, `storagePrefix`, `runInBackground`, `attribution`. Types, defaults

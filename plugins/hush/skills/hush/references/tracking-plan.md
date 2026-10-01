@@ -191,8 +191,9 @@ Replace `myapp` with the app's slug on the hush server (the `<app>` in its write
 keys, `hush_<app>_prod_…`, or its `APPS` entry; it need not match the Expo
 slug) and the names with the plan's. Common names
 (`app_first_opened`, `session_started`, `screen_viewed`, `paywall_viewed`,
-`purchase_started`, `purchase_result`, `restore_result`, `ticket_opened`) need
-not be listed.
+`purchase_started`, `purchase_result`, `restore_result`, `ticket_opened`,
+`ticket_replied`) need not be listed. A server from before `ticket_replied`
+joined them needs it listed when users can reply.
 
 ```json
 {
@@ -203,8 +204,7 @@ not be listed.
       "workout_completed",
       "reminder_set",
       "feature_used",
-      "purchase_unavailable",
-      "ticket_replied"
+      "purchase_unavailable"
     ],
     "highlight": { "event": "workout_completed", "done_prop": "completed" },
     "funnels": [

@@ -23,7 +23,12 @@ a step points to them.
    `git branch --show-current`. If there are uncommitted changes you did not
    make, say so in your report and change nothing that overlaps them. Not a
    git repository: say so in the report and go on.
-2. **Get the URL and the keys.** Take them from the delegation prompt. If they
+2. **Check the SDK version.** If the app already depends on `@bavrk/hush`
+   2.2.1 or older (or `@bavrk/hush-expo` 0.1.2 or older), upgrade it with the
+   install command, so the wiring in SKILL.md holds; if you cannot, follow the
+   notes for 2.2.1 and older there and in install.md step 8, and say so in
+   the report.
+3. **Get the URL and the keys.** Take them from the delegation prompt. If they
    are not there, check whether the project's env files (`.env`, `.env.local`)
    set them, by counting (`grep -c '^EXPO_PUBLIC_HUSH_KEY=.' .env.local`, or
    `VITE_HUSH_KEY` on the web), never by printing. Tell the keys apart by their
@@ -40,27 +45,26 @@ a step points to them.
      key; the SDK stays off and never uses the URL.
 
    List what is missing under "The user must still do".
-3. **Never invent** a URL, a key, an App Store id or an attribution domain.
+4. **Never invent** a URL, a key, an App Store id or an attribution domain.
    Never write a made-up URL such as `https://hush.example.com` into the app.
    A URL the user gave is used as given.
-4. **Change only what the procedure needs.** Keep the project's style: its
+5. **Change only what the procedure needs.** Keep the project's style: its
    import alias, quotes, semicolons, file layout. Do not reformat files you
    touch for other reasons.
-5. **Optional steps.** Wire the feedback screen, the settings rows and
+6. **Optional steps.** Wire the feedback screen, the settings rows and
    @bavrk/hush-expo only when the prompt asks for them. Wire identify() when
    the app uses RevenueCat and notification entries when it uses
-   expo-notifications, unless the prompt says not to; identify() must run
-   early. Before identify(), grep the app for `Purchases.logIn` and
-   `appUserID` (case-insensitive): if the app gives RevenueCat its own user
-   ids, send `{ pro }` alone, never `rcId`. Take the entitlement id from the
-   app's code; if you cannot find it, skip identify() and say so under
-   "Skipped".
-6. **Never commit**, push, stash, switch branches, or run a native build, a
+   expo-notifications, unless the prompt says not to. Before identify(), grep
+   the app for `Purchases.logIn` and `appUserID` (case-insensitive): if the
+   app gives RevenueCat its own user ids, send `{ pro }` alone, never
+   `rcId`. Take the entitlement id from the app's code; if you cannot find
+   it, skip identify() and say so under "Skipped".
+7. **Never commit**, push, stash, switch branches, or run a native build, a
    simulator or a dev server. Installing packages and running the typecheck are
    fine.
-7. **Never print secrets.** Do not cat `.env` files. In the report, show a key's
+8. **Never print secrets.** Do not cat `.env` files. In the report, show a key's
    prefix only (`hush_myapp_prod_…`).
-8. **Verify** with the project's typecheck (`npx tsc --noEmit` if it has no
+9. **Verify** with the project's typecheck (`npx tsc --noEmit` if it has no
    script) and, for Expo with config plugins, `npx expo config --type prebuild`.
    Fix what your change broke. Report failures that were there before.
 

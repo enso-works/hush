@@ -138,7 +138,7 @@ highlight and the default Paywall funnel. A bare array is read as the app's
 
 | Key | Rules |
 |---|---|
-| `events` | Event names (`^[a-z][a-z0-9_]{1,63}$`), added to the common names: `app_first_opened`, `session_started`, `screen_viewed`, `paywall_viewed`, `purchase_started`, `purchase_result`, `restore_result`, `ticket_opened`. Unknown names are still stored, flagged unknown on the dashboard. |
+| `events` | Event names (`^[a-z][a-z0-9_]{1,63}$`), added to the common names: `app_first_opened`, `session_started`, `screen_viewed`, `paywall_viewed`, `purchase_started`, `purchase_result`, `restore_result`, `ticket_opened`, `ticket_replied`. Unknown names are still stored, flagged unknown on the dashboard. |
 | `highlight` | `{ event, done_prop? }`. The dashboard counts `event` per period, and "done" where `props[done_prop]` is `true`. `done_prop` is a prop name or null. |
 | `funnels` | Up to 10. Each `{ name, steps, window_days? }`: a name (trimmed, up to 60), 2 to 8 steps, `window_days` an integer 1 to 90 (default 7). Steps are ordered, each within `window_days` of the first. A step is an event name or `{ event, where?, label? }`; `where` has 1 to 3 props with string, number or boolean values, compared as text; `label` up to 60. Present, it replaces the default Paywall funnel. **Omit the key rather than writing `[]`**: an empty list breaks the campaigns panel. |
 | `breakdowns` | Up to 12. Each `{ event, prop, title?, count? }`: `prop` is a prop name, `title` up to 60 (default "Event by prop"), `count` `events` (default) or `installs` (for an answer that can change later). |
