@@ -19,6 +19,7 @@ let status = 200;
 
 beforeEach(() => {
   h.storage.clear();
+  h.failReads = {};
   h.listeners.length = 0;
   sent = [];
   status = 200;
@@ -1085,6 +1086,22 @@ test('forget(): the tickets sent with an email go by their keys in a request of 
   assert.ok(!server.calls.some((c) => c.path === '/v1/tickets/threads'));
 });
 
+test('forget() that fails on the install after the keys: those tickets stay deleted, and a retry finishes', async () => {
+  const server = ticketServer();
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'with an email', email: 'sam@example.com' });
+  await sdk.createTicket({ kind: 'issue', message: 'by install' });
+  const before = sdk.installationId();
+  server.goOffline((path, body) => path === '/v1/forget' && 'install' in body);
+  assert.deepEqual(await sdk.forget(), { ok: false, error: 'offline' });
+  assert.equal(sdk.installationId(), before);
+  assert.deepEqual(server.tickets.map((t) => t.message), ['by install'], 'the one with an email is gone already');
+  assert.deepEqual(storedThreads(), {});
+  server.goOffline(null);
+  assert.deepEqual(await sdk.forget(), { ok: true });
+  assert.deepEqual(server.tickets, []);
+});
+
 test('forget() offline on the keys changes nothing: the install id and the keys stay', async () => {
   const server = ticketServer();
   const sdk = await launch();
@@ -1132,4 +1149,45 @@ test('saved thread keys that cannot be read start over empty; malformed entries 
   server.calls.length = 0;
   assert.equal((await sdk.listTickets()).length, 1);
   assert.deepEqual(server.calls.find((c) => c.path === '/v1/tickets/threads').body, { threads: [server.tickets[0].thread] });
+});
+
+test('thread keys that cannot be read this time are not taken for none: nothing is written over them, and forget() fails', async () => {
+  const server = ticketServer();
+  let sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'first', email: 'sam@example.com' });
+  const first = server.tickets[0].thread;
+
+  sdk = await launch();
+  h.failReads['hush.threads.v1'] = 1;
+  assert.equal((await sdk.createTicket({ kind: 'issue', message: 'second', email: 'sam@example.com' })).ok, true);
+  assert.deepEqual(storedThreads(), { 1: first }, 'the stored key is not written over');
+  const second = server.tickets[1].thread;
+  assert.deepEqual(await sdk.replyToTicket('2', 'and more'), { ok: true }, 'the new key is held in memory meanwhile');
+  assert.deepEqual(server.calls.at(-1).body, { thread: second, body: 'and more' });
+
+  // The next read works: both tickets list, and the new key is saved with the first.
+  assert.deepEqual((await sdk.listTickets()).map((t) => t.message), ['second', 'first']);
+  await settle();
+  assert.deepEqual(storedThreads(), { 1: first, 2: second });
+
+  const before = sdk.installationId();
+  h.failReads['hush.threads.v1'] = 1;
+  assert.deepEqual(await sdk.forget(), { ok: false, error: 'failed' }, 'not done while keys may be stored');
+  assert.equal(sdk.installationId(), before);
+  assert.equal(server.tickets.length, 2);
+  assert.deepEqual(await sdk.forget(), { ok: true });
+  assert.deepEqual(server.tickets, []);
+  assert.deepEqual(storedThreads(), {});
+});
+
+test('two writers on one storage (two tabs on the web) keep each other\'s keys', async () => {
+  const server = ticketServer();
+  const tabA = await launch();
+  const tabB = await launch();
+  await tabA.createTicket({ kind: 'issue', message: 'from A', email: 'sam@example.com' });
+  await tabB.createTicket({ kind: 'issue', message: 'from B', email: 'sam@example.com' });
+  await tabA.createTicket({ kind: 'issue', message: 'from A again', email: 'sam@example.com' });
+  assert.deepEqual(Object.keys(storedThreads()).sort(), ['1', '2', '3']);
+  assert.equal(server.tickets.length, 3);
+  assert.equal((await tabB.listTickets()).length, 3);
 });

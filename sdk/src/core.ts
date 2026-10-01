@@ -266,7 +266,7 @@ export function createHush(platform: HushPlatform) {
     OPTOUT_KEY = `${prefix}.optout.v1`;
     SESSIONS_KEY = `${prefix}.sessions.v1`;
     THREADS_KEY = `${prefix}.threads.v1`;
-    threadsRead = null;
+    unsaved = Object.create(null);
     ATTRIBUTION_KEY = `${prefix}.attribution.v1`;
     attribution = config.attribution && typeof config.attribution.update === 'function' ? config.attribution : undefined;
     if (typeof config.runInBackground === 'function') withBackgroundTask = config.runInBackground;
@@ -893,11 +893,13 @@ export function createHush(platform: HushPlatform) {
   }
 
   /**
-   * The user's "delete my data": the server deletes everything stored about
-   * this install (events, feedback), and the tickets sent with an email, then
-   * the SDK starts over with a new install id, as a fresh install would, but
-   * without counting a new one. Offline or refused: nothing changes, and the
-   * app can offer to try again.
+   * The user's "delete my data": the server deletes the tickets sent with an
+   * email whose keys this device holds, then everything stored about this
+   * install (events, feedback), and the SDK starts over with a new install
+   * id, as a fresh install would, but without counting a new one. Offline or
+   * refused: the install and its data stay, and the app can offer to try
+   * again; tickets with an email already deleted on the way stay deleted, and
+   * a retry finishes the rest.
    */
   function forget(): Promise<ForgetResult> {
     // A second tap while the first is out gets the first's answer.
@@ -922,15 +924,20 @@ export function createHush(platform: HushPlatform) {
       // The tickets sent with an email first, by their keys, in requests of
       // their own: the install id and the keys never travel together. A key
       // is dropped once the server has deleted its ticket.
-      const map = await threads();
+      const map = await readThreads();
+      // Keys that cannot be read now may still be stored: forgetting the
+      // install without them would report done while those tickets stay.
+      if (!map) return { ok: false, error: 'failed' };
       const ids = Object.keys(map);
       for (let i = 0; i < ids.length; i += MAX_THREADS) {
         const chunk = ids.slice(i, i + MAX_THREADS);
         const sent = await post('/v1/forget', { threads: chunk.map((id) => map[id]) });
         if (!sent) return { ok: false, error: 'offline' };
         if (!sent.ok) return { ok: false, error: 'failed' };
-        for (const id of chunk) delete map[id];
-        await saveThreads(map);
+        for (const id of chunk) delete unsaved[id];
+        await updateThreads((stored) => {
+          for (const id of chunk) delete stored[id];
+        });
       }
       const res = await post('/v1/forget', { install: installId });
       if (!res) return { ok: false, error: 'offline' };
@@ -985,24 +992,64 @@ export function createHush(platform: HushPlatform) {
   // --- support tickets
 
   // Tickets sent with an email: ticket id -> thread key, the app's only handle
-  // on them. Read from storage the first time they are needed; unreadable
-  // starts empty, like the other stored values.
-  let threadsRead: Promise<Record<string, string>> | null = null;
-  function threads(): Promise<Record<string, string>> {
-    threadsRead ??= readStored(THREADS_KEY).then((stored) => {
-      // No prototype: an id such as "constructor" must not find a key.
-      const out: Record<string, string> = Object.create(null);
-      if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
-        for (const [id, key] of Object.entries(stored)) {
-          if (/^[1-9][0-9]*$/.test(id) && typeof key === 'string' && THREAD_KEY.test(key)) out[id] = key;
-        }
+  // on them, kept in storage and read again on every use. A copy held in
+  // memory went stale (a second tab on the web, a read that failed once) and
+  // the next save wrote it over every other key, which loses those tickets
+  // for good.
+  //
+  // Keys the server handed out in this process and not saved yet, because
+  // the write or the read before it failed: part of every read, and saved by
+  // the next write that works.
+  let unsaved: Record<string, string> = Object.create(null);
+  // Writes go one at a time, each on a fresh read.
+  let threadsWrite: Promise<unknown> = Promise.resolve();
+
+  /**
+   * The stored keys and the unsaved ones. Null when storage could not be read:
+   * unlike a value that does not parse, that is no reason to start over, so
+   * nothing is written on it and the next call reads again.
+   */
+  async function readThreads(): Promise<Record<string, string> | null> {
+    let raw: string | null;
+    try {
+      raw = await storage.getItem(THREADS_KEY);
+    } catch (err) {
+      log('error', `${THREADS_KEY} could not be read`, err);
+      return null;
+    }
+    let stored: unknown = null;
+    try {
+      stored = raw == null ? null : JSON.parse(raw);
+    } catch (err) {
+      log('error', `${THREADS_KEY} could not be parsed: starting it empty`, err);
+    }
+    // No prototype: an id such as "constructor" must not find a key.
+    const out: Record<string, string> = Object.create(null);
+    if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+      for (const [id, key] of Object.entries(stored)) {
+        if (/^[1-9][0-9]*$/.test(id) && typeof key === 'string' && THREAD_KEY.test(key)) out[id] = key;
       }
-      return out;
-    });
-    return threadsRead;
+    }
+    return Object.assign(out, unsaved);
   }
-  function saveThreads(map: Record<string, string>): Promise<void> {
-    return storage.setItem(THREADS_KEY, JSON.stringify(map)).catch(() => {});
+
+  /** Applies `change` to a fresh read and saves the result. False when it could not read or write. */
+  function updateThreads(change: (map: Record<string, string>) => void): Promise<boolean> {
+    const run = threadsWrite.then(async () => {
+      const map = await readThreads();
+      if (!map) return false;
+      change(map);
+      try {
+        await storage.setItem(THREADS_KEY, JSON.stringify(map));
+      } catch (err) {
+        log('error', `${THREADS_KEY} could not be saved`, err);
+        return false;
+      }
+      for (const id of Object.keys(unsaved)) if (map[id] === unsaved[id]) delete unsaved[id];
+      return true;
+    });
+    threadsWrite = run.catch(() => false);
+    return run;
   }
 
   /**
@@ -1037,9 +1084,8 @@ export function createHush(platform: HushPlatform) {
       const created = (await res.json().catch(() => null)) as { id?: string | number; thread?: unknown } | null;
       const id = created?.id !== undefined ? String(created.id) : undefined;
       if (id && typeof created?.thread === 'string' && THREAD_KEY.test(created.thread)) {
-        const map = await threads();
-        map[id] = created.thread;
-        await saveThreads(map);
+        unsaved[id] = created.thread;
+        await updateThreads(() => {});
       }
       return { ok: true, id };
     }
@@ -1075,7 +1121,7 @@ export function createHush(platform: HushPlatform) {
     body: string,
   ): Promise<{ ok: boolean; error?: 'unavailable' | 'offline' | 'closed' | 'too_many' | 'failed' }> {
     if (!enabled) return { ok: false, error: 'unavailable' };
-    const thread = (await threads())[String(id)];
+    const thread = ((await readThreads()) ?? unsaved)[String(id)];
     if (!thread && !installId) await init();
     const res = await post(`/v1/tickets/${encodeURIComponent(id)}/reply`, thread ? { thread, body } : { install: installId, body });
     if (!res) return { ok: false, error: 'offline' };
@@ -1108,7 +1154,10 @@ export function createHush(platform: HushPlatform) {
   async function listTickets(): Promise<Ticket[]> {
     if (!enabled) return [];
     if (!installId) await init();
-    const map = await threads();
+    const stored = await readThreads();
+    // Storage reads again: a good moment to save a key a failed write left behind.
+    if (stored && Object.keys(unsaved).length) void updateThreads(() => {});
+    const map = stored ?? unsaved;
     const keys = Object.keys(map).sort(newestFirst).slice(0, MAX_THREADS).map((id) => map[id]);
     const [own, keyed] = await Promise.all([
       fetchTickets(`/v1/tickets?install=${encodeURIComponent(installId)}`),

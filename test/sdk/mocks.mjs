@@ -3,7 +3,15 @@
 const h = (globalThis.__hush ??= { storage: new Map(), listeners: [], dev: false });
 
 export const AsyncStorage = {
-  getItem: async (k) => (h.storage.has(k) ? h.storage.get(k) : null),
+  // h.failReads[key] = n: the next n reads of that key reject, as a storage
+  // backend that is briefly unavailable does.
+  getItem: async (k) => {
+    if (h.failReads?.[k] > 0) {
+      h.failReads[k] -= 1;
+      throw new Error('storage unavailable');
+    }
+    return h.storage.has(k) ? h.storage.get(k) : null;
+  },
   setItem: async (k, v) => void h.storage.set(k, String(v)),
   removeItem: async (k) => void h.storage.delete(k),
 };
