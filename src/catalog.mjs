@@ -35,13 +35,10 @@
 // paywall funnel.
 import { readFileSync } from 'node:fs';
 
+import { COMMON } from './common.mjs';
 import { cfg } from './config.mjs';
 import { DEMO_CATALOG } from './demo.mjs';
 import { DEFAULT_FUNNELS, parseFunnels, parseStep } from './funnels.mjs';
-
-// Every app gets the generic lifecycle names even before it has a catalog of
-// its own, so a newly wired app does not light up the "unknown events" list.
-export const COMMON = ['app_first_opened', 'session_started', 'screen_viewed', 'paywall_viewed', 'purchase_started', 'purchase_result', 'restore_result', 'ticket_opened'];
 
 // The paywall funnel every app shares, in order. The dashboard renders it as
 // counts of distinct installs at each step.

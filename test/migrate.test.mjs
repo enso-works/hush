@@ -27,3 +27,27 @@ test('boots on an empty database, migrates once, and boots again', async () => {
   assert.deepEqual(await health.json(), { ok: true, db: 'up' });
   await srv.stop();
 });
+
+test('006 marks the ticket_replied rows a server before it stored as unknown', async () => {
+  const old = await freshDatabase('hush_migrate_006');
+  try {
+    let srv = await startServer(old);
+    await srv.stop();
+    // The database as it was before 006, with a reply stored when the name was not common.
+    await old.query("DELETE FROM schema_migrations WHERE name = '006_ticket_replied_known.sql'");
+    await old.query(
+      `INSERT INTO events (id, app, env, install, name, known, at)
+       VALUES (gen_random_uuid(), 'braele', 'prod', gen_random_uuid(), 'ticket_replied', false, now()),
+              (gen_random_uuid(), 'braele', 'prod', gen_random_uuid(), 'something_new', false, now())`,
+    );
+    srv = await startServer(old);
+    await srv.stop();
+    const { rows } = await old.query('SELECT name, known FROM events ORDER BY name');
+    assert.deepEqual(rows, [
+      { name: 'something_new', known: false },
+      { name: 'ticket_replied', known: true },
+    ]);
+  } finally {
+    await old.drop();
+  }
+});
