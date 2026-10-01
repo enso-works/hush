@@ -23,7 +23,7 @@ hush.configure({
   // background-task module the app already has.
   // runInBackground: (work) => withBackgroundTask(work),
 });
-// Everything else waits for this: entry() claims the session init() starts.
+// Safe to call before or after anything else below (SDK 2.2.2 and later).
 export const hushReady = hush.init();
 
 // Context every event should carry, e.g. the paywall copy under test (pick it
@@ -34,8 +34,8 @@ export function onVariant(variant: 'a' | 'b') {
 
 // --- the root layout, for links and notification taps
 
-export async function onOpenedFromLink(url: string) {
-  await hushReady; // before init() has resolved there is no session to claim
+export function onOpenedFromLink(url: string) {
+  // Held for the session if it does not exist yet (2.2.1 and older: await hushReady first).
   hush.entry('link', { url }); // keeps utm_source / utm_campaign / ref, never the URL
 }
 

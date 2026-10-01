@@ -35,11 +35,22 @@ beforeEach(() => {
   };
 });
 
-/** A fresh launch: a new module instance, configured and initialised. */
-async function launch(config = {}) {
+/**
+ * A fresh process: a new module instance, configured, not yet initialised.
+ * The last process's timers die with it, as they do when iOS kills an app.
+ */
+async function load(config = {}) {
+  const now = Date.now();
+  mock.timers.reset();
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now });
   h.listeners.length = 0;
   const sdk = await import(`../sdk/src/index.ts?launch=${++launches}`);
   sdk.configure({ url: 'https://hush.test', key: 'hush_app_prod_x', ...config });
+  return sdk;
+}
+/** A fresh launch: a new process, configured and initialised. */
+async function launch(config = {}) {
+  const sdk = await load(config);
   await sdk.init();
   await settle(); // init() starts its first send without waiting for it
   return sdk;
@@ -48,7 +59,16 @@ async function launch(config = {}) {
 const settle = async () => {
   for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
 };
+// Time passing with I/O settling between timers, as on a device: one big
+// tick() runs every timer before any request they start has answered.
+const advance = async (ms) => {
+  for (let t = 0; t < ms; t += 100) {
+    mock.timers.tick(100);
+    await settle();
+  }
+};
 const events = () => sent.filter((r) => r.path === '/v1/events').flatMap((r) => r.body.events);
+const batches = () => sent.filter((r) => r.path === '/v1/events').map((r) => r.body);
 const named = (name) => events().filter((e) => e.name === name);
 const appState = async (state) => {
   for (const fn of h.listeners) fn(state);
@@ -441,4 +461,466 @@ test('without a bridge nothing is fetched or set, and the web entry takes one to
     delete globalThis.localStorage;
     delete globalThis.document;
   }
+});
+
+// --- Timing and input: what an app gets right without knowing the SDK's internals
+
+test('an entry reported before init() resolves names the cold start, with its link tags', async () => {
+  const sdk = await load();
+  void sdk.init(); // the root layout's effect
+  // Linking.getInitialURL() answers before init() has read storage.
+  sdk.entry('link', { url: 'https://braele.app/pricing?utm_source=meta&utm_campaign=autumn' });
+  await settle();
+  await sdk.flushNow();
+  assert.deepEqual(named('session_started')[0].props, { entry: 'link', n: 1, utm_source: 'meta', utm_campaign: 'autumn' });
+
+  // Behind a slow gate (fonts, consent) the claim still waits for the session.
+  sent = [];
+  const late = await load();
+  late.entry('widget');
+  await advance(5000);
+  await late.init();
+  await late.flushNow();
+  assert.equal(named('session_started')[0].props.entry, 'widget');
+});
+
+test('a claim after the session has begun keeps the 2.5 s window', async () => {
+  const sdk = await launch();
+  await advance(3000); // the session went out as a plain launch
+  sdk.entry('notification'); // a tap inside the session, not its entry
+  await appState('background');
+  minutes(31);
+  await appState('active'); // a new session, long after that tap
+  await sdk.flushNow();
+  assert.deepEqual(named('session_started').map((e) => e.props.entry), ['launch', 'launch']);
+});
+
+test('a warm return: the URL arriving just before "active" still names the new session', async () => {
+  const sdk = await launch();
+  await advance(3000);
+  await appState('background');
+  minutes(31);
+  sdk.entry('widget'); // iOS delivers openURL before didBecomeActive
+  await appState('active');
+  await sdk.flushNow();
+  assert.deepEqual(named('session_started').map((e) => e.props.entry), ['launch', 'widget']);
+});
+
+test('a cold launch is one session: events tracked before init() share its id, and its start sorts first', async () => {
+  const sdk = await load();
+  sdk.screen('today'); // a child's effect runs before the root layout's
+  mock.timers.tick(200); // the first render took a while
+  void sdk.init();
+  sdk.track('habit_checked');
+  await settle();
+  sdk.track('habit_checked');
+  await sdk.flushNow();
+  assert.deepEqual([...new Set(events().map((e) => e.name))].sort(), ['app_first_opened', 'habit_checked', 'screen_viewed', 'session_started']);
+  assert.equal(new Set(events().map((e) => e.session)).size, 1, 'app_first_opened, the early events and session_started carry one id');
+  const start = named('session_started')[0].at;
+  assert.ok(events().every((e) => e.at >= start), 'campaign funnels count steps from the session start');
+
+  // The next session in the same process gets an id of its own.
+  await appState('background');
+  minutes(31);
+  await appState('active');
+  await sdk.flushNow();
+  assert.equal(new Set(events().map((e) => e.session)).size, 2);
+});
+
+test("events tracked before init() never replace the previous launch's unsent queue", async () => {
+  status = 503; // the first launch never gets through
+  let sdk = await launch();
+  sdk.track('habit_checked');
+  await advance(3000);
+  await appState('background');
+  await advance(1500);
+  const stored = JSON.parse(h.storage.get('hush.queue.v1')).map((e) => e.id);
+  assert.equal(stored.length, 3);
+
+  status = 200;
+  sent = [];
+  sdk = await load();
+  sdk.track('early_event');
+  await advance(1500); // init() behind a splash screen: the save timer would fire first
+  assert.deepEqual(JSON.parse(h.storage.get('hush.queue.v1')).map((e) => e.id), stored, 'nothing is written before init() has read it');
+  await sdk.init();
+  await settle();
+  await sdk.flushNow();
+  const ids = events().map((e) => e.id);
+  assert.ok(stored.every((id) => ids.includes(id)), "the previous launch's events are delivered");
+  assert.equal(ids.length, new Set(ids).size, 'and nothing twice');
+  assert.equal(named('early_event').length, 1);
+});
+
+test('pro is left out until identify() says so, so a batch that does not know never downgrades a paid install', async () => {
+  const sdk = await launch(); // init() sends app_first_opened at once
+  assert.ok(!('pro' in batches()[0].context), 'no flag before identify()');
+  await sdk.createTicket({ kind: 'issue', message: 'It froze' });
+  assert.ok(!('pro' in sent.find((r) => r.path === '/v1/tickets').body.diag), 'nor on a ticket');
+  sdk.identify({ pro: true });
+  sdk.track('x_y');
+  await sdk.flushNow();
+  assert.equal(batches().at(-1).context.pro, true);
+  sdk.identify({ pro: false });
+  sdk.track('x_y');
+  await sdk.flushNow();
+  assert.equal(batches().at(-1).context.pro, false, 'an explicit false still goes out');
+});
+
+test('never throws into the app: a missing url or key turns the SDK off and says why; bad arguments are ignored', async () => {
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    const sdk = await import(`../sdk/src/index.ts?launch=${++launches}`);
+    assert.doesNotThrow(() => sdk.configure({ url: undefined, key: 'hush_app_prod_x', logLevel: 'error' }));
+    assert.equal(sdk.telemetryAvailable(), false);
+    assert.match(warn.mock.calls.at(-1).arguments.join(' '), /url is missing or not a string: telemetry is off/);
+    assert.doesNotThrow(() => sdk.configure({ url: 42, key: 'hush_app_prod_x' }));
+    assert.equal(sdk.telemetryAvailable(), false);
+    assert.doesNotThrow(() => sdk.configure({ url: 'https://hush.test', key: undefined, logLevel: 'error' }));
+    assert.equal(sdk.telemetryAvailable(), false);
+    assert.match(warn.mock.calls.at(-1).arguments.join(' '), /key is missing or not a string/);
+    assert.doesNotThrow(() => sdk.configure(undefined));
+    assert.doesNotThrow(() => sdk.configure(null));
+    assert.equal(sdk.telemetryAvailable(), false);
+    // An empty key is the documented off switch (url and key both '' before
+    // the server exists): off, and quiet even at logLevel 'error'.
+    const warned = warn.mock.callCount();
+    sdk.configure({ url: '', key: '', logLevel: 'error' });
+    sdk.configure({ url: 'https://hush.test', key: '', logLevel: 'error' });
+    assert.equal(sdk.telemetryAvailable(), false);
+    assert.equal(warn.mock.callCount(), warned);
+    await sdk.init();
+    sdk.track('x_y');
+    await sdk.flushNow();
+    assert.equal(sent.length, 0, 'off: nothing is sent');
+
+    const on = await launch();
+    assert.doesNotThrow(() => on.track('x_y', null));
+    assert.doesNotThrow(() => on.track('x_y', undefined, null));
+    assert.doesNotThrow(() => on.identify(undefined));
+    assert.doesNotThrow(() => on.identify(null));
+    assert.doesNotThrow(() => on.entry('link', null));
+    assert.doesNotThrow(() => on.setGlobalProps(null));
+    await on.flushNow();
+    assert.equal(named('x_y').length, 2);
+    assert.equal(named('session_started')[0].props.entry, 'link');
+  } finally {
+    warn.mock.restore();
+  }
+});
+
+test('every event the SDK sends by itself is one the server knows for any app', async () => {
+  // Not catalog.mjs: it pulls in pg, and the publish workflow runs this file
+  // without the server's dependencies.
+  const { COMMON } = await import('../src/common.mjs');
+  const sdk = await launch();
+  await sdk.createTicket({ kind: 'issue', message: 'It froze' });
+  await sdk.replyToTicket('1', 'Still frozen');
+  await sdk.flushNow();
+  const own = [...new Set(events().map((e) => e.name))].sort();
+  assert.deepEqual(own, ['app_first_opened', 'session_started', 'ticket_opened', 'ticket_replied']);
+  assert.deepEqual(own.filter((n) => !COMMON.includes(n)), [], 'none of them shows under unknown events');
+});
+
+test('a second init() while the first is still running resolves only once the session exists', async () => {
+  const { createHush } = await import(`../sdk/src/core.ts?launch=${++launches}`);
+  const store = new Map();
+  let release;
+  const slow = new Promise((r) => (release = r));
+  const hush = createHush({
+    storage: {
+      getItem: async (k) => store.get(k) ?? null,
+      // The first-launch marker is written slowly, as storage under load can be.
+      setItem: async (k, v) => {
+        if (k === 'hush.first.v1') await slow;
+        store.set(k, v);
+      },
+      removeItem: async (k) => void store.delete(k),
+    },
+    onAppState() {},
+    device: () => ({ version: '1.0.0', build: '1', platform: 'ios', os: 'ios 18.6', device: 'iPhone17,1', locale: 'en-US' }),
+    isDev: () => false,
+  });
+  hush.configure({ url: 'https://hush.test', key: 'hush_app_prod_x' });
+  const first = hush.init(); // the root layout
+  await settle(); // past reading storage
+  let started;
+  const second = hush.init().then(async () => {
+    // A screen that awaited init() itself: the session must be there.
+    await hush.flushNow();
+    started = named('session_started').length;
+  });
+  await settle();
+  release();
+  await Promise.all([first, second]);
+  assert.equal(started, 1);
+});
+
+test('forget() with a send in flight: nothing of the old install lands after the delete, nothing new is dropped', async () => {
+  // A server that deletes on /v1/forget, and one slow /v1/events request.
+  const server = [];
+  let slow = false;
+  globalThis.fetch = async (url, init) => {
+    const path = new URL(url).pathname;
+    const body = init?.body ? JSON.parse(init.body) : null;
+    if (path === '/v1/events' && slow) {
+      slow = false;
+      for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r));
+    }
+    if (path === '/v1/forget') server.splice(0, server.length, ...server.filter((e) => e.install !== body.install));
+    if (path === '/v1/events') server.push(...body.events);
+    return { ok: true, status: 200, json: async () => ({ accepted: body?.events?.length ?? 0, duplicate: 0, rejected: 0 }) };
+  };
+  const sdk = await launch();
+  await advance(6000); // the session start goes out
+  const old = sdk.installationId();
+  sdk.track('journal_written');
+  slow = true;
+  mock.timers.tick(3000); // the send soon after: it is slow
+  assert.deepEqual(await sdk.forget(), { ok: true });
+  sdk.track('settings_viewed');
+  for (let i = 0; i < 3; i++) await settle();
+  await sdk.flushNow();
+  assert.deepEqual(server.filter((e) => e.install === old).map((e) => e.name), [], 'no batch of the old install lands after the delete');
+  assert.deepEqual(server.map((e) => e.name).sort(), ['session_started', 'settings_viewed'], 'the new identity loses nothing');
+});
+
+test('a send removes what it sent by id: events queued while it was out stay queued', async () => {
+  let slow = false;
+  const recording = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (slow && new URL(url).pathname === '/v1/events') {
+      slow = false;
+      for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r));
+    }
+    return recording(url, init);
+  };
+  const sdk = await launch();
+  await advance(6000);
+  sdk.track('journal_written');
+  slow = true;
+  mock.timers.tick(3000); // the send soon after: it is slow
+  sdk.optOut(); // the user changes their mind twice while it is out, which replaces the queue
+  sdk.optIn();
+  sdk.track('settings_viewed');
+  for (let i = 0; i < 3; i++) await settle();
+  await sdk.flushNow();
+  assert.equal(named('settings_viewed').length, 1);
+});
+
+test("the user's choice made before init() has read storage is the one that holds", async () => {
+  let sdk = await launch();
+  sdk.optOut();
+  sdk = await load();
+  sdk.optIn(); // the app applies a newer choice at startup
+  await sdk.init();
+  assert.equal(sdk.isOptedOut(), false);
+  sdk = await launch();
+  assert.equal(sdk.isOptedOut(), false, 'and it is remembered');
+
+  sdk = await load();
+  const ready = sdk.init();
+  sdk.optOut(); // while init() is still reading
+  await ready;
+  sent = [];
+  sdk.track('journal_written');
+  await sdk.flushNow();
+  assert.equal(sdk.isOptedOut(), true);
+  assert.equal(events().length, 0);
+  assert.ok(!h.storage.get('hush.queue.v1')?.includes('session_started'), 'nothing from before the choice is kept on disk');
+});
+
+test('a prop that is not a flat value is dropped on the device and never wedges the queue', async () => {
+  const warn = mock.method(console, 'warn', () => {});
+  try {
+    const sdk = await launch({ logLevel: 'error' });
+    const press = { type: 'press' };
+    press.target = { press }; // circular, like a press event
+    sdk.track('card_tapped', { e: press });
+    sdk.track('list_viewed', { ids: [1, 2] });
+    sdk.setGlobalProps({ nav: press, theme: 'dark' });
+    sdk.track('habit_checked');
+    await assert.doesNotReject(advance(1500)); // the save timer
+    await sdk.flushNow();
+    assert.deepEqual(named('habit_checked').map((e) => e.props), [{ theme: 'dark' }]);
+    assert.equal(named('card_tapped').length + named('list_viewed').length, 0);
+    const said = warn.mock.calls.map((c) => c.arguments.join(' ')).join('\n');
+    assert.match(said, /event "card_tapped" prop "e" is not a string, number, boolean or null .*: dropped/);
+    assert.match(said, /global prop "nav" .*: not set/);
+  } finally {
+    warn.mock.restore();
+  }
+});
+
+test('a send that succeeds is on disk at once, so a process killed right after does not send it again', async () => {
+  let sdk = await launch();
+  await advance(5000);
+  sdk.track('habit_checked');
+  await advance(1200);
+  await appState('background'); // the leaving send succeeds; iOS suspends the app, then kills it
+  await settle();
+  const delivered = new Set(events().map((e) => e.id));
+  assert.ok(named('habit_checked').length === 1);
+  sent = [];
+  sdk = await launch();
+  await sdk.flushNow();
+  assert.deepEqual(events().filter((e) => delivered.has(e.id)).map((e) => e.name), []);
+});
+
+test('a Date prop is sent as its ISO string, as JSON writes it, and the event is kept', async () => {
+  const sdk = await launch();
+  const time = new Date('2026-10-01T08:00:00Z');
+  sdk.track('reminder_set', { time, kind: 'daily' });
+  time.setUTCHours(9); // the event keeps the value it was tracked with
+  sdk.setGlobalProps({ installed_on: new Date('2026-09-01T00:00:00Z') });
+  sdk.track('habit_checked');
+  await sdk.flushNow();
+  assert.deepEqual(named('reminder_set')[0].props, { time: '2026-10-01T08:00:00.000Z', kind: 'daily' });
+  assert.equal(named('habit_checked')[0].props.installed_on, '2026-09-01T00:00:00.000Z');
+});
+
+test('a saved value that cannot be read or parsed starts over empty, and telemetry stays on', async () => {
+  await launch();
+  // Writes cut short: the next launch must not stay off because of them.
+  h.storage.set('hush.queue.v1', '[{"id":"trunc');
+  h.storage.set('hush.once.v1', '{');
+  h.storage.set('hush.sessions.v1', '{"n":');
+  sent = [];
+  let sdk = await launch();
+  sdk.track('habit_checked');
+  await sdk.flushNow();
+  assert.equal(named('habit_checked').length, 1);
+  assert.ok(Array.isArray(JSON.parse(h.storage.get('hush.queue.v1'))), 'the queue on disk is replaced');
+  assert.ok(Array.isArray(JSON.parse(h.storage.get('hush.once.v1'))));
+
+  // A queue too big to read (Android rejects a row over its CursorWindow).
+  h.storage.get = function (k) {
+    if (k === 'hush.queue.v1') throw new Error('Row too big to fit into CursorWindow');
+    return Map.prototype.get.call(this, k);
+  };
+  try {
+    sent = [];
+    sdk = await launch();
+    sdk.track('habit_checked');
+    await sdk.flushNow();
+    assert.equal(named('habit_checked').length, 1);
+    await sdk.createTicket({ kind: 'issue', message: 'It froze' });
+    assert.ok(sent.find((r) => r.path === '/v1/tickets').body.install, 'feedback has the install id');
+  } finally {
+    delete h.storage.get;
+  }
+});
+
+test('forget() holds every send until the server has answered, and a second tap gets the first answer', async () => {
+  const waiting = [];
+  const recording = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (new URL(url).pathname === '/v1/forget') await new Promise((r) => waiting.push(r));
+    return recording(url, init);
+  };
+  const sdk = await launch();
+  await advance(6000);
+  sent = [];
+  sdk.track('journal_written');
+  const first = sdk.forget();
+  const second = sdk.forget();
+  await advance(31_000); // past the send soon after and the 30 s interval
+  assert.deepEqual(sent, [], 'nothing goes out while the delete is pending');
+  for (const release of waiting.splice(0)) release();
+  await settle();
+  for (const release of waiting.splice(0)) release();
+  assert.deepEqual(await first, { ok: true });
+  assert.equal(await second, await first);
+  assert.equal(sent.filter((r) => r.path === '/v1/forget').length, 1, 'one request');
+});
+
+test("an opt-out while init() is reading keeps the last launch's unsent queue out, on the wire and on disk", async () => {
+  status = 503; // the last launch never got through
+  let sdk = await launch();
+  sdk.track('journal_written');
+  await appState('background');
+  await settle();
+  const stored = JSON.parse(h.storage.get('hush.queue.v1')).map((e) => e.id);
+  assert.ok(stored.length > 0);
+  status = 200;
+  sent = [];
+  sdk = await load();
+  const ready = sdk.init();
+  sdk.optOut(); // after init() has read the queue, before it is done
+  await ready;
+  await advance(1500);
+  assert.ok(!stored.some((id) => (h.storage.get('hush.queue.v1') ?? '').includes(id)), 'not written back');
+  sdk.optIn();
+  await sdk.flushNow();
+  assert.deepEqual(events().filter((e) => stored.includes(e.id)), [], 'nor sent after optIn()');
+});
+
+test('the first entry held for a session wins, as it does on a session', async () => {
+  const sdk = await load();
+  sdk.entry('widget');
+  sdk.entry('link', { url: 'https://braele.app/?utm_source=meta' }); // a second report of the same launch
+  await sdk.init();
+  await sdk.flushNow();
+  assert.deepEqual(named('session_started')[0].props, { entry: 'widget', n: 1 });
+});
+
+test('the queue is on disk as the app leaves, before the send that may never finish', async () => {
+  status = 503;
+  const sdk = await launch();
+  sdk.track('journal_written');
+  await appState('background');
+  // No timer has run: the 1 s save would be too late for a process suspended now.
+  assert.match(h.storage.get('hush.queue.v1') ?? '', /journal_written/);
+});
+
+test("init() saves the merged queue at once: the last launch's events and this one's early ones", async () => {
+  status = 503;
+  let sdk = await launch();
+  sdk.track('habit_checked');
+  await appState('background');
+  await settle();
+  const stored = JSON.parse(h.storage.get('hush.queue.v1')).map((e) => e.id);
+  sdk = await load();
+  sdk.track('early_event');
+  await sdk.init();
+  await settle();
+  // No timer has run, and the failed send saved nothing.
+  const onDisk = JSON.parse(h.storage.get('hush.queue.v1'));
+  assert.deepEqual(onDisk.slice(0, stored.length).map((e) => e.id), stored);
+  assert.equal(onDisk.at(-1).name, 'early_event');
+});
+
+test('flushNow() with a send in flight waits for it, then sends what is queued now', async () => {
+  let slow = false;
+  const recording = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    if (slow && new URL(url).pathname === '/v1/events') {
+      slow = false;
+      for (let i = 0; i < 30; i++) await new Promise((r) => setImmediate(r));
+    }
+    return recording(url, init);
+  };
+  const sdk = await launch();
+  await advance(6000);
+  sdk.track('journal_written');
+  slow = true;
+  mock.timers.tick(3000); // the send soon after starts, and is slow
+  sdk.track('settings_viewed');
+  await sdk.flushNow();
+  assert.equal(named('journal_written').length, 1);
+  assert.equal(named('settings_viewed').length, 1, 'sent by the time flushNow() resolves');
+});
+
+test('a runInBackground that throws still sends as the app leaves', async () => {
+  const sdk = await launch({
+    runInBackground: () => {
+      throw new Error('no background task');
+    },
+  });
+  await advance(3000);
+  sdk.track('journal_written');
+  await assert.doesNotReject(appState('background'));
+  await settle();
+  assert.equal(named('journal_written').length, 1);
 });

@@ -1,7 +1,8 @@
-# @bavrk/hush 2.2.1: API reference
+# @bavrk/hush 2.2.2: API reference
 
-Checked against `sdk/src/core.ts`, `index.ts` and `web.ts` at 2.2.1, and
-`@bavrk/hush-expo` 0.1.2.
+Checked against `sdk/src/core.ts`, `index.ts` and `web.ts` at 2.2.2, and
+`@bavrk/hush-expo` 0.1.3. Where 2.2.1 and older behave differently, the entry
+says so.
 
 ## Contents
 
@@ -24,7 +25,7 @@ Checked against `sdk/src/core.ts`, `index.ts` and `web.ts` at 2.2.1, and
 | `@bavrk/hush` | React Native and Expo. Module functions over one instance. | `@react-native-async-storage/async-storage`, `expo-constants`, `expo-device`, `expo-localization`, `react-native` >= 0.73 (optional peers: npm does not add them) |
 | `@bavrk/hush/web` | Web pages, PWAs, Capacitor. `createWebHush()` returns an instance. | nothing |
 | `@bavrk/hush/core` | Any other runtime. `createHush(platform)` returns an instance. | nothing |
-| `@bavrk/hush-expo` | iOS native companion for Expo: conversion values, distribution channel, background time. | `expo` >= 52, a dev or EAS build, iOS deployment target 16.4 |
+| `@bavrk/hush-expo` | iOS native companion for Expo: conversion values, distribution channel, background time. | `expo` >= 52 (its only peer from 0.1.3), a dev or EAS build, iOS deployment target 16.4 |
 
 The package ships ESM and CommonJS builds. `/web` and `/core` resolve through
 package `exports`: TypeScript needs `moduleResolution` `bundler`, `node16` or
@@ -40,14 +41,17 @@ empty version.
 
 `configure(config: HushConfig): void`. Call it once, before `init()`. Calling it
 again replaces the configuration, except `runInBackground`, which stays until
-another function is passed.
+another function is passed. It never throws: a config that is not an object,
+or a `url` or `key` that is missing or not a string, turns the SDK off, and
+`logLevel: 'error'` logs why (`url is missing or not a string: telemetry is
+off`). 2.2.1 and older throw a TypeError on a non-string `url`.
 
 | Option | Type | Default | Behaviour |
 |---|---|---|---|
-| `url` | `string` | required | The hush server. Trailing slashes are stripped. A non-string (such as an unset env var) throws a TypeError inside `configure()`. |
-| `key` | `string` | `''` | A write key from `keys:create`. Empty turns the SDK off: no storage, no requests; `forget()` and `createTicket()` return `unavailable`, `listTickets()` returns `[]`. |
+| `url` | `string` | required | The hush server. Surrounding spaces and trailing slashes are stripped. Missing, empty or not a string (such as an unset env var) turns the SDK off. |
+| `key` | `string` | required | A write key from `keys:create`. Empty or missing turns the SDK off: no storage, no requests; `forget()` and `createTicket()` return `unavailable`, `listTickets()` returns `[]`. |
 | `channel` | `string` | `'dev'` in a dev build, otherwise not sent | Where the build came from: `app_store`, `testflight`, `play`, `internal`, `dev`. Must match `^[a-z][a-z0-9_]{0,23}$`; anything else is not sent and is logged at `error`. The dashboard shows a missing channel as `unknown`. |
-| `logLevel` | `'silent' \| 'error' \| 'debug'` | `'silent'` | `error` warns (`console.warn('[hush]', …)`) about mistakes: bad event names, nested props, more than 40 props, a bad channel, a failed native call, failed sends. `debug` also logs every send and state change. |
+| `logLevel` | `'silent' \| 'error' \| 'debug'` | `'silent'` | `error` warns (`console.warn('[hush]', …)`) about mistakes: a missing url or key, bad event names, props that are not flat, more than 40 props, a bad channel, a failed native call, failed sends. `debug` also logs every send and state change. |
 | `onFlush` | `(r: FlushResult) => void` | none | Called after every send to `/v1/events`. Exceptions it throws are swallowed. |
 | `storagePrefix` | `string` | `'hush'` | Prefix for the stored keys `<p>.install.v1`, `.queue.v1`, `.first.v1`, `.once.v1`, `.optout.v1`, `.sessions.v1`, `.attribution.v1`. Changing it gives every install a new id, a second `app_first_opened`, and loses opt-outs, once-keys, session counts and attribution state. |
 | `runInBackground` | `(work: () => Promise<void>) => Promise<void>` | runs `work` directly | Wraps the flush that runs when the app backgrounds. `hushExpo.runInBackground` asks iOS for background time. |
@@ -62,28 +66,28 @@ The default entry exports these as module functions. `createWebHush()` and
 
 | Function | Signature | Behaviour |
 |---|---|---|
-| `init` | `(): Promise<void>` | Reads storage; creates or loads the install id; drops the stored queue if opted out; merges the persisted queue (events older than 7 days dropped); sends `app_first_opened` once; starts a session and attribution; listens for app state; starts the 30 s timer; flushes. Safe to call again or concurrently (one run). Never throws. Does nothing if `key` is empty or `configure()` has not run. |
-| `track` | `(name: string, props?: Props, options?: { once?: true \| string }): void` | Queues an event. An invalid name is dropped on the device. `props` must be an object or omitted: `null` throws. `once: true` keys on `name`; `once: 'k'` keys on `name:k`. |
-| `screen` | `(name: string): void` | Queues `screen_viewed { screen: name }`. Not validated on the device; over 200 characters the server rejects it. |
-| `entry` | `(source: Entry, options?: { url?: string }): void` | Sets `entry` on the held `session_started`, adds the link's campaign tags, and commits it. A no-op unless a session is pending (section 5). |
-| `identify` | `(next: { rcId?: string; pro?: boolean }): void` | Sets RevenueCat's customer id (only if truthy; it cannot be cleared) and the paid flag. Both ride in every batch (`rc_id`, `pro`) and on tickets. `pro` is `false` until set. |
-| `setGlobalProps` | `(props: Props): void` | Merged into every event queued afterwards; the event's own props win. Memory only. They count toward the 40-key and 2 KB limits. |
+| `init` | `(): Promise<void>` | Reads storage; creates or loads the install id; drops the stored queue if opted out; merges the persisted queue (events older than 7 days dropped) with the events tracked before it, and saves the result; sends `app_first_opened` once; starts the launch's session and attribution; listens for app state; starts the 30 s timer; flushes. Safe to call again or concurrently: one run, and every caller resolves once the session exists (2.2.1 and older: a second call during a first launch could resolve before it). Never throws. Does nothing if the SDK is off or `configure()` has not run. |
+| `track` | `(name: string, props?: Props \| null, options?: { once?: true \| string } \| null): void` | Queues an event. An invalid name, or a prop value that is not a string, number, boolean or null, drops the event on the device (logged at `error`). `null` props are no props (2.2.1 and older throw). `once: true` keys on `name`; `once: 'k'` keys on `name:k`. Tracked before `init()` resolves: queued under the launch's session id, merged with the stored queue at `init()`. |
+| `screen` | `(name: string): void` | Queues `screen_viewed { screen: name }`. A name that is not a string is ignored; over 200 characters the server rejects it. |
+| `entry` | `(source: Entry, options?: { url?: string } \| null): void` | Sets `entry` on the held `session_started`, adds the link's campaign tags, and commits it. With no session pending, it is held for the next one (section 5). |
+| `identify` | `(next: { rcId?: string; pro?: boolean }): void` | Sets RevenueCat's customer id (only a non-empty string; it cannot be cleared) and the paid flag. Both ride in every batch (`rc_id`, `pro`) and on tickets. Until `pro` is set, it is left out, and the server keeps what it has (2.2.1 and older send `false`). |
+| `setGlobalProps` | `(props: Props): void` | Merged into every event queued afterwards; the event's own props win. Memory only. They count toward the 40-key and 2 KB limits. A value that is not flat is not set (logged at `error`). |
 | `removeGlobalProp` | `(key: string): void` | |
 | `clearGlobalProps` | `(): void` | |
 | `installationId` | `(): string` | `''` until `init()` has read it. |
 | `getInstallationId` | `(timeoutMs = 3000): Promise<string>` | Waits for `init()` up to the timeout. `''` when the SDK is off. |
 | `optOut` | `(): void` | Remembered. Drops the queue and the pending session. Nothing is queued, sent or set for attribution until `optIn()`. Tickets still work. |
 | `optIn` | `(): void` | Clears the flag, starts a new session if ready, and starts attribution if it never started. |
-| `isOptedOut` | `(): boolean` | `false` until `init()` has read storage, unless `optOut()` ran this launch. |
-| `forget` | `(): Promise<{ ok: boolean; error?: 'unavailable' \| 'offline' \| 'failed' }>` | `POST /v1/forget`. The server deletes this install's events, tickets with replies, and install row under this app. The SDK then clears its queue, once-keys and session count, mints a new install id and starts a new session. It keeps the first-open marker (no second `app_first_opened`), the opt-out flag and the attribution state. On `offline` or `failed` nothing changes. |
+| `isOptedOut` | `(): boolean` | `false` until `init()` has read storage, unless `optOut()` ran this launch. An `optOut()` or `optIn()` made before `init()` has read storage wins over the stored choice (2.2.1 and older: the stored one wins). |
+| `forget` | `(): Promise<{ ok: boolean; error?: 'unavailable' \| 'offline' \| 'failed' }>` | `POST /v1/forget`. A batch already in flight lands first, and no new one is sent until the server answers. The server deletes this install's events, tickets with replies, and install row under this app. The SDK then clears its queue (events tracked while the request was out included), once-keys and session count, mints a new install id and starts a new session. It keeps the first-open marker (no second `app_first_opened`), the opt-out flag and the attribution state. On `offline` or `failed` nothing changes. A second call while one is out gets its result. |
 | `createTicket` | `(input: { kind: 'issue' \| 'feature' \| 'love'; message: string; email?: string; subject?: string }): Promise<{ ok: boolean; id?: string; error?: string }>` | Errors: `unavailable` (no key), `offline`, `too_many` (429), `failed` (any other non-2xx, validation included). Sends `rc_id` and `diag { version, build, os, device, pro }`. On success it queues `ticket_opened { kind }`. |
 | `replyToTicket` | `(id: string, body: string): Promise<{ ok: boolean; error?: 'unavailable' \| 'offline' \| 'closed' \| 'too_many' \| 'failed' }>` | `closed` is a 409. On success it queues `ticket_replied`. |
 | `listTickets` | `(): Promise<Ticket[]>` | Up to 50, newest first. `[]` on any failure. Fetching marks every support reply read on the server. |
-| `flushNow` | `(): Promise<void>` | Commits the pending session, then sends one batch (up to 20). Returns early if a send is in flight, or the SDK is paused, opted out, not ready or backing off. |
+| `flushNow` | `(): Promise<void>` | Commits the pending session, waits for a send in flight, then sends one batch (up to 20). Returns early if the SDK is paused, opted out, not ready, forgetting or backing off. |
 | `pause`, `resume` | `(): void` | Hold sends (events still queue); send again. Not remembered across launches. |
-| `setEnabled` | `(next: boolean): void` | For development and tests. `false` clears the queue and stops everything; `true` works only with a non-empty key. Not remembered. |
+| `setEnabled` | `(next: boolean): void` | For development and tests. `false` clears the queue and stops everything; `true` works only with a url and a non-empty key. Not remembered. |
 | `telemetryAvailable` | `(): boolean` | Whether the SDK is on. |
-| `SDK_VERSION` | `'2.2.1'` | Sent as `sdk` with every batch. |
+| `SDK_VERSION` | `'2.2.2'` | Sent as `sdk` with every batch. |
 | `createHush` | `(platform: HushPlatform) => Hush` | Also exported from the default entry. |
 
 ## 4. Events the SDK sends itself
@@ -91,26 +95,39 @@ The default entry exports these as module functions. `createWebHush()` and
 | Event | When | Props |
 |---|---|---|
 | `app_first_opened` | The first `init()` ever for this storage prefix | none |
-| `session_started` | At `init()`, and on return after more than 30 minutes in the background. Held 2.5 s for `entry()`. | `entry` (default `'launch'`), `n` (this install's session number), `prev_fg_s` (the previous session's foreground seconds, when `n > 1`), the link's campaign tags when claimed with a URL, and the global props as they are when it commits |
+| `session_started` | At `init()` (every cold launch), and on return after more than 30 minutes in the background. Held 2.5 s for `entry()`. | `entry` (default `'launch'`), `n` (this install's session number), `prev_fg_s` (the previous session's foreground seconds, when `n > 1`), the link's campaign tags when claimed with a URL, and the global props as they are when it commits |
 | `screen_viewed` | When the app calls `screen()` | `screen` |
 | `ticket_opened` | After a successful `createTicket()` | `kind` |
 | `ticket_replied` | After a successful `replyToTicket()` | none |
 
 The server knows these names for every app without a catalog:
 `app_first_opened`, `session_started`, `screen_viewed`, `paywall_viewed`,
-`purchase_started`, `purchase_result`, `restore_result`, `ticket_opened`.
-`ticket_replied` is not among them: add it to the catalog if the app lets users
-reply.
+`purchase_started`, `purchase_result`, `restore_result`, `ticket_opened`,
+`ticket_replied`. A server from before `ticket_replied` joined them (migration
+`006_ticket_replied_known.sql` marks the replies it stored) lists it as
+unknown: on such a server, add it to the catalog if the app lets users reply.
 
 ## 5. Sessions and entry()
 
-- A session starts at `init()`, and again when the app returns after more than
-  30 minutes in the background.
+- A session starts at every cold launch (`init()` in a new process, even
+  seconds after iOS killed the last one), and again when the app returns
+  after more than 30 minutes in the background to a process that is still
+  alive. A return within 30 minutes continues the session.
+- The launch's first session keeps the id that events tracked before `init()`
+  carry, and its `session_started` is dated from when the SDK loaded, so it
+  sorts before them. Later sessions get a new id.
 - Its `session_started` is held for 2.5 s. `entry()` inside that window sets
   `entry` and commits it; otherwise it goes out as `'launch'`. Backgrounding
   commits it at once.
-- `entry()` in the same tick as `init()` is lost: the session does not exist
-  yet. `await init()` first.
+- `entry()` with no session pending is held for the next one. The launch's
+  first session takes an entry made before `init()` resolved, however late
+  that is. A session that starts within 2.5 s takes a later one: a link or a
+  notification tap that brings the app back can arrive before AppState turns
+  `active`. Otherwise the call was a tap inside a running session and is
+  ignored. The first claim wins.
+- 2.2.1 and older drop an `entry()` with no session pending: call it after
+  `await init()`, and on a return hold the source and call it again on the
+  next `active`.
 - `entry()` with a URL keeps only `utm_source`, `utm_medium`, `utm_campaign`,
   `utm_term`, `utm_content` and `ref`. Keys are lowercased; values are
   URL-decoded, trimmed and cut to 64 characters; the first occurrence wins; the
@@ -122,8 +139,15 @@ reply.
 
 ## 6. Delivery: queue, batches, retries
 
-- The queue holds up to 500 events; the oldest go first. It is persisted 1 s
-  after a change. On load, events older than 7 days are dropped.
+- The queue holds up to 500 events; the oldest go first. It is saved 1 s
+  after a change, at once after a delivered batch, as the app leaves, and
+  when `init()` has merged it with the stored one; never before that merge.
+  On load, events older than 7 days are dropped. (2.2.1 and older: only 1 s
+  after a change, also before `init()`, which can overwrite the last
+  launch's unsent events, and a process killed within that second sends a
+  delivered batch again.)
+- A delivered batch leaves the queue by event id, so events queued while it
+  was out stay queued.
 - Flushes run 3 s after any event, at once when the queue reaches 20, every
   30 s, on backgrounding (through `runInBackground`), and after `init()` and
   `resume()`.
@@ -143,13 +167,13 @@ reply.
 |---|---|---|
 | Event name | `^[a-z][a-z0-9_]{1,63}$` | Dropped on the device; rejected by the server |
 | Prop keys | `^[a-z][a-z0-9_]{0,39}$`, at most 40 | Whole event rejected |
-| Prop values | string up to 200 characters, finite number, boolean, `null`; one flat level | Whole event rejected |
+| Prop values | string up to 200 characters, finite number, boolean, `null`; one flat level (a `Date` is sent as its ISO string) | Whole event rejected; a value that is not flat drops the event on the device |
 | Props size | up to 2048 bytes as JSON | Whole event rejected |
 | Event time | 30 days in the past to 1 day in the future | Event rejected |
 | Batch | 1 to 100 events, body up to 64 KB | 400 or 413; the SDK drops the batch |
 | Context | `version` 32, `build` 32, `platform` 16, `os` 32, `device` 64, `locale` 16, `rc_id` 128, `sdk` 24 characters | Over-long values become null |
 | Channel | `^[a-z][a-z0-9_]{0,23}$` | Stored as null |
-| `pro` | stored only if boolean; an explicit `false` downgrades | |
+| `pro` | stored only if boolean; an explicit `false` downgrades. The SDK leaves it out until `identify({ pro })` | |
 | Ticket | `message` 1 to 4000 characters, `subject` up to 120, `email` up to 160 and a plausible address, `kind` `issue`, `feature` or `love` | 400, `failed` in the SDK |
 | Ticket rate | 5 tickets per install per app per day; 20 user replies per ticket per day | 429, `too_many` |
 | Request rate, per client address | `/v1/*` 120 a minute, `/v1/events` 60, tickets and replies 10, forget 10 | 429 |

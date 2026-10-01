@@ -165,17 +165,18 @@ test('references over 100 lines open with a table of contents', () => {
 });
 
 test('the web module in SKILL.md and in install.md starts hush and claims the entry the same way', () => {
-  const ready = (file) => {
+  const startup = (file) => {
     const block = [...read(file).matchAll(/^```ts\n([\s\S]*?)^```/gm)].map((m) => m[1]).find((code) => code.includes('createWebHush('));
     assert.ok(block, `${rel(file)}: no web module`);
-    const m = /export const hushReady = [\s\S]*?;\n/.exec(block);
-    assert.ok(m, `${rel(file)}: the web module exports no hushReady`);
-    return m[0].replace(/\s+/g, ' ');
+    const ready = /export const hushReady = [\s\S]*?;\n/.exec(block);
+    assert.ok(ready, `${rel(file)}: the web module exports no hushReady`);
+    const entry = /^if \(browser [^\n]*hush\.entry\('link'[^\n]*\n/m.exec(block);
+    assert.ok(entry, `${rel(file)}: the web module claims no link entry`);
+    return { ready: ready[0].replace(/\s+/g, ' '), entry: entry[0].trim() };
   };
-  const inSkill = ready(join(skillDir, 'SKILL.md'));
-  assert.equal(inSkill, ready(join(referencesDir, 'install.md')));
-  assert.match(inSkill, /browser \?/, 'init() runs in the browser only');
-  assert.match(inSkill, /hush\.entry\('link'/, 'entry() follows init()');
+  const inSkill = startup(join(skillDir, 'SKILL.md'));
+  assert.deepEqual(inSkill, startup(join(referencesDir, 'install.md')));
+  assert.match(inSkill.ready, /browser \?/, 'init() runs in the browser only');
 });
 
 test('each agent has a name, matching its file, and a description', () => {

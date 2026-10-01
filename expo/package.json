@@ -1,6 +1,6 @@
 {
   "name": "@bavrk/hush-expo",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "The native side of @bavrk/hush for Expo apps on iOS: Apple ad attribution (SKAdNetwork, AdAttributionKit), TestFlight detection, background time for the flush.",
   "license": "MIT",
   "author": "bavrk (https://bavrk.com)",
@@ -20,8 +20,7 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "expo": ">=52",
-    "expo-modules-core": "*"
+    "expo": ">=52"
   },
   "devDependencies": {
     "expo-modules-core": "~56.0.0",

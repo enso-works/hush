@@ -7,9 +7,9 @@ Server, dashboard and docs: [github.com/enso-works/hush](https://github.com/enso
 The SDK for [hush](https://hush.bavrk.com): in-app feedback and anonymous
 usage tracking, sent to your own hush server. It queues events on the device,
 sends them in small batches, and survives being offline, killed or
-backgrounded. It never throws into your app (given a string `url`, and props
-as an object or left out) and never blocks a render: if the server is down or the key is missing, the app behaves
-exactly as without it.
+backgrounded. It never throws into your app and never blocks a render: if the
+server is down, or the url or key is missing, the app behaves exactly as
+without it.
 
 Expo:
 
@@ -57,26 +57,35 @@ hush.configure({
   // pick up a local .env and ship the dev key.
   key: __DEV__ ? (process.env.EXPO_PUBLIC_HUSH_KEY ?? '') : 'hush_myapp_prod_…',
 });
-hush.init(); // right after configure; safe to call again, never throws
+hush.init(); // at startup; safe to call again, never throws
 ```
 
-With an empty key the SDK stays off entirely: no storage, no requests.
+With an empty key the SDK stays off entirely: no storage, no requests. A
+missing or non-string `url` or `key` (an env variable unset in one build
+profile, say) turns it off the same way, and with `logLevel: 'error'` it says
+why. Give an env variable a fallback so release builds stay on:
+`process.env.EXPO_PUBLIC_HUSH_URL ?? 'https://…'`.
 
-Four rules about timing and input in SDK 2.2:
+Call `configure()` first: the SDK is off until it runs, and events tracked
+before it are dropped. After it, the order of calls does not matter. Events tracked before
+`init()` resolves belong to the launch's session and join the queue the
+last launch saved. An `entry()` made before the session exists is held for
+it. Until `identify({ pro })` runs, batches carry no paid flag, and the
+server keeps the one it has.
 
-- Call `configure()` and then `init()` together, at startup, before any
-  `track()`, `screen()` or `entry()`. An event tracked more than about a
-  second before `init()` resolves overwrites the queue the last launch
-  saved, and its unsent events are lost.
-- Call `entry()` after `init()` has resolved and within 2.5 seconds:
-  `await hush.init(); hush.entry('link', { url })`. Called before `init()`
-  has resolved (in the same tick, say) or after those 2.5 seconds, it does
-  nothing and the link's tags are lost.
-- Call `identify({ pro })` as early as you know the answer, on every launch.
-  Until it runs, batches say `pro: false`.
-- Pass `url` as a string. `configure()` throws on `undefined`, so give an env
-  variable a fallback: `process.env.EXPO_PUBLIC_HUSH_URL ?? 'https://…'`.
-  Pass props as an object or leave them out: `track()` throws on `null`.
+SDK 2.2.1 and older need these workarounds; 2.2.2 fixes all four:
+
+- Call `init()` right after `configure()`, before any `track()`. An event
+  tracked more than about a second before `init()` resolves overwrites the
+  queue the last launch saved.
+- Call `entry()` only after `init()` has resolved and within 2.5 seconds
+  (`await hush.init(); hush.entry('link', { url })`); earlier it does
+  nothing. A link that brings the app back can arrive before the new
+  session exists: hold it and call `entry()` again on the next `active`.
+- Call `identify({ pro })` as early as possible on every launch: until it
+  runs, batches say `pro: false`, which marks a paid install unpaid.
+- Pass `url` as a string and props as an object: `configure()` throws on an
+  undefined `url`, and `track()` on `null` props.
 
 ## Events
 
@@ -89,9 +98,15 @@ hush.entry('link', { url });                          // a link: keeps its utm_*
 await hush.flushNow();                                // e.g. before a purchase sheet
 ```
 
-`entry()` claims the session that just started, under the timing rule
-above: pass the URL from `Linking.getInitialURL()`, or `'notification'` for
-the notification response that opened the app.
+`entry()` says how the session began: pass the URL from
+`Linking.getInitialURL()` or the `url` event, or `'notification'` for the
+notification response that opened the app. Call it as soon as the app knows.
+It claims the session that has just started, for 2.5 seconds after its start.
+Made before the session exists, it waits for it: the launch's first session
+takes it however late `init()` resolves, and a session that starts within 2.5
+seconds takes a later one (iOS delivers a link that brings the app back before
+the app is active). Anything else is a tap inside a running session, not its
+entry, and is ignored.
 
 ### Global props
 
@@ -121,28 +136,38 @@ For milestones a code path might fire twice. The SDK remembers what it sent
   each value a string of up to 200 characters, a finite number, a boolean or
   null, and 2 KB in all. An event that breaks any of these is rejected whole
   by the server; `onFlush` reports it in `rejected`.
-- `app_first_opened` and `session_started` are sent for you. A session ends
-  after 30 minutes in the background. `session_started` carries `entry`, `n`
+- An invalid event name, or a prop value that is not flat (an object, an
+  array, a press event), drops the event on the device: the server would
+  reject it anyway. A global prop like that is not set. A `Date` is sent as
+  its ISO string, as JSON writes it. With
+  `logLevel: 'error'` the SDK says so in the console.
+- `app_first_opened` and `session_started` are sent for you. A session starts
+  at every cold launch (each new process, even seconds after the last one was
+  killed in the background) and when the app comes back after more than 30
+  minutes in the background; a return within 30 minutes to a process that is
+  still alive continues the session. `session_started` carries `entry`, `n`
   (this install's session number) and `prev_fg_s` (the previous session's
   seconds in the foreground: reported with the next start, because an
   explicit "session ended" dies with the process when iOS kills an app).
-- An invalid event name is dropped on the device (the server would drop it
-  anyway); with `logLevel: 'error'` the SDK says so in the console.
-- `identify({ pro })`: the server keeps a paid install paid when a batch
-  carries no flag, but this SDK sends `pro: false` until `identify` runs, so
-  call it as early as possible on every launch (as soon as RevenueCat's
-  cached customerInfo is there).
+  Events tracked before `init()` resolves carry the first session's id, and
+  its `session_started` is dated from the moment the SDK loaded, so it sorts
+  first.
+- `identify({ pro })`: batches carry no paid flag until it runs, and the
+  server keeps a paid install paid when a batch carries none (a new install
+  starts unpaid). Call it whenever RevenueCat's customerInfo arrives.
 - `rcId`: `originalAppUserId` is anonymous only while the app never calls
   `Purchases.logIn()` with its own user ids. If it does, leave `rcId` out.
 - Events are sent after a few seconds, every 30 s, in batches of 20, and on
-  backgrounding. The queue keeps 500 events for up to 7 days.
+  backgrounding. The queue keeps 500 events for up to 7 days. It is saved a
+  second after a change, and at once after a delivered batch and as the app leaves, so
+  a process killed right after a send does not send it again.
 
 ## The user's choices
 
 ```ts
 hush.optOut();            // "don't share anonymous usage": remembered, nothing queued or sent
 hush.optIn();
-hush.isOptedOut();        // after init()
+hush.isOptedOut();        // after init(), or once optOut() has run
 
 const r = await hush.forget(); // "delete my data"
 // r.ok, or r.error: 'offline' | 'failed' | 'unavailable'
@@ -151,7 +176,10 @@ const r = await hush.forget(); // "delete my data"
 hush collects nothing personal, so neither is required, but both are cheap
 to offer in Settings. `forget()` asks the server to delete everything stored
 about this install (events, feedback and replies), then starts over with a
-new install id without counting a new install. Feedback keeps working after
+new install id without counting a new install. A batch already on its way
+lands before the delete, and nothing is sent until the server has answered.
+A choice made before `init()` has read storage (the app applying a stored
+consent at startup) wins over the stored one. Feedback keeps working after
 `optOut()`: a user sends that on purpose.
 
 ## Debugging
@@ -167,7 +195,7 @@ every send. The dashboard's Installs page shows one install's latest events
 as they arrive. `installationId()` is the id synchronously (`''` before
 init); `telemetryAvailable()` says whether the SDK is on; `setEnabled(false)`
 turns it off for this launch (dev and tests); `flushNow()` sends one batch
-of up to 20.
+of up to 20, after the one in flight if there is one.
 
 ## Support tickets
 
@@ -183,19 +211,20 @@ await hush.replyToTicket(ticket.id, 'Thanks!'); // error 'closed' once closed
 you send from the dashboard show up in `listTickets()`, flagged `unread`
 once. `listTickets()` marks every reply read as it fetches, so for an unread
 badge at launch keep your own seen list. A sent ticket and reply are tracked
-as `ticket_opened { kind }` and `ticket_replied`; add `ticket_replied` to
-your catalog.
+as `ticket_opened { kind }` and `ticket_replied`, both names every hush
+server knows (a server from before `ticket_replied` joined them lists it as
+unknown: add it to the catalog there).
 
 ## Options
 
 | | |
 |---|---|
-| `url` | the hush server; must be a string (`configure` throws on undefined, so give env vars a fallback) |
-| `key` | a write key; empty turns the SDK off |
+| `url` | the hush server; missing or not a string turns the SDK off (2.2.1 and older throw), so give env vars a fallback |
+| `key` | a write key; empty or missing turns the SDK off |
 | `storagePrefix` | Storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id: an app moving from a copied SDK passes the prefix it used before. It also forgets the user's opt-out, once-events, session count and the ad-attribution state. |
 | `runInBackground` | wraps the flush that runs when the app goes to the background, e.g. in a native background task, so the request is not cut off by suspension |
 | `channel` | where this build came from: `app_store`, `testflight`, `play`, `internal`... (snake_case, 24 chars). The dashboard filters by it, so TestFlight and dev-client builds on a prod key stop counting as store users. Pass it per EAS build profile, e.g. `process.env.EXPO_PUBLIC_HUSH_CHANNEL`. Default `dev` in `__DEV__` builds, otherwise not sent. |
-| `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name), `debug` (every send) |
+| `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name or a missing url), `debug` (every send) |
 | `onFlush` | called after every send with its result |
 | `attribution` | a bridge `{ update({ fine, coarse, lock }) }` that sets Apple's conversion value, e.g. `hushExpo.attribution` from `@bavrk/hush-expo`; see [Ad attribution](#ad-attribution-ios) below |
 
@@ -222,10 +251,9 @@ hush.configure({
   key: import.meta.env.DEV ? (import.meta.env.VITE_HUSH_KEY ?? '') : 'hush_mygame_prod_…',
   channel: import.meta.env.VITE_HUSH_CHANNEL,
 });
-hush.init().then(() => {
-  // After init, within 2.5 s. Only a tagged link, so direct visits keep their entry.
-  if (/[?&](utm_|ref=)/i.test(location.search)) hush.entry('link', { url: location.href });
-});
+hush.init();
+// Only a tagged link, so direct visits keep their entry. 2.2.1 and older: call it in init().then().
+if (/[?&](utm_|ref=)/i.test(location.search)) hush.entry('link', { url: location.href });
 ```
 
 The hush server answers CORS on `/v1` for any origin (including Capacitor's
@@ -281,6 +309,12 @@ dashboard can tell which SDK an install runs. Any 2.x works with any hush
 server that speaks `/v1`; `forget()` needs one with `/v1/forget`, and the
 web entry one that answers CORS. 2.1 added `@bavrk/hush/web`; 2.2 the
 `attribution` bridge (with `/v1/config` on the server) and `utm_term`.
+2.2.2 makes the order of calls at startup safe: an early `entry()` is held for
+its session, early events keep the launch's session id and the last launch's
+queue, the paid flag is left out until `identify()`, a missing `url` turns the
+SDK off instead of throwing, `forget()` waits for a send in flight, a
+privacy choice made before `init()` wins, and a saved value that cannot be
+read or parsed starts over instead of turning the SDK off.
 
 ## Privacy
 

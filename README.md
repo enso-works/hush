@@ -70,8 +70,8 @@ hush.configure({
   key: __DEV__ ? (process.env.EXPO_PUBLIC_HUSH_KEY ?? '') : 'hush_myapp_prod_…', // release builds: the prod key in code
   channel: process.env.EXPO_PUBLIC_HUSH_CHANNEL, // per EAS profile: app_store, play, internal; `dev` in __DEV__
 });
-hush.init();                   // right after configure, before any track()
-hush.identify({ pro: isPro }); // isPro: your paid state, as early as you know it
+hush.init();                   // at startup; never throws
+hush.identify({ pro: isPro }); // isPro: your paid state, whenever you learn it
 ```
 
 Elsewhere in the app:
@@ -90,7 +90,10 @@ profile cannot tell those two apart. On iOS,
 `hushExpo.channel() ?? process.env.EXPO_PUBLIC_HUSH_CHANNEL` from
 `@bavrk/hush-expo` does, and keeps TestFlight out of the store numbers.
 
-Call `entry()` only after `init()` has resolved, within 2.5 s. The
+`entry('link', { url })` says how a session began; call it as soon as the
+app has the link, before or after `init()` resolves. (SDK 2.2.1 and older
+need `init()` called right after `configure()`, `entry()` only after `init()`
+has resolved, and `identify()` early: see the SDK guide.) The
 [SDK guide](sdk/README.md) has the rest: screens, link tags, opt-out and
 `forget()`, the naming limits and the web entry.
 
@@ -137,7 +140,8 @@ The [hush plugin](plugins/hush/) for Claude Code:
 
 - **An install id**: a random UUID the app creates on first launch. Deleting
   the app deletes it. It is the only identifier hush creates.
-- **A paid flag**, `false` until the app calls `identify({ pro })`.
+- **A paid flag**, unknown until the app calls `identify({ pro })` (a new
+  install is stored as unpaid; SDK 2.2.1 and older send `false` until then).
 - **RevenueCat's customer id**, only if the app calls `identify({ rcId })`:
   pass RevenueCat's anonymous id, not your own account ids. Every batch also
   carries the build channel and the SDK version.

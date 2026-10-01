@@ -19,15 +19,17 @@ duplicate, rejected, willRetry }` after every send.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| No `[hush] ready` log | `init()` never ran, ran before `configure()`, or the key is empty (the SDK is off). | Call `configure()` and then `init()` in one module that the root imports. Check `telemetryAvailable()`. |
-| App crashes at startup with a TypeError in `configure` | `url` is `undefined` (an unset env var). | Pass a string: `process.env.X ?? 'https://…'`. |
+| No `[hush] ready` log | `init()` never ran, ran before `configure()`, or the url or key is empty or missing (the SDK is off). `logLevel: 'error'` names a missing url or key; an empty-string key, the deliberate off switch, is logged only at `debug`. | Call `configure()` and then `init()` in one module that the root imports. Check `telemetryAvailable()`. |
+| Nothing sent from release builds, `[hush] url is missing or not a string` | `url` came from an env variable that build profile does not set. | Give it a string fallback: `process.env.X ?? 'https://…'`. |
+| App crashes at startup with a TypeError in `configure` | SDK 2.2.1 or older, and `url` is `undefined` (an unset env var). | Upgrade to 2.2.2, which turns the SDK off instead; and pass a string. |
 | `sent N: { status: 401 }` | Wrong or revoked key. The SDK drops the batch; those events are lost. | Mint a new key (`keys:create`) and ship it. A revoked key keeps working for up to a minute. |
 | `sent N: { status: 'offline', willRetry: true }` | The device cannot reach the URL: a typo, `http://` from a device, a LAN address, or a proxy that does not forward `/v1/*`. | `curl https://<server>/healthz` from outside. Route `/v1/*` publicly. |
 | Works in development, nothing from release builds | The prod key is empty in code, or the release reads an env var that was not set. | Put the prod key in code for release builds. Check the bundle (section 2). |
 | Web: nothing at all | The site's Content-Security-Policy `connect-src` does not allow the hush origin (the console shows a CSP violation). Or `configure()` and `init()` ran only during server rendering. | Add the hush URL to `connect-src`. Call `configure()` and `init()` in the browser. |
 | Web: nothing from some browsers | A content or ad blocker blocks the hush host. | Expected. Those visitors are not counted. |
 | Web: installs inflated, many one-visit installs | `localStorage` refused (private mode, a sandboxed frame): the SDK keeps its id in memory, so every load is a new install. Events are still sent. | Expected in private modes. |
-| Events tracked at launch are missing, or a previous launch's events vanish | Events tracked more than about a second before `init()` resolved overwrote the stored queue. | Call `init()` right after `configure()`, before any tracking. |
+| Events tracked at launch are missing, or a previous launch's events vanish | SDK 2.2.1 or older: events tracked more than about a second before `init()` resolved overwrote the stored queue. | Upgrade to 2.2.2. Until then, call `init()` right after `configure()`, before any tracking. |
+| About twice as many session ids as `session_started` events | SDK 2.2.1 or older: events tracked before `init()` resolved, and `app_first_opened`, carried an id of their own. | Upgrade to 2.2.2. Count sessions by `session_started` for data sent before it. |
 
 ## 2. Data lands in the wrong place
 
@@ -44,21 +46,24 @@ duplicate, rejected, willRetry }` after every send.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `onFlush` reports `rejected > 0` | A prop key is not snake_case (`durationMs`), a value is nested, a string is over 200 characters, more than 40 keys (globals included), over 2 KB, or `screen()` got a name over 200 characters. The whole event is dropped. | Fix the props. Only nesting and the key count are warned about on the device. |
+| `onFlush` reports `rejected > 0` | A prop key is not snake_case (`durationMs`), a string is over 200 characters, more than 40 keys (globals included), over 2 KB, or `screen()` got a name over 200 characters. The whole event is dropped. | Fix the props. The key count is warned about on the device. |
+| An event never arrives, `[hush] event "x" prop "y" is not a string, number, boolean or null` | A prop value is an object or an array (a press event, a navigation object). The SDK drops the event on the device; the server would reject it. A global prop like that is not set. | Pass flat values. SDK 2.2.1 and older send it, and a circular one stops every send for the rest of the launch. |
 | An event never appears; `logLevel: 'error'` says "is not snake_case" | The name breaks `^[a-z][a-z0-9_]{1,63}$` (`'Purchase Completed'`, `'x'`). Dropped on the device. | Rename. |
-| An event is listed as unknown | Its name is not in the app's catalog entry, or is misspelled; or the server was not restarted after the edit. The flag is stored with each event as it arrives. | Add it to `events`, validate, restart. Only events received after the restart count as known; those already stored keep the flag until they age out of the selected period. `ticket_replied` is not a common name: add it when users can reply. |
-| `track(name, null)` throws | Props must be an object or omitted. | `track(name)` or `track(name, {})`. |
+| An event is listed as unknown | Its name is not in the app's catalog entry, or is misspelled; or the server was not restarted after the edit. The flag is stored with each event as it arrives. | Add it to `events`, validate, restart. Only events received after the restart count as known; those already stored keep the flag until they age out of the selected period. `ticket_replied` is a built-in name; a server from before that lists it as unknown: update it (its migration marks the stored replies known) or add it to the catalog. |
+| `track(name, null)` throws | SDK 2.2.1 or older: props must be an object or omitted. | Upgrade to 2.2.2, or call `track(name)`. |
 | One prop splits into two sets of values | Different builds send different types (`true` and `'calm'`). | Keep one type per prop. |
 
 ## 4. Sessions, entries and pro
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Every session has `entry: 'launch'`, no campaign tags | `entry()` ran in the same tick as `init()`, before the session existed, or more than 2.5 s after it. | `await hushReady`, then `entry()`, at once. |
-| A link that brings the app back does not tag the session | Back within 30 minutes is the same session; `entry()` is a no-op. | Expected. |
-| A link or notification tap that brings the app back after 30 minutes does not tag the new session | The listener called `entry()` before AppState turned `active`, when hush starts the session. | Hold the source and call `entry()` again on the next `active` ([install.md](install.md#8-how-sessions-begin-entry)). |
-| Paying installs show as unpaid | `identify({ pro })` runs late; batches before it say `pro: false`. | Call `identify()` right after `configure()` with a cached value, and again when RevenueCat answers. |
+| Every session has `entry: 'launch'`, no campaign tags | `entry()` is never called, or more than 2.5 s after the session began. With SDK 2.2.1 or older, also when it ran before `init()` resolved. | Call `entry()` as soon as the app has the link ([install.md](install.md#8-how-sessions-begin-entry)). On 2.2.1 or older, upgrade, or `await hushReady` first. |
+| A link that brings the app back does not tag the session | Back within 30 minutes is the same session; `entry()` is ignored. | Expected. |
+| A link or notification tap that brings the app back after 30 minutes does not tag the new session | SDK 2.2.1 or older: the listener called `entry()` before AppState turned `active`, when hush starts the session, and it was dropped. | Upgrade to 2.2.2, which holds it for the session. Until then, hold the source and call `entry()` again on the next `active` ([install.md](install.md#8-how-sessions-begin-entry)). |
+| Paying installs show as unpaid | SDK 2.2.1 or older: batches before `identify({ pro })` say `pro: false`. With 2.2.2, `identify()` never runs. | Upgrade to 2.2.2, which leaves the flag out until `identify()`. Call `identify()` when RevenueCat answers. |
 | `isOptedOut()` returns `false` for a user who opted out | Read before `init()` loaded storage. | Read it after `hushReady`. |
+| A user's opt-in or opt-out at startup is undone | SDK 2.2.1 or older: a choice made before `init()` read storage lost to the stored one. | Upgrade to 2.2.2, where the newer choice wins. |
+| Events of a forgotten install reappear on the server | SDK 2.2.1 or older: a batch in flight during `forget()` landed after the delete. | Upgrade to 2.2.2, where `forget()` waits for it. |
 | `rc_id` looks like the app's own user id | The app calls `Purchases.logIn()` with its ids. | Send `identify({ pro })` without `rcId`. |
 
 ## 5. Feedback
@@ -92,7 +97,7 @@ duplicate, rejected, willRetry }` after every send.
 | TypeScript cannot find `@bavrk/hush/web` types | `moduleResolution` is `node` or `node10`. | Use `bundler`, `node16` or `nodenext`. |
 | `pod install` fails: hush-expo needs a higher deployment target | Expo SDK 52 to 55 defaults to iOS 15.1; hush-expo needs 16.4. | `expo-build-properties` with `ios.deploymentTarget: '16.4'`, then prebuild. |
 | Prebuild fails: `attributionEndpoint is https://<domain>, nothing after it` | A path, port or trailing slash in the option. | `https://example.com` exactly. |
-| `npx expo-doctor`: missing peer dependency `expo-modules-core`, required by `@bavrk/hush-expo` | hush-expo 0.1.2 lists `expo-modules-core` as a peer. It ships inside `expo`. | Do not install it: doctor then fails because it is installed directly. Leave this check failing and note it as a known issue. |
+| `npx expo-doctor`: missing peer dependency `expo-modules-core`, required by `@bavrk/hush-expo` | hush-expo 0.1.2 or older lists `expo-modules-core` as a peer. It ships inside `expo`. | Upgrade to `@bavrk/hush-expo` 0.1.3 or later. Do not install `expo-modules-core` directly: doctor then fails because it is installed directly. |
 | hush-expo does nothing | Expo Go, Android, web, or a JS update onto a binary built before it was added. | Make a new dev or EAS build. |
 | Bare React Native: crash on import of `expo-constants` | No Expo modules in the project. | `npx install-expo-modules@latest`, `npx pod-install`, rebuild. |
 

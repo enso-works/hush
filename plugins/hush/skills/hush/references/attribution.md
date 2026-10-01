@@ -17,9 +17,11 @@ an advertising id, or needs an App Tracking Transparency prompt.
 A link with `utm_*` tags opens the app or the page, and the app passes it to
 `entry('link', { url })`.
 
-- **App side.** After `init()` has resolved and within 2.5 s:
-  `hush.entry('link', { url })`. On the web, only when the page URL has tags
-  (see [install.md](install.md), step 8).
+- **App side.** As soon as the app has the link:
+  `hush.entry('link', { url })`. Before the session exists it is held for it
+  (SDK 2.2.1 and older: only after `init()` has resolved, within 2.5 s). On
+  the web, only when the page URL has tags (see [install.md](install.md),
+  step 8).
 - **What is kept.** `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`,
   `utm_content` and `ref`, each cut to 64 characters, on that session's
   `session_started`. The URL itself, click ids and anything else are dropped.

@@ -41,7 +41,7 @@ hush.configure({
   attribution: hushExpo.attribution,
   runInBackground: hushExpo.runInBackground,
 });
-hush.init(); // right after configure, before any track(); see the SDK's timing rules
+hush.init(); // at startup; with @bavrk/hush 2.2.1 or older, right after configure and before any track()
 ```
 
 `distribution()` returns `simulator`, `development` (dev, ad hoc and internal
@@ -57,6 +57,10 @@ On the server, the app's catalog entry needs `app_store_id` (postbacks are
 matched to the app by it) and `conversion_values` (the milestones the SDK
 raises the value to; without them only 0 is set). Restart hush after editing
 it, and enter the same table in the ad network (Meta: Events Manager).
+
+Its only peer is `expo`, like Expo's own modules: `expo-modules-core` comes
+with it, so do not install that directly (0.1.2 and older listed it, and
+`npx expo-doctor` reported it as a missing peer).
 
 Needs a development build (in Expo Go every function is a quiet no-op). The
 pod needs an iOS deployment target of 16.4: Expo SDK 56 has it by default; on

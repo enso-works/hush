@@ -102,6 +102,14 @@ describe('ingest', () => {
     const { rows } = await db.query('SELECT known FROM events WHERE install = $1', [install]);
     assert.equal(rows[0].known, true);
   });
+
+  test('so are the names the SDK sends by itself, ticket_replied included', async () => {
+    const install = uuid();
+    const own = ['app_first_opened', 'session_started', 'ticket_opened', 'ticket_replied'];
+    await client(srv.base, otherKey).post('/v1/events', batch(own.map((name) => event(install, name))));
+    const { rows } = await db.query('SELECT name, known FROM events WHERE install = $1 ORDER BY name', [install]);
+    assert.deepEqual(rows, own.sort().map((name) => ({ name, known: true })));
+  });
 });
 
 describe('the install row', () => {

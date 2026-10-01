@@ -147,7 +147,7 @@ hush.configure({
   logLevel: __DEV__ ? 'error' : 'silent',
 });
 
-// Right after configure(), before any track(), screen() or entry().
+// Right after configure(). Calls made before it resolves are kept for it.
 export const hushReady = hush.init();
 
 export * from '@bavrk/hush';
@@ -197,13 +197,11 @@ if (browser) {
   });
 }
 
-// How the session began (step 8): a link with campaign tags, after init()
-// resolves.
-export const hushReady = browser
-  ? hush.init().then(() => {
-      if (/[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link', { url: location.href });
-    })
-  : Promise.resolve();
+export const hushReady = browser ? hush.init() : Promise.resolve();
+
+// How the session began (step 8): a link with campaign tags. Held until the
+// session exists.
+if (browser && /[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link', { url: location.href });
 ```
 
 - `version` comes from the build. Without it the dashboard shows version
@@ -300,67 +298,42 @@ reports; it counts the view twice.
 
 ## 8. How sessions begin: entry()
 
-`entry()` claims the `session_started` the SDK holds for 2.5 s after `init()`
-resolves, and after a return from more than 30 minutes in the background.
-Call it after `await hushReady`, and only for sessions that began somewhere
-other than the home screen. A call outside the window is a no-op, which is
-right: a tap inside a running session is not how the session began.
+`entry()` says how a session began, for sessions that began somewhere other
+than the home screen. Call it as soon as the app learns it. It claims the
+`session_started` the SDK holds for 2.5 s after a session starts. With no
+session pending it is held: the launch's first session takes it however late
+`init()` resolves, and a session that starts within 2.5 s takes a later one.
+Anything else is a tap inside a running session, which is not how the
+session began, and is ignored.
 
 Links and notification taps, Expo, in the root layout. Drop the notification
 lines if the app has no `expo-notifications`:
 
 ```tsx
-import { AppState } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 
 useEffect(() => {
-  // A link or tap that brings the app back after 30 minutes can arrive before
-  // AppState turns 'active', which is when hush starts the new session. Try
-  // entry() at once, and again on the next 'active'.
-  let held: { source: 'link' | 'notification'; url?: string } | null = null;
-  const arrived = (source: 'link' | 'notification', url?: string) => {
-    hush.entry(source, { url });
-    held = { source, url };
-  };
-  const subs: { remove(): void }[] = [
-    Linking.addEventListener('url', ({ url }) => arrived('link', url)),
-    Notifications.addNotificationResponseReceivedListener(() => arrived('notification')),
-  ];
-  let mounted = true;
-  void hush.hushReady.then(async () => {
-    // The link or the tap that launched the app.
-    const url = await Linking.getInitialURL();
+  // The link or the tap that launched the app.
+  void Linking.getInitialURL().then((url) => {
     if (url) hush.entry('link', { url });
     else if (Notifications.getLastNotificationResponse()) hush.entry('notification');
-    if (!mounted) return;
-    // Added after hush's own AppState listener, so it runs after the new
-    // session exists.
-    subs.push(
-      AppState.addEventListener('change', (state) => {
-        if (state === 'active' && held) hush.entry(held.source, { url: held.url });
-        held = null;
-      }),
-    );
   });
-  return () => {
-    mounted = false;
-    subs.forEach((sub) => sub.remove());
-  };
+  // Links and taps that bring the app back. One that arrives before AppState
+  // turns 'active' is held for the session that starts then.
+  const subs = [
+    Linking.addEventListener('url', ({ url }) => hush.entry('link', { url })),
+    Notifications.addNotificationResponseReceivedListener(() => hush.entry('notification')),
+  ];
+  return () => subs.forEach((sub) => sub.remove());
 }, []);
 ```
 
-- The launch is read after `hushReady`: `getInitialURL()`, and the last
-  notification response. A response listener added in an effect can miss the
-  tap that launched the app. `getLastNotificationResponse()` exists from Expo
-  SDK 53, and SDK 54 deprecates the async form. On SDK 52 and older, use
+- A response listener added in an effect can miss the tap that launched the
+  app, so the launch reads the last notification response.
+  `getLastNotificationResponse()` exists from Expo SDK 53, and SDK 54
+  deprecates the async form. On SDK 52 and older, use
   `await Notifications.getLastNotificationResponseAsync()` instead.
-- A return after more than 30 minutes: iOS and Android can deliver the link or
-  the tap before AppState turns `active`, when hush starts the new session.
-  `entry()` from the listener alone is then a no-op and the session goes out
-  as `launch`. The held source covers that order; the call at once covers the
-  other. `held` is cleared on every AppState change, so a link opened inside a
-  running session never tags a later one.
 - The URL is never sent. Only `utm_source`, `utm_medium`, `utm_campaign`,
   `utm_term`, `utm_content` and `ref` join the session.
 - A widget, a quick action or Siri: if the deep link carries a marker such as
@@ -368,12 +341,20 @@ useEffect(() => {
   `Linking.parse(url).queryParams`; React Native's `URL` has no working
   `searchParams` on every version.
 - Web: the module in step 5 already calls `entry('link', { url: location.href })`
-  after `init()` resolves, when the URL has campaign tags.
+  when the URL has campaign tags.
+- **The app is on `@bavrk/hush` 2.2.1 or older** (check `package.json`):
+  upgrade it with the install command in step 4. If it must stay, `entry()`
+  with no session pending does nothing there, so read the launch after
+  `await hushReady`, and for a return hold the source and call `entry()`
+  again from an `AppState` `'active'` listener added after `hushReady` (it
+  then runs after hush's own listener has started the session). Clear the
+  held source on every AppState change.
 
 ## 9. identify() with RevenueCat (optional)
 
 `identify({ rcId, pro })` joins purchases to installs without an app user id.
-Until it runs, every batch says `pro: false`. Call it early, every launch:
+Until it runs, batches carry no paid flag and the server keeps what it has.
+Call it whenever RevenueCat answers:
 
 ```ts
 import Purchases, { type CustomerInfo } from 'react-native-purchases';
@@ -389,9 +370,10 @@ Purchases.getCustomerInfo().then(report).catch(() => {});
 Purchases.addCustomerInfoUpdateListener(report);
 ```
 
-- If the app keeps its own cached "is pro" flag, call
-  `hush.identify({ pro: cachedPro })` in the hush module, right after
-  `configure()`.
+- On `@bavrk/hush` 2.2.1 or older, batches say `pro: false` until it runs,
+  which marks a paying install unpaid: upgrade, or, if the app keeps its own
+  cached "is pro" flag, call `hush.identify({ pro: cachedPro })` in the hush
+  module right after `configure()`.
 - Pass `rcId` only when the app uses RevenueCat's anonymous ids. If it gives
   RevenueCat its own user ids (`Purchases.logIn()`, or `appUserID` in
   `Purchases.configure()`), `originalAppUserId` is a personal identifier: send
@@ -417,7 +399,8 @@ An inbox:
   reply read. For a badge, keep a local set of reply timestamps the user has
   seen.
 - `hush.replyToTicket(id, body)`. On `error: 'closed'`, offer a new message.
-- Add `ticket_replied` to the catalog if users can reply.
+- The SDK tracks `ticket_replied` for a reply. A hush server from before it
+  joined the built-in names lists it as unknown: add it to the catalog there.
 
 Settings rows:
 
@@ -432,10 +415,10 @@ Add it for iOS ad attribution, TestFlight versus App Store channels, or
 background time for the last flush. It is Expo-only and needs a dev or EAS
 build; in Expo Go, on Android and on the web every function is a no-op.
 
-1. `npx expo install @bavrk/hush-expo`. `npx expo-doctor` then reports
-   `expo-modules-core` as a missing peer of @bavrk/hush-expo 0.1.2. Do not
-   install it: it comes with `expo`, and doctor then flags it as installed
-   directly. Note this in the report as a known issue.
+1. `npx expo install @bavrk/hush-expo`. Its only peer is `expo`.
+   (0.1.2 also listed `expo-modules-core`, and `npx expo-doctor` reported it
+   missing. Do not install it directly: it comes with `expo`. Upgrade to
+   0.1.3 or later instead.)
 2. **iOS deployment target 16.4.** Its podspec requires it.
    - Expo SDK 56 and later: the default is 16.4. Nothing to do.
    - Expo SDK 52 to 55: the default is 15.1, and pod install fails. Run
@@ -501,7 +484,7 @@ run. Set `NSAdvertisingAttributionReportEndpoint` and
    mismatched versions.
 3. **Runtime** (the user runs it, unless they asked you to): set
    `logLevel: 'debug'` in development, start the app, and look for
-   `[hush] ready: install <uuid>, sdk 2.2.1, channel dev` and
+   `[hush] ready: install <uuid>, sdk 2.2.2, channel dev` and
    `[hush] sent N: { status: 200, …, rejected: 0 }`. Put `logLevel` back to
    `'error'` afterwards.
 4. **Dashboard**: switch to dev, open Installs, and paste the id from
@@ -520,8 +503,9 @@ End with:
 - **What the user must still do**:
   - set the server URL and the prod key, if the wiring went in with `''`;
   - mint keys, if missing;
-  - add the event names to the app's catalog entry (list them, including
-    `ticket_replied` if replies are wired) and restart the server;
+  - add the event names to the app's catalog entry (list them; on a server
+    from before `ticket_replied` became a built-in name, include it if
+    replies are wired) and restart the server;
   - with hush-expo: rebuild the native app, and for attribution add
     `app_store_id` and `conversion_values` to the catalog and route the
     `.well-known` paths ([attribution.md](attribution.md));
