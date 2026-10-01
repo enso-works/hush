@@ -10,6 +10,7 @@ export function router() {
   return {
     get: (p, h) => add('GET', p, h),
     post: (p, h) => add('POST', p, h),
+    delete: (p, h) => add('DELETE', p, h),
     match(method, path) {
       const parts = path.split('/').filter(Boolean);
       for (const r of routes) {
@@ -93,6 +94,26 @@ export function rateLimiter(limit) {
     entry.n += 1;
     hits.set(key, entry);
     return entry.n <= limit;
+  };
+}
+
+/**
+ * Fixed-day counter: `limit` hits per UTC day per key. Kept in memory like
+ * the per-minute ones, so it resets with the process; the whole map goes when
+ * the day turns.
+ */
+export function dailyLimiter(limit) {
+  const hits = new Map();
+  let today = -1;
+  return (key) => {
+    const day = Math.floor(Date.now() / 86_400_000);
+    if (day !== today) {
+      hits.clear();
+      today = day;
+    }
+    const n = (hits.get(key) ?? 0) + 1;
+    hits.set(key, n);
+    return n <= limit;
   };
 }
 

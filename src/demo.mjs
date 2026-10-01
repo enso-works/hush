@@ -186,7 +186,8 @@ export async function seedDemo() {
     await insertRows(client, 'events', ['id', 'app', 'env', 'install', 'session', 'name', 'known', 'at', 'version', 'platform', 'props', 'channel'], events);
     for (const t of TICKETS) {
       const created = new Date(now - t.daysAgo * DAY - 3 * 3600000);
-      const install = installs.find((i) => i[1] === t.app)[0];
+      // A ticket with an email is not linked to an install, as on a real instance.
+      const install = t.email ? null : installs.find((i) => i[1] === t.app)[0];
       const { rows: [row] } = await client.query(
         `INSERT INTO tickets (app, install, email, subject, message, diag, kind, status, created_at, updated_at, read_at)
          VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $9, $9) RETURNING id`,

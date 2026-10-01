@@ -155,6 +155,7 @@ export function client(base, key, { ip = randomIp() } = {}) {
   return {
     get: (path, headers) => call('GET', path, undefined, headers),
     post: (path, body, headers) => call('POST', path, body, headers),
+    delete: (path, body, headers) => call('DELETE', path, body, headers),
   };
 }
 

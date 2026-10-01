@@ -51,3 +51,39 @@ test('006 marks the ticket_replied rows a server before it stored as unknown', a
     await old.drop();
   }
 });
+
+test('007 unlinks the tickets with an email that are closed or idle, drops their customer id, and adds the thread key column', async () => {
+  const old = await freshDatabase('hush_migrate_007');
+  try {
+    let srv = await startServer(old);
+    await srv.stop();
+    // The database as it was before 007.
+    await old.query("DELETE FROM schema_migrations WHERE name = '007_unlinked_tickets.sql'");
+    await old.query('ALTER TABLE tickets DROP COLUMN thread_hash');
+    await old.query("INSERT INTO apps (slug, name) VALUES ('braele', 'Braele')");
+    await old.query(
+      `INSERT INTO tickets (app, install, email, message, status, rc_id, created_at, updated_at) VALUES
+         ('braele', '11111111-1111-4111-8111-111111111111', 'open@example.com',   'open, recent', 'open',     'rc1', now() - interval '3 days',  now() - interval '1 day'),
+         ('braele', '22222222-2222-4222-8222-222222222222', 'closed@example.com', 'closed',       'closed',   'rc2', now() - interval '3 days',  now() - interval '1 day'),
+         ('braele', '33333333-3333-4333-8333-333333333333', 'idle@example.com',   'idle',         'answered', NULL,  now() - interval '90 days', now() - interval '31 days'),
+         ('braele', '44444444-4444-4444-8444-444444444444', NULL,                 'no email',     'closed',   'rc4', now() - interval '90 days', now() - interval '60 days')`,
+    );
+    await old.query('ALTER TABLE tickets ALTER COLUMN install SET NOT NULL');
+    srv = await startServer(old);
+    await srv.stop();
+
+    const { rows } = await old.query('SELECT message, install, rc_id FROM tickets ORDER BY id');
+    assert.deepEqual(rows, [
+      { message: 'open, recent', install: '11111111-1111-4111-8111-111111111111', rc_id: null },
+      { message: 'closed', install: null, rc_id: null },
+      { message: 'idle', install: null, rc_id: null },
+      { message: 'no email', install: '44444444-4444-4444-8444-444444444444', rc_id: 'rc4' },
+    ]);
+    const column = await old.query("SELECT is_nullable FROM information_schema.columns WHERE table_name = 'tickets' AND column_name = 'install'");
+    assert.equal(column.rows[0].is_nullable, 'YES');
+    const index = await old.query("SELECT indexdef FROM pg_indexes WHERE tablename = 'tickets' AND indexname = 'tickets_thread_hash_idx'");
+    assert.match(index.rows[0].indexdef, /UNIQUE INDEX .* \(thread_hash\)/);
+  } finally {
+    await old.drop();
+  }
+});
