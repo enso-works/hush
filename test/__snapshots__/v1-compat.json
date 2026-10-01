@@ -265,6 +265,33 @@
     }
   },
   {
+    "label": "tickets: list by install in the body",
+    "status": 200,
+    "body": {
+      "tickets": [
+        {
+          "id": "<id>",
+          "app": "braele",
+          "kind": "feature",
+          "subject": null,
+          "message": "Listed by POST",
+          "status": "open",
+          "created_at": "<time>",
+          "read_at": null,
+          "unread": false,
+          "replies": []
+        }
+      ]
+    }
+  },
+  {
+    "label": "tickets: list by install in the body, invalid",
+    "status": 400,
+    "body": {
+      "error": "invalid install"
+    }
+  },
+  {
     "label": "tickets: threads list (unread)",
     "status": 200,
     "body": {

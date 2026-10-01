@@ -116,6 +116,21 @@ describe('the thread', () => {
     assert.equal(late.status, 409);
   });
 
+  test('POST /v1/tickets/list answers like the GET, with the install in the body instead of the URL', async () => {
+    const install = uuid();
+    const c = client(srv.base, key);
+    const { json } = await c.post('/v1/tickets', ticket(install));
+    await admin(srv.base).post(`/admin/tickets/${json.id}/reply`, { body: 'Thanks.' });
+    const r = await c.post('/v1/tickets/list', { install });
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.tickets.map((t) => [String(t.id), t.unread]), [[String(json.id), true]]);
+    assert.equal((await c.get(`/v1/tickets?install=${install}`)).json.tickets[0].unread, false, 'read the same way');
+    assert.deepEqual((await client(srv.base, otherKey).post('/v1/tickets/list', { install })).json, { tickets: [] });
+    assert.deepEqual((await c.post('/v1/tickets/list', { install: 'nope' })).json, { error: 'invalid install' });
+    assert.equal((await c.post('/v1/tickets/list', {})).status, 400);
+    assert.equal((await client(srv.base).post('/v1/tickets/list', { install })).status, 401);
+  });
+
   test('replying on someone else\'s ticket is 404', async () => {
     const { json } = await client(srv.base, key).post('/v1/tickets', ticket(uuid()));
     const r = await client(srv.base, key).post(`/v1/tickets/${json.id}/reply`, { install: uuid(), body: 'hi' });

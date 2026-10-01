@@ -205,6 +205,16 @@ r.get('/v1/tickets', async (_req, res, { url, key }) => {
   return json(res, 200, { tickets: await ticketsForInstall(install, key.app) });
 });
 
+// The same, with the install in the body (SDK 2.3.0). A proxy's access log
+// keeps the URL and the caller's address: with the install in the query, it
+// would put the install next to the POST /v1/tickets/:id/reply that answers
+// a ticket sent with an email, from the same address seconds apart.
+r.post('/v1/tickets/list', async (req, res, { key }) => {
+  const body = await readJson(req, MAX_BODY);
+  if (!isUuid(body?.install)) return json(res, 400, { error: 'invalid install' });
+  return json(res, 200, { tickets: await ticketsForInstall(body.install, key.app) });
+});
+
 // The tickets an app sent with an email, by their thread keys (up to 50):
 // the same answer as GET /v1/tickets, and read the same way. A POST so the
 // keys never sit in a URL or an access log.

@@ -89,6 +89,11 @@ test('the /v1 surface answers exactly as shipped apps expect', async () => {
   await step('tickets: no install and no email', n.post('/v1/tickets', { kind: 'issue', message: 'x' }));
   await step('tickets: an older app with an email and its install', n.post('/v1/tickets', { install: OLD, kind: 'issue', rc_id: '$RCAnonymousID:x', email: 'old@example.com', message: 'Old app' }));
   await step('tickets: an older app lists it by install', n.get(`/v1/tickets?install=${OLD}`));
+  // SDK 2.3.0 lists an install's own tickets with the install in the body.
+  const LISTED = '44444444-4444-4444-8444-444444444444';
+  await n.post('/v1/tickets', { install: LISTED, kind: 'feature', message: 'Listed by POST' });
+  await step('tickets: list by install in the body', n.post('/v1/tickets/list', { install: LISTED }));
+  await step('tickets: list by install in the body, invalid', n.post('/v1/tickets/list', { install: 'nope' }));
   await admin(srv.base).post(`/admin/tickets/${u.json.id}/reply`, { body: 'Thanks, looking.' });
   await step('tickets: threads list (unread)', n.post('/v1/tickets/threads', { threads: [u.json.thread] }));
   await step('tickets: threads list, other app', client(srv.base, otherKey).post('/v1/tickets/threads', { threads: [u.json.thread] }));
