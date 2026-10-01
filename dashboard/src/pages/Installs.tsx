@@ -155,7 +155,8 @@ function Detail({ id }: { id: string }) {
           <section className="rounded-xl border border-destructive/30 bg-card p-5">
             <h2 className="text-sm font-semibold">Forget this install</h2>
             <p className="mt-1 mb-3 text-xs text-muted-foreground">
-              For a "delete my data" request by email. Apps can offer the same with the SDK's forget().
+              For a "delete my data" request by email. Apps can offer the same with the SDK's forget(). Messages sent with an email are not linked
+              to an install: delete those on the Feedback page.
             </p>
             <Button variant="destructive" size="sm" onClick={forget}>
               <Trash2 className="size-3.5" /> Forget install
@@ -226,8 +227,8 @@ export function Installs({ id }: { id?: string }) {
         <Detail key={id} id={id} />
       ) : (
         <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
-          Paste an install id. Apps get theirs from the SDK's <code className="rounded bg-muted px-1 py-0.5 text-xs">getInstallationId()</code>, e.g. for a debug screen; every
-          feedback thread shows its install too.
+          Paste an install id. Apps get theirs from the SDK's <code className="rounded bg-muted px-1 py-0.5 text-xs">getInstallationId()</code>, e.g. for a debug screen; a
+          feedback thread sent without an email shows its install too.
         </div>
       )}
     </div>
