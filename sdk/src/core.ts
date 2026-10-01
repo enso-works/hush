@@ -96,7 +96,7 @@ export type FlushResult = {
 };
 
 /** Sent with every batch, and stored on the install: which SDK spoke. */
-export const SDK_VERSION = '2.2.1';
+export const SDK_VERSION = '2.2.2';
 
 const CHANNEL_RE = /^[a-z][a-z0-9_]{0,23}$/;
 // The server's rule for event names; anything else is dropped there anyway.
@@ -104,6 +104,29 @@ const EVENT_NAME = /^[a-z][a-z0-9_]{1,63}$/;
 
 type Value = string | number | boolean | null;
 export type Props = Record<string, Value>;
+
+// undefined is allowed too: JSON leaves the key out.
+const isFlat = (v: unknown): v is Value | undefined =>
+  v === null || v === undefined || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean';
+
+const NOT_FLAT = Symbol('not flat');
+/**
+ * A prop value as JSON sends it, or NOT_FLAT. A Date (anything with toJSON)
+ * goes as what toJSON returns, its ISO string, as it did before 2.2.2 and as
+ * the server accepts. An object or array is not flat, and may be circular.
+ */
+function asFlat(v: unknown): Value | undefined | typeof NOT_FLAT {
+  if (isFlat(v)) return v;
+  if (typeof v === 'object' && typeof (v as { toJSON?: unknown }).toJSON === 'function') {
+    try {
+      const json = (v as { toJSON: () => unknown }).toJSON();
+      if (isFlat(json)) return json;
+    } catch {
+      // A toJSON that throws would sink the batch like a circular value.
+    }
+  }
+  return NOT_FLAT;
+}
 
 // `once` marks an event tracked with { once }: kept on the device only, to
 // drop it if an earlier launch already sent the same one.
@@ -148,8 +171,7 @@ const uuid = (): string => {
 };
 
 const MAX_ONCE = 200;
-// Once-events queued before init() read the stored keys: id -> key, checked
-// against them when they arrive.
+// How long after a session starts its entry can still be claimed.
 const ENTRY_WINDOW_MS = 2500;
 
 /**
@@ -211,11 +233,22 @@ export function createHush(platform: HushPlatform) {
     (level === 'error' ? console.warn : console.log)('[hush]', ...args);
   }
 
-  /** Call once, before init(). Calling it again replaces the configuration. */
+  /**
+   * Call once, before init(). Calling it again replaces the configuration.
+   * Never throws: a missing url or key (an env variable unset in some build
+   * profile, say) turns the SDK off, and logLevel 'error' says why.
+   */
   function configure(config: HushConfig): void {
-    TELEMETRY_URL = config.url.replace(/\/+$/, '');
-    TELEMETRY_KEY = config.key ?? '';
-    const prefix = config.storagePrefix ?? 'hush';
+    if (!config || typeof config !== 'object') {
+      TELEMETRY_URL = '';
+      TELEMETRY_KEY = '';
+      enabled = false;
+      log('error', 'configure() needs { url, key }: telemetry is off');
+      return;
+    }
+    TELEMETRY_URL = typeof config.url === 'string' ? config.url.trim().replace(/\/+$/, '') : '';
+    TELEMETRY_KEY = typeof config.key === 'string' ? config.key.trim() : '';
+    const prefix = typeof config.storagePrefix === 'string' && config.storagePrefix ? config.storagePrefix : 'hush';
     INSTALL_KEY = `${prefix}.install.v1`;
     QUEUE_KEY = `${prefix}.queue.v1`;
     FIRST_KEY = `${prefix}.first.v1`;
@@ -223,14 +256,21 @@ export function createHush(platform: HushPlatform) {
     OPTOUT_KEY = `${prefix}.optout.v1`;
     SESSIONS_KEY = `${prefix}.sessions.v1`;
     ATTRIBUTION_KEY = `${prefix}.attribution.v1`;
-    attribution = config.attribution;
-    if (config.runInBackground) withBackgroundTask = config.runInBackground;
-    LOG_LEVEL = config.logLevel ?? 'silent';
-    onFlush = config.onFlush;
+    attribution = config.attribution && typeof config.attribution.update === 'function' ? config.attribution : undefined;
+    if (typeof config.runInBackground === 'function') withBackgroundTask = config.runInBackground;
+    LOG_LEVEL = config.logLevel === 'error' || config.logLevel === 'debug' ? config.logLevel : 'silent';
+    onFlush = typeof config.onFlush === 'function' ? config.onFlush : undefined;
     const channel = config.channel ?? (isDev() ? 'dev' : undefined);
-    CHANNEL = channel && CHANNEL_RE.test(channel) ? channel : undefined;
-    if (channel && !CHANNEL) log('error', `channel "${channel}" is not a short snake_case label; not sent`);
-    enabled = TELEMETRY_KEY.length > 0;
+    CHANNEL = typeof channel === 'string' && CHANNEL_RE.test(channel) ? channel : undefined;
+    if (channel && !CHANNEL) log('error', `channel "${String(channel)}" is not a short snake_case label; not sent`);
+    enabled = TELEMETRY_KEY.length > 0 && TELEMETRY_URL.length > 0;
+    // An empty string key is the documented way to leave the SDK off (dev
+    // without a key, or url and key both '' before the server exists), so it
+    // stays quiet whatever the url is; anything else missing is a mistake
+    // worth a line.
+    if (typeof config.key === 'string' && !TELEMETRY_KEY) log('debug', 'key is empty: telemetry is off');
+    else if (!TELEMETRY_URL) log('error', `url is ${typeof config.url === 'string' ? 'empty' : 'missing or not a string'}: telemetry is off`);
+    else if (typeof config.key !== 'string') log('error', 'key is missing or not a string: telemetry is off');
   }
 
   let enabled = false;
@@ -243,27 +283,42 @@ export function createHush(platform: HushPlatform) {
   // Events seen before the milestones arrived, checked once they do.
   let unchecked: { name: string; props: Props }[] = [];
   let installId = '';
+  // The process's first session: events tracked before init() carry this id,
+  // and init() starts the session under it, dated from here so its
+  // session_started sorts before them (campaign funnels count from it).
   let sessionId = uuid();
+  const createdAt = new Date().toISOString();
   let backgroundedAt = 0;
   let queue: QueuedEvent[] = [];
-  let flushing = false;
+  // The send in flight: forget() waits for it, and a flush asked for
+  // meanwhile gets it rather than a second request.
+  let sending: Promise<void> | null = null;
+  // forget() is talking to the server: no batch may land after its delete.
+  let forgetting = false;
   let retryAfter = 0;
   let failures = 0;
   let persistTimer: ReturnType<typeof setTimeout> | null = null;
   let flushSoonTimer: ReturnType<typeof setTimeout> | null = null;
   let flushTimer: ReturnType<typeof setInterval> | null = null;
   let rcId: string | undefined;
-  let isPro = false;
+  // Unknown until identify() says: left out of batches, so the server keeps
+  // what it has rather than downgrading a paid install.
+  let isPro: boolean | undefined;
   // Merged into every event's props (the event's own win), for context such as
   // a paywall variant. In memory: the app sets them again each launch.
   let globals: Props = {};
   // Keys of events tracked with { once } that this install has already sent.
   let onceKeys: string[] = [];
   let onceLoaded = false;
+  // Once-events queued before init() read the stored keys: id -> key, checked
+  // against them when they arrive.
   const earlyOnce = new Map<string, string>();
   // The user said no to anonymous usage data (optOut): no events are kept or
   // sent. Feedback still works; it is something they send on purpose.
   let optedOut = false;
+  // optOut() or optIn() before init() has read the stored choice: it is the
+  // newer one, so it wins over what init() reads.
+  let choiceBeforeInit: boolean | null = null;
   // pause(): hold sends (not events) until resume(); not remembered across launches.
   let paused = false;
   // Sessions: how many this install has had, and the current one's time in the
@@ -280,6 +335,11 @@ export function createHush(platform: HushPlatform) {
   // as a plain launch. A process killed inside the window loses that one
   // session_started; the window is short enough that this is rare.
   let pendingSession: { event: QueuedEvent; timer: ReturnType<typeof setTimeout> } | null = null;
+  // An entry reported before its session exists: a cold start's link or
+  // widget that arrives before init() has read storage, or a warm return's
+  // URL that iOS delivers before 'active'. The next session takes it: one
+  // made before init() always, a later one within ENTRY_WINDOW_MS.
+  let heldEntry: { source: Entry; url?: string; at: number; beforeInit: boolean } | null = null;
   function context() {
     return {
       ...platform.device(),
@@ -300,14 +360,25 @@ export function createHush(platform: HushPlatform) {
     void storage.setItem(ONCE_KEY, JSON.stringify(onceKeys.slice(-MAX_ONCE))).catch(() => {});
   }
 
+  // Before init() has merged the stored queue into memory, memory holds only
+  // this launch's early events: writing it would replace the last launch's
+  // unsent ones. Both writers wait for `ready`; init() writes after the merge.
   function persistSoon() {
-    if (persistTimer) return;
-    persistTimer = setTimeout(() => {
-      persistTimer = null;
+    if (persistTimer || !ready) return;
+    persistTimer = setTimeout(persistNow, 1000);
+  }
+
+  function persistNow() {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = null;
+    if (!ready) return;
+    try {
       // Oldest first out: a queue this long means the service has been
       // unreachable for days, and the recent events are the useful ones.
       void storage.setItem(QUEUE_KEY, JSON.stringify(queue.slice(-MAX_QUEUE))).catch(() => {});
-    }, 1000);
+    } catch (err) {
+      log('error', 'queue not saved', err);
+    }
   }
 
   async function post(path: string, body: unknown): Promise<Response | null> {
@@ -322,44 +393,61 @@ export function createHush(platform: HushPlatform) {
     }
   }
 
-  async function flush(): Promise<void> {
-    if (!enabled || optedOut || paused || !ready || flushing || queue.length === 0 || Date.now() < retryAfter) return;
-    flushing = true;
-    try {
-      const batch = queue.slice(0, BATCH);
-      const res = await post('/v1/events', {
-        sent_at: new Date().toISOString(),
-        sdk: SDK_VERSION,
-        context: context(),
-        events: batch.map(({ id, name, at, session, props }) => ({ id, name, at, session, props, install: installId })),
+  /** Sends one batch, or hands back the send already in flight. Never rejects. */
+  function flush(): Promise<void> {
+    if (sending) return sending;
+    if (!enabled || optedOut || paused || forgetting || !ready || queue.length === 0 || Date.now() < retryAfter) return Promise.resolve();
+    sending = send()
+      .catch((err) => log('error', 'send failed', err))
+      .finally(() => {
+        sending = null;
       });
-      const done = !!res && (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 429));
-      if (done) {
-        // 2xx means stored; a 4xx that is not a rate limit means the server will
-        // never accept these events, so keeping them would block the queue.
-        queue = queue.slice(batch.length);
-        failures = 0;
-        persistSoon();
-      } else {
-        failures += 1;
-        retryAfter = Date.now() + Math.min(5000 * 2 ** (failures - 1), 5 * 60_000);
-      }
-      const body = res?.ok ? ((await res.json().catch(() => null)) as Partial<FlushResult> | null) : null;
-      const result: FlushResult = {
-        status: res ? res.status : 'offline',
-        accepted: body?.accepted ?? 0,
-        duplicate: body?.duplicate ?? 0,
-        rejected: body?.rejected ?? (done && !res?.ok ? batch.length : 0),
-        willRetry: !done,
-      };
-      log(done && res?.ok ? 'debug' : 'error', `sent ${batch.length}:`, result);
-      try {
-        onFlush?.(result);
-      } catch {
-        // The app's callback never breaks the queue.
-      }
-    } finally {
-      flushing = false;
+    return sending;
+  }
+
+  /** After the send in flight, if any, one more with what is queued now: for leaving, and flushNow(). */
+  async function flushQueued(): Promise<void> {
+    if (sending) await sending;
+    await flush();
+  }
+
+  async function send(): Promise<void> {
+    const batch = queue.slice(0, BATCH);
+    const res = await post('/v1/events', {
+      sent_at: new Date().toISOString(),
+      sdk: SDK_VERSION,
+      context: context(),
+      events: batch.map(({ id, name, at, session, props }) => ({ id, name, at, session, props, install: installId })),
+    });
+    const done = !!res && (res.ok || (res.status >= 400 && res.status < 500 && res.status !== 429));
+    if (done) {
+      // 2xx means stored; a 4xx that is not a rate limit means the server will
+      // never accept these events, so keeping them would block the queue.
+      // By id, not position: optOut(), forget() or the 500 cap may have
+      // replaced the queue while the request was out.
+      const sentIds = new Set(batch.map((e) => e.id));
+      queue = queue.filter((e) => !sentIds.has(e.id));
+      failures = 0;
+      // At once, not on the debounce: the send as the app leaves is often the
+      // last JS before suspension, and a stale queue on disk goes out again.
+      persistNow();
+    } else {
+      failures += 1;
+      retryAfter = Date.now() + Math.min(5000 * 2 ** (failures - 1), 5 * 60_000);
+    }
+    const body = res?.ok ? ((await res.json().catch(() => null)) as Partial<FlushResult> | null) : null;
+    const result: FlushResult = {
+      status: res ? res.status : 'offline',
+      accepted: body?.accepted ?? 0,
+      duplicate: body?.duplicate ?? 0,
+      rejected: body?.rejected ?? (done && !res?.ok ? batch.length : 0),
+      willRetry: !done,
+    };
+    log(done && res?.ok ? 'debug' : 'error', `sent ${batch.length}:`, result);
+    try {
+      onFlush?.(result);
+    } catch {
+      // The app's callback never breaks the queue.
     }
   }
 
@@ -466,9 +554,12 @@ export function createHush(platform: HushPlatform) {
     flushSoon();
   }
 
-  function startSession() {
+  /** `first`: the process's first session, started by init(), which keeps the id its early events carry. */
+  function startSession(first = false) {
     commitSession();
-    sessionId = uuid();
+    if (!first) sessionId = uuid();
+    const claim = heldEntry;
+    heldEntry = null;
     // The session that just ended reports its time in the foreground here, with
     // the next start: an explicit "session ended" dies with the process
     // whenever iOS kills the app in the background.
@@ -480,21 +571,32 @@ export function createHush(platform: HushPlatform) {
     persistSessions();
     const props: Props = { entry: 'launch', n: sessionCount };
     if (sessionCount > 1 && previousForegroundS > 0) props.prev_fg_s = previousForegroundS;
-    const event: QueuedEvent = { id: uuid(), name: 'session_started', at: new Date().toISOString(), session: sessionId, props };
+    const at = first ? createdAt : new Date().toISOString();
+    const event: QueuedEvent = { id: uuid(), name: 'session_started', at, session: sessionId, props };
     pendingSession = { event, timer: setTimeout(commitSession, ENTRY_WINDOW_MS) };
+    if (claim && (claim.beforeInit || Date.now() - claim.at <= ENTRY_WINDOW_MS)) entry(claim.source, { url: claim.url });
   }
 
   /**
    * How this session began, reported by the screen that knows: the root layout
    * for URLs and notification taps. Claims the held session_started when it is
    * still within the window; after that the app has been open for a while and
-   * the tap is an action inside the session, not its entry.
+   * the tap is an action inside the session, not its entry. A claim with no
+   * session yet waits for the next one (see heldEntry).
    */
-  function entry(source: Entry, options: { url?: string } = {}): void {
-    if (!pendingSession) return;
+  function entry(source: Entry, options?: { url?: string } | null): void {
+    if (typeof source !== 'string' || !source) return;
+    const url = typeof options?.url === 'string' ? options.url : undefined;
+    if (!pendingSession) {
+      // The first claim wins, as it does on a session: a later one replaces it only once it has expired.
+      if (!heldEntry || (!heldEntry.beforeInit && Date.now() - heldEntry.at > ENTRY_WINDOW_MS)) {
+        heldEntry = { source, url, at: Date.now(), beforeInit: !ready };
+      }
+      return;
+    }
     pendingSession.event.props.entry = source;
     // A link's campaign tags (utm_*, ref) join the session, never the URL.
-    if (options.url) Object.assign(pendingSession.event.props, campaignOf(options.url));
+    if (url) Object.assign(pendingSession.event.props, campaignOf(url));
     commitSession();
   }
 
@@ -509,9 +611,16 @@ export function createHush(platform: HushPlatform) {
       // Leaving is the deadline: whatever entry the session has by now is the
       // one it gets, and it goes out with everything else, through
       // runInBackground so an app can give the fetch real runway instead of
-      // racing process suspension.
+      // racing process suspension. The queue goes to disk first, in case the
+      // send never finishes.
       commitSession();
-      void withBackgroundTask(flush);
+      persistNow();
+      try {
+        void Promise.resolve(withBackgroundTask(flushQueued)).catch(() => {});
+      } catch {
+        // The app's wrapper threw: send without it.
+        void flushQueued();
+      }
       return;
     }
     if (state === 'active') {
@@ -523,13 +632,17 @@ export function createHush(platform: HushPlatform) {
   /**
    * Safe to call more than once and safe to call before anything else; it never
    * throws and never blocks a render. Events tracked before it resolves are
-   * queued and get the install id at flush time.
+   * queued under the launch's session and get the install id at flush time;
+   * an entry() made before it is held for that session.
    */
   function init(): Promise<void> {
-    if (!enabled || ready) return Promise.resolve();
-    // One init, however many callers arrive while the first is still reading
-    // storage: a second pass would start a second session and listener.
-    initPromise ??= initOnce().finally(() => {
+    if (!enabled) return Promise.resolve();
+    // One init, however many callers arrive while the first is still running:
+    // a second pass would start a second session and listener, and a caller
+    // that arrives late in the first must still wait for its session.
+    if (initPromise) return initPromise;
+    if (ready) return Promise.resolve();
+    initPromise = initOnce().finally(() => {
       initPromise = null;
     });
     return initPromise;
@@ -537,20 +650,40 @@ export function createHush(platform: HushPlatform) {
 
   let initPromise: Promise<void> | null = null;
 
+  /**
+   * A stored JSON value, or null when it cannot be read or parsed: a
+   * truncated write, or a queue row too big for Android's CursorWindow. The
+   * next save overwrites it. Failing init() on it instead would leave
+   * telemetry off on every launch from then on, since nothing else writes it.
+   */
+  async function readStored(key: string): Promise<unknown> {
+    try {
+      const raw = await storage.getItem(key);
+      return raw == null ? null : JSON.parse(raw);
+    } catch (err) {
+      log('error', `${key} could not be read: starting it empty`, err);
+      return null;
+    }
+  }
+
   async function initOnce(): Promise<void> {
     try {
-      const [stored, storedQueue, first, storedOnce, storedOptOut, storedSessions] = await Promise.all([
+      // The install id, the first-launch marker and the opt-out are small and
+      // have no safe default (a guess counts a new install, or ignores the
+      // user's choice): failing to read them leaves telemetry off this launch.
+      const [stored, first, storedOptOut, storedQueue, storedOnce, storedSessions] = await Promise.all([
         storage.getItem(INSTALL_KEY),
-        storage.getItem(QUEUE_KEY),
         storage.getItem(FIRST_KEY),
-        storage.getItem(ONCE_KEY),
         storage.getItem(OPTOUT_KEY),
-        storage.getItem(SESSIONS_KEY),
+        readStored(QUEUE_KEY),
+        readStored(ONCE_KEY),
+        readStored(SESSIONS_KEY),
       ]);
       installId = stored ?? uuid();
       if (!stored) await storage.setItem(INSTALL_KEY, installId);
 
-      optedOut = storedOptOut === '1';
+      optedOut = choiceBeforeInit ?? storedOptOut === '1';
+      choiceBeforeInit = null;
       if (optedOut) {
         // Whatever the app tracked before init knew is dropped, like everything after.
         queue = [];
@@ -559,7 +692,7 @@ export function createHush(platform: HushPlatform) {
       }
 
       // Once-events tracked before init that an earlier launch already sent go.
-      const sent = new Set<string>(storedOnce ? (JSON.parse(storedOnce) as string[]) : []);
+      const sent = new Set<string>(Array.isArray(storedOnce) ? storedOnce.filter((k): k is string => typeof k === 'string') : []);
       if (earlyOnce.size) queue = queue.filter((e) => !(earlyOnce.has(e.id) && sent.has(earlyOnce.get(e.id)!)));
       onceKeys = [...sent, ...onceKeys.filter((k) => !sent.has(k))].slice(-MAX_ONCE);
       earlyOnce.clear();
@@ -567,27 +700,32 @@ export function createHush(platform: HushPlatform) {
       persistOnce();
 
       // The previous launch's last session reports its foreground time with this one's start.
-      if (storedSessions) {
-        const saved = JSON.parse(storedSessions) as { n?: number; fg?: number };
+      if (storedSessions && typeof storedSessions === 'object') {
+        const saved = storedSessions as { n?: unknown; fg?: unknown };
         sessionCount = typeof saved.n === 'number' ? saved.n : 0;
         foregroundMs = typeof saved.fg === 'number' ? saved.fg : 0;
       }
       activeSince = 0;
 
-      if (storedQueue) {
+      // An opt-out made while init() was reading finds the old queue still in
+      // the read: it stays dropped.
+      if (Array.isArray(storedQueue) && !optedOut) {
         const cutoff = Date.now() - MAX_AGE_MS;
-        const previous = (JSON.parse(storedQueue) as QueuedEvent[]).filter(
-          (e) => Date.parse(e.at) > cutoff,
+        const previous = (storedQueue as QueuedEvent[]).filter(
+          (e) => !!e && typeof e === 'object' && typeof e.id === 'string' && Date.parse(e.at) > cutoff,
         );
         queue = [...previous, ...queue].slice(-MAX_QUEUE);
       }
 
+      // From here to the session's start nothing awaits: whoever sees `ready`
+      // also sees the session.
       ready = true;
+      persistNow(); // the merged queue: the stored events and this launch's early ones
       if (!first) {
         enqueue('app_first_opened');
-        await storage.setItem(FIRST_KEY, new Date().toISOString());
+        void storage.setItem(FIRST_KEY, new Date().toISOString()).catch(() => {});
       }
-      startSession();
+      startSession(true);
       void startAttribution();
 
       platform.onAppState(onAppState);
@@ -603,19 +741,33 @@ export function createHush(platform: HushPlatform) {
     }
   }
 
-  /** Warns (logLevel 'error' and up) about what the server would drop, and says whether to send. */
-  function valid(name: string, props: Props): boolean {
-    if (!EVENT_NAME.test(name)) {
-      log('error', `event "${name}" is not snake_case (a-z, 0-9, _; 2-64 chars): dropped`);
-      return false;
+  /**
+   * The props to send, or null to drop the event, with a warning (logLevel
+   * 'error' and up). An event the server would reject whole is dropped here:
+   * a nested value (a press event, a navigation object) could also be
+   * circular, and then no batch or saved queue could be written at all.
+   */
+  function checked(name: string, props: Props): Props | null {
+    if (typeof name !== 'string' || !EVENT_NAME.test(name)) {
+      log('error', `event "${String(name)}" is not snake_case (a-z, 0-9, _; 2-64 chars): dropped`);
+      return null;
+    }
+    if (typeof props !== 'object' || Array.isArray(props)) {
+      log('error', `event "${name}": props must be an object: dropped`);
+      return null;
     }
     const keys = Object.keys(props);
     if (keys.length > 40) log('error', `event "${name}" has ${keys.length} props; the server keeps at most 40`);
+    const out: Props = {};
     for (const k of keys) {
-      const v = props[k];
-      if (v !== null && typeof v === 'object') log('error', `event "${name}" prop "${k}" is nested; props are one flat level, so the event will be rejected`);
+      const v = asFlat(props[k]);
+      if (v === NOT_FLAT) {
+        log('error', `event "${name}" prop "${k}" is not a string, number, boolean or null (props are one flat level): dropped`);
+        return null;
+      }
+      out[k] = v as Value;
     }
-    return true;
+    return out;
   }
 
   /**
@@ -623,27 +775,36 @@ export function createHush(platform: HushPlatform) {
    * per install and key (`once: 'v2_onboarding'`) — for milestones such as
    * `onboarding_completed` that code paths might fire twice.
    */
-  function track(name: string, props: Props = {}, options: { once?: true | string } = {}): void {
-    if (!valid(name, props)) return;
-    if (options.once) {
-      const key = options.once === true ? name : `${name}:${options.once}`;
+  function track(name: string, props?: Props | null, options?: { once?: true | string } | null): void {
+    const clean = checked(name, props ?? {});
+    if (!clean) return;
+    if (options?.once) {
+      const key = options.once === true ? name : `${name}:${String(options.once)}`;
       if (onceKeys.includes(key)) {
         log('debug', `"${key}" was already sent once: skipped`);
         return;
       }
-      const event = enqueue(name, props, key);
+      const event = enqueue(name, clean, key);
       if (!event) return;
       onceKeys = [...onceKeys, key].slice(-MAX_ONCE);
       if (onceLoaded) persistOnce();
       else earlyOnce.set(event.id, key);
       return;
     }
-    enqueue(name, props);
+    enqueue(name, clean);
   }
 
   /** Props added to every event from now on (an event's own props win). Kept in memory: set them each launch. */
   function setGlobalProps(props: Props): void {
-    globals = { ...globals, ...props };
+    if (!props || typeof props !== 'object') return;
+    const next = { ...globals };
+    for (const [k, v] of Object.entries(props)) {
+      // One bad value here would sink every event that follows: it is left out instead.
+      const flat = asFlat(v);
+      if (flat !== NOT_FLAT) next[k] = flat as Value;
+      else log('error', `global prop "${k}" is not a string, number, boolean or null: not set`);
+    }
+    globals = next;
   }
 
   function removeGlobalProp(key: string): void {
@@ -656,13 +817,18 @@ export function createHush(platform: HushPlatform) {
   }
 
   function screen(name: string): void {
+    if (typeof name !== 'string') return;
     enqueue('screen_viewed', { screen: name });
   }
 
-  /** RevenueCat's own anonymous customer id, so purchases can be joined to installs without ever setting an appUserID; and whether the install is on a paid plan. */
+  /**
+   * RevenueCat's own anonymous customer id, so purchases can be joined to
+   * installs without ever setting an appUserID; and whether the install is on
+   * a paid plan. Until `pro` is given, batches carry no flag at all.
+   */
   function identify(next: { rcId?: string; pro?: boolean }): void {
-    if (next.rcId) rcId = next.rcId;
-    if (typeof next.pro === 'boolean') isPro = next.pro;
+    if (typeof next?.rcId === 'string' && next.rcId) rcId = next.rcId;
+    if (typeof next?.pro === 'boolean') isPro = next.pro;
   }
 
   /** The install id, or '' before init() has read it. getInstallationId() waits for it. */
@@ -684,6 +850,7 @@ export function createHush(platform: HushPlatform) {
    * Feedback keeps working, since a user sends that on purpose.
    */
   function optOut(): void {
+    if (!ready) choiceBeforeInit = true;
     optedOut = true;
     queue = [];
     if (pendingSession) {
@@ -696,7 +863,10 @@ export function createHush(platform: HushPlatform) {
   }
 
   function optIn(): void {
-    if (!optedOut) return;
+    // Before init() the stored choice is not known yet, so this one is
+    // recorded (and the stored one removed) even if memory already says in.
+    if (!ready) choiceBeforeInit = false;
+    else if (!optedOut) return;
     optedOut = false;
     void storage.removeItem(OPTOUT_KEY).catch(() => {});
     log('debug', 'opted in');
@@ -705,7 +875,7 @@ export function createHush(platform: HushPlatform) {
     if (ready && !conversion) void startAttribution();
   }
 
-  /** Whether the user opted out. Read from storage by init(); false before it resolves. */
+  /** Whether the user opted out. Read from storage by init(); before it resolves, false unless optOut() was called. */
   function isOptedOut(): boolean {
     return optedOut;
   }
@@ -716,36 +886,55 @@ export function createHush(platform: HushPlatform) {
    * install id, as a fresh install would, but without counting a new one.
    * Offline or refused: nothing changes, and the app can offer to try again.
    */
-  async function forget(): Promise<{ ok: boolean; error?: 'unavailable' | 'offline' | 'failed' }> {
+  function forget(): Promise<ForgetResult> {
+    // A second tap while the first is out gets the first's answer.
+    forgetRun ??= forgetOnce().finally(() => {
+      forgetRun = null;
+    });
+    return forgetRun;
+  }
+
+  type ForgetResult = { ok: boolean; error?: 'unavailable' | 'offline' | 'failed' };
+  let forgetRun: Promise<ForgetResult> | null = null;
+
+  async function forgetOnce(): Promise<ForgetResult> {
     if (!enabled) return { ok: false, error: 'unavailable' };
     if (!installId) await init();
     if (!installId) return { ok: false, error: 'failed' };
-    const res = await post('/v1/forget', { install: installId });
-    if (!res) return { ok: false, error: 'offline' };
-    if (!res.ok) return { ok: false, error: 'failed' };
-    queue = [];
-    if (pendingSession) {
-      clearTimeout(pendingSession.timer);
-      pendingSession = null;
+    // Nothing of this install may reach the server after its delete: a send
+    // already out lands first, and no new one starts until this is over.
+    forgetting = true;
+    try {
+      await sending;
+      const res = await post('/v1/forget', { install: installId });
+      if (!res) return { ok: false, error: 'offline' };
+      if (!res.ok) return { ok: false, error: 'failed' };
+      queue = [];
+      if (pendingSession) {
+        clearTimeout(pendingSession.timer);
+        pendingSession = null;
+      }
+      installId = uuid();
+      onceKeys = [];
+      sessionCount = 0;
+      foregroundMs = 0;
+      await Promise.all([
+        storage.setItem(INSTALL_KEY, installId),
+        storage.removeItem(QUEUE_KEY),
+        storage.removeItem(ONCE_KEY),
+        storage.removeItem(SESSIONS_KEY),
+      ]).catch(() => {});
+      log('debug', `forgotten; new install ${installId}`);
+      if (ready) startSession();
+      return { ok: true };
+    } finally {
+      forgetting = false;
     }
-    installId = uuid();
-    onceKeys = [];
-    sessionCount = 0;
-    foregroundMs = 0;
-    await Promise.all([
-      storage.setItem(INSTALL_KEY, installId),
-      storage.removeItem(QUEUE_KEY),
-      storage.removeItem(ONCE_KEY),
-      storage.removeItem(SESSIONS_KEY),
-    ]).catch(() => {});
-    log('debug', `forgotten; new install ${installId}`);
-    if (ready) startSession();
-    return { ok: true };
   }
 
   /** For dev builds and tests; a user's choice is optOut(). */
   function setEnabled(next: boolean): void {
-    enabled = next && TELEMETRY_KEY.length > 0;
+    enabled = next && TELEMETRY_KEY.length > 0 && TELEMETRY_URL.length > 0;
     if (!enabled) {
       queue = [];
       void storage.removeItem(QUEUE_KEY).catch(() => {});
@@ -754,7 +943,7 @@ export function createHush(platform: HushPlatform) {
 
   async function flushNow(): Promise<void> {
     commitSession();
-    await flush();
+    await flushQueued();
   }
 
   /** Stops sending until resume(), keeping everything queued. Not remembered: the next launch sends again. */
