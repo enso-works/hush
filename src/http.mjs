@@ -2,7 +2,7 @@
 // JSON out. Nothing here needs a framework.
 import { createHash, randomBytes } from 'node:crypto';
 
-import { cfg } from './config.mjs';
+import { cfg, log } from './config.mjs';
 
 export function router() {
   const routes = [];
@@ -71,7 +71,11 @@ export function readJson(req, maxBytes) {
 // address is hashed with a salt that dies with the process, so no client
 // address is held in memory even transiently beyond the request.
 const salt = randomBytes(16);
-//
+// Loopback and private ranges, IPv4 (also IPv4-mapped) and IPv6: where a
+// proxy in front of hush connects from.
+const PRIVATE = /^(::ffff:)?(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)|^::1$|^f[cd][0-9a-f]{2}:/i;
+let warnedNoHeader = false;
+
 // Which address: the socket's, unless CLIENT_IP_HEADER names a header a
 // trusted proxy in front sets (and overwrites), e.g. "cf-connecting-ip" or
 // "x-forwarded-for" (its first entry). Trusting a header no proxy controls
@@ -80,6 +84,12 @@ export const clientKey = (req) => {
   const header = cfg.clientIpHeader ? req.headers[cfg.clientIpHeader] : undefined;
   const fromHeader = typeof header === 'string' ? header.split(',')[0].trim() : '';
   const raw = fromHeader || req.socket.remoteAddress || '';
+  if (!cfg.clientIpHeader && !warnedNoHeader && PRIVATE.test(raw)) {
+    // Behind a proxy, every caller then has the proxy's address. Said once,
+    // and without the address.
+    warnedNoHeader = true;
+    log.warn('CLIENT_IP_HEADER is unset and a request came from a private or loopback address: behind a proxy, every caller shares the rate limits and one daily count of tickets with an email per app');
+  }
   return createHash('sha256').update(salt).update(raw).digest('base64url').slice(0, 16);
 };
 
