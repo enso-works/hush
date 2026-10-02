@@ -1,5 +1,6 @@
 // One install at a time: what the dashboard shows when you look one up, and
 // how an install is forgotten.
+import { privatePropKeys } from './catalog.mjs';
 import { q, tx } from './db.mjs';
 
 /**
@@ -24,15 +25,24 @@ export async function forgetInstall(install, app = null) {
 /**
  * The install row, its latest events (newest first) and its tickets. Never a
  * ticket with an email: that one is not linked to the install, even while an
- * older app version's ticket still holds the install id for its inbox.
+ * older app version's ticket still holds the install id for its inbox. Never
+ * a screen the catalog keeps private either, though the sweep may not have
+ * deleted it yet: such a view is left out, and a prop naming one is dropped.
  */
 export async function installDetail(id, { limit = 100 } = {}) {
   const install = (await q('SELECT * FROM installs WHERE id = $1', [id])).rows[0] ?? null;
   const events = (await q(
-    `SELECT id, name, known, at, received_at, session, version, build, channel, props
+    `SELECT app, id, name, known, at, received_at, session, version, build, channel, props
      FROM events WHERE install = $1 ORDER BY at DESC LIMIT $2`,
     [id, limit],
-  )).rows;
+  )).rows.flatMap(({ app, ...e }) => {
+    const named = privatePropKeys(app, e.props);
+    if (!named.length) return [e];
+    if (e.name === 'screen_viewed') return [];
+    const props = { ...e.props };
+    for (const k of named) delete props[k];
+    return [{ ...e, props }];
+  });
   const tickets = (await q(
     'SELECT id, app, kind, subject, status, created_at FROM tickets WHERE install = $1 AND email IS NULL ORDER BY created_at DESC',
     [id],

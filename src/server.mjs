@@ -23,9 +23,10 @@ import { migrate } from './migrate.mjs';
 import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
 import { appStoreCampaigns, ascConfigured, syncAll } from './appstore.mjs';
+import { sweep, sweepPrivateScreensAtBoot } from './sweep.mjs';
 import {
   adminDelete, adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, forgetThreads, isThreadKey, KINDS,
-  MAX_PER_DAY, parseTicket, threadKeys, ticketsForInstall, ticketsForThreads, unlinkOldClientTickets, userReply,
+  MAX_PER_DAY, parseTicket, threadKeys, ticketsForInstall, ticketsForThreads, userReply,
 } from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
@@ -482,25 +483,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Raw events age out; installs and tickets are kept (an install row is a
-// counter, a ticket is a conversation). A ticket with an email that an older
-// app version sent with its install loses the install, and that install's
-// ticket events, once it is closed and seen or idle (unlinkOldClientTickets).
-async function sweep() {
-  try {
-    const { rowCount } = await q('DELETE FROM events WHERE at < now() - make_interval(days => $1)', [cfg.retentionDays]);
-    if (rowCount) log.info('retention sweep', { deleted: rowCount, days: cfg.retentionDays });
-  } catch (err) {
-    log.warn('retention sweep failed', { err: String(err?.message ?? err) });
-  }
-  try {
-    const unlinked = await unlinkOldClientTickets();
-    if (unlinked) log.info('tickets with an email unlinked from their install', { tickets: unlinked });
-  } catch (err) {
-    log.warn('ticket unlink sweep failed', { err: String(err?.message ?? err) });
-  }
-}
-
 // APPS registers apps at boot; an app that already has a row keeps it.
 async function registerApps() {
   for (const { slug, name } of parseApps(cfg.apps)) {
@@ -526,6 +508,9 @@ migrate()
   .then(() => (cfg.demo ? startDemo() : registerApps()))
   .then(() => {
     server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off', proxySignIn: proxySignIn ? cfg.adminProxyHeader : 'off' }));
+    // Screens the catalog keeps private, stored before it named them: every
+    // prop of every event, once, while ingest already stores none.
+    void sweepPrivateScreensAtBoot();
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
     setTimeout(sweep, 60_000).unref();
     // App Store campaign reports: Apple makes one a day, so every six hours is

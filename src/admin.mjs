@@ -2,7 +2,7 @@
 // `installs`: at small-app volume (well under a million rows a year) a GROUP BY
 // over an indexed range is milliseconds, and rollup tables would be a second
 // source of truth to keep honest for no gain.
-import { breakdownsOf, FUNNEL, highlightOf } from './catalog.mjs';
+import { breakdownsOf, FUNNEL, highlightOf, isPrivateScreen } from './catalog.mjs';
 import { q } from './db.mjs';
 
 export async function summary({ days, env }) {
@@ -233,7 +233,11 @@ export async function propKeys({ app, env, days, event }) {
   return rows;
 }
 
-/** One event's props sliced by a single key (sessions by pattern, purchases by product) without any app-specific SQL living here. */
+/**
+ * One event's props sliced by a single key (sessions by pattern, purchases by
+ * product) without any app-specific SQL living here. A screen the catalog
+ * keeps private is never a row, even before the sweep has deleted its views.
+ */
 export async function breakdown({ app, env, days, event, prop, channel = null }) {
   const { rows } = await q(
     `SELECT COALESCE(props->>$5, 'unset') AS value, count(*)::int AS n, count(DISTINCT install)::int AS installs
@@ -241,5 +245,5 @@ export async function breakdown({ app, env, days, event, prop, channel = null })
      GROUP BY 1 ORDER BY n DESC LIMIT 20`,
     [app, env, days, event, prop, channel],
   );
-  return rows;
+  return rows.filter((r) => !isPrivateScreen(app, r.value));
 }

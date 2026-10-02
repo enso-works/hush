@@ -14,6 +14,8 @@ export const CATALOG = {
       'purchase_result', 'restore_result', 'reminder_set', 'feature_used', 'ticket_opened',
     ],
     highlight: { event: 'breathing_session_completed', done_prop: 'completed' },
+    // Braele 2.0.0 and 2.0.1 name a screen by its URL: support/<ticket id>.
+    private_screens: ['support'],
   },
 };
 
