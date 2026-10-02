@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 export type Route =
   | { page: 'overview' }
   | { page: 'app'; slug: string }
+  | { page: 'config'; slug: string; key?: string }
   | { page: 'feedback'; id?: number; status: string; kind: string }
   | { page: 'installs'; id?: string }
 
@@ -12,6 +13,9 @@ function parse(hash: string): Route {
   const [path, query] = hash.replace(/^#/, '').split('?')
   const params = new URLSearchParams(query ?? '')
   const parts = path.split('/').filter(Boolean)
+  if (parts[0] === 'app' && parts[1] && parts[2] === 'config') {
+    return { page: 'config', slug: decodeURIComponent(parts[1]), key: parts[3] ? decodeURIComponent(parts[3]) : undefined }
+  }
   if (parts[0] === 'app' && parts[1]) return { page: 'app', slug: decodeURIComponent(parts[1]) }
   // #/tickets is the old dashboard's name for it; links to it keep working.
   if (parts[0] === 'feedback' || parts[0] === 'tickets') {
@@ -40,6 +44,7 @@ export function useRoute() {
 export const href = {
   overview: () => '#/',
   app: (slug: string) => `#/app/${encodeURIComponent(slug)}`,
+  config: (slug: string, key?: string) => `#/app/${encodeURIComponent(slug)}/config${key ? `/${encodeURIComponent(key)}` : ''}`,
   installs: (id?: string) => `#/installs${id ? `/${encodeURIComponent(id)}` : ''}`,
   feedback: (o: { id?: number; status?: string; kind?: string } = {}) => {
     const q = new URLSearchParams()
