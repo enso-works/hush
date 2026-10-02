@@ -454,6 +454,9 @@ describe('history', () => {
     assert.equal((await get('?limit=500')).changes.length, 50);
     assert.equal((await get('?limit=-3')).changes.length, 1);
     assert.equal((await get('?limit=x')).changes.length, 20);
+    assert.equal((await get('?limit=0')).changes.length, 1);
+    // A key no key can match is an empty page, not the whole app's history.
+    assert.deepEqual(await get(`?key=${'a'.repeat(65)}&limit=50`), { changes: [], more: false });
     const older = await get(`?key=review_prompt_after&limit=50&before=${byKey.changes[4].id}`);
     assert.ok(older.changes.every((c) => c.id < byKey.changes[4].id));
     const { rows: [count] } = await db.query("SELECT count(*)::int AS n FROM config_changes WHERE app = 'shop' AND key = 'review_prompt_after' AND id < $1", [byKey.changes[4].id]);

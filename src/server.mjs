@@ -362,8 +362,12 @@ r.get('/admin/apps/:app/config', configRoute(async (_req, res, { params }) => js
 
 r.get('/admin/apps/:app/config/history', configRoute(async (_req, res, { url, params }) => {
   const before = url.searchParams.get('before');
+  const rawKey = url.searchParams.get('key');
+  const key = str(rawKey, 64);
+  // A key filter no key can match (too long) is an empty page, not no filter.
+  if (rawKey !== null && rawKey.trim() !== '' && key === null) return json(res, 200, { changes: [], more: false });
   return json(res, 200, await history(params.app, {
-    key: str(url.searchParams.get('key'), 64),
+    key,
     limit: url.searchParams.get('limit') ?? 20,
     before: /^[1-9][0-9]{0,17}$/.test(before ?? '') ? before : null,
   }));

@@ -375,7 +375,8 @@ const HISTORY_COLUMNS = 'id, key, at, action, override_before, override_after, e
 
 /** GET /admin/apps/:app/config/history: { changes, more }, newest first. */
 export async function history(app, { key = null, limit = 20, before = null } = {}) {
-  limit = Math.min(Math.max(Math.trunc(Number(limit)) || 20, 1), 50);
+  const n = Math.trunc(Number(limit));
+  limit = Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 20;
   const params = [app];
   let where = 'app = $1';
   if (key !== null) {
