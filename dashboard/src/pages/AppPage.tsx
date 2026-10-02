@@ -111,8 +111,11 @@ export function AppPage({ slug }: { slug: string }) {
     `/admin/apps/${encodeURIComponent(slug)}?days=${prefs.days}&env=${prefs.env}${prefs.channel ? `&channel=${encodeURIComponent(prefs.channel)}` : ''}`,
   )
   // The server deletes an install that sent nothing for that long, so the
-  // country counts are the installs seen in that window.
+  // country counts are the installs seen in that window. New installs and
+  // retention count only the installs first seen inside it (src/admin.mjs):
+  // a longer period is cut to it, and has no earlier one to compare with.
   const kept = useApps().data?.install_retention_days ?? null
+  const cut = kept !== null && kept < prefs.days ? kept : null
   const name = d?.name ?? slug
   const c = d?.current
   const p = d?.prior
@@ -159,7 +162,11 @@ export function AppPage({ slug }: { slug: string }) {
           <BlurFade duration={0.3}>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
               <Stat label="Active installs" value={c.active} before={p.active} />
-              <Stat label="New installs" value={c.new_installs} before={p.new_installs} />
+              <Stat
+                label={cut ? `New installs, last ${cut} days` : 'New installs'}
+                value={c.new_installs}
+                before={cut ? undefined : p.new_installs}
+              />
               <Stat label="Sessions" value={c.sessions} before={p.sessions} />
               <Stat label="Active today" value={d.todayActive} />
               {d.highlight && <Stat label={humanize(d.highlight.event)} value={c.highlight} before={p.highlight} />}
@@ -198,7 +205,7 @@ export function AppPage({ slug }: { slug: string }) {
                     <span className="size-2 rounded-full bg-chart-1" /> Active installs per day
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-0.5 w-3 bg-chart-3" /> New installs
+                    <span className="h-0.5 w-3 bg-chart-3" /> New installs{cut ? `, last ${cut} days` : ''}
                   </span>
                 </span>
               }
@@ -211,7 +218,10 @@ export function AppPage({ slug }: { slug: string }) {
             <Panel title="Funnels" sub="Installs through each step in order, and how long each step took">
               <CatalogFunnels slug={slug} />
             </Panel>
-            <Panel title="Retention" sub="Came back at least N days after the first open">
+            <Panel
+              title="Retention"
+              sub={`Came back at least N days after the first open${cut ? `; installs first seen in the last ${cut} days` : ''}`}
+            >
               <Retention r={d.retention} />
             </Panel>
           </div>

@@ -21,8 +21,10 @@ export function Overview() {
   const apps = data?.apps ?? []
   const money = useRevenueByApp()
   // Installs that sent nothing for that long are deleted, so the total is
-  // the installs seen in that window, not every install there ever was.
+  // the installs seen in that window, not every install there ever was, and
+  // new installs are counted inside that window only (src/admin.mjs).
   const kept = data?.install_retention_days ?? null
+  const newDays = kept ? Math.min(prefs.days, kept) : prefs.days
   const sum = (k: 'total_installs' | 'new_installs' | 'dau' | 'sessions' | 'open_tickets') => apps.reduce((n, a) => n + a[k], 0)
 
   return (
@@ -45,7 +47,7 @@ export function Overview() {
           <BlurFade delay={0.02} duration={0.3}>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <Stat label={kept ? `Installs seen in ${kept} days` : 'Installs, all time'} value={sum('total_installs')} />
-              <Stat label={`New in ${prefs.days} days`} value={sum('new_installs')} />
+              <Stat label={`New in ${newDays} days`} value={sum('new_installs')} />
               <Stat label="Active in the last day" value={sum('dau')} />
               <Stat label="Open feedback" value={sum('open_tickets')} />
             </div>
