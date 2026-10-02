@@ -1,6 +1,25 @@
 {
   "myapp": {
     "events": ["workout_started", "workout_completed", "reminder_set"],
-    "highlight": { "event": "workout_completed", "done_prop": "completed" }
+    "highlight": { "event": "workout_completed", "done_prop": "completed" },
+    "config": {
+      "new_home": {
+        "type": "bool",
+        "default": false,
+        "description": "The redesigned home screen.",
+        "rules": [
+          { "when": { "channel": ["testflight", "dev"] }, "value": true, "note": "Testers see it first" },
+          { "when": { "platform": ["ios"], "version": ">=2.1.0" }, "rollout": 20, "value": true }
+        ]
+      },
+      "paywall_copy": {
+        "type": "string",
+        "default": "Start your free week",
+        "description": "The paywall headline.",
+        "rules": [{ "when": { "language": ["de"] }, "value": "Eine Woche gratis" }]
+      },
+      "review_prompt_after": { "type": "number", "default": 3, "description": "Sessions before the app asks for a review." },
+      "session_presets": { "type": "json", "default": [3, 5, 10], "description": "Session lengths on the start screen, in minutes." }
+    }
   }
 }
