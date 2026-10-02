@@ -163,7 +163,9 @@ export function matchesRevision(header, revision) {
 
 // --- Admin views
 
-const overrideView = (row) => ({ ...partsOf(row), note: row.note, updated_at: row.updated_at });
+// jsonb hands objects back in its own key order; the view reads in the
+// normalized one, as the catalog's and the effective rules do.
+const overrideView = (row) => ({ ...ordered(partsOf(row)), note: row.note, updated_at: row.updated_at });
 
 async function latestChanges(app, client = { query: q }) {
   const { rows } = await client.query('SELECT key, max(id) AS id FROM config_changes WHERE app = $1 GROUP BY key', [app]);
