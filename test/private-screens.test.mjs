@@ -195,6 +195,21 @@ describe('the catalog field', () => {
     }
   });
 
+  test('a key the server does not read is ignored, with a warning: a misspelling does not pass for the field', () => {
+    const lines = [];
+    const write = console.log;
+    console.log = (line) => lines.push(JSON.parse(line));
+    try {
+      assert.deepEqual(inProcess.catalog.parseCatalog({ shop: { private_screen: ['support'] } }).shop.privateScreens, []);
+      inProcess.catalog.parseCatalog({ shop: { events: ['feature_used'], private_screens: ['support'] }, plain: ['feature_used'] });
+    } finally {
+      console.log = write;
+    }
+    assert.deepEqual(lines.map(({ level, msg, app, keys }) => ({ level, msg, app, keys })), [
+      { level: 'warn', msg: 'catalog: keys this server does not read, ignored', app: 'shop', keys: ['private_screen'] },
+    ]);
+  });
+
   test('a bad one stops the boot', async () => {
     const bad = join(tmpdir(), 'hush-test-private-screens-bad.json');
     writeFileSync(bad, JSON.stringify({ shop: { private_screens: 'support' } }));

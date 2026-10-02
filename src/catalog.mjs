@@ -38,7 +38,7 @@
 import { readFileSync } from 'node:fs';
 
 import { COMMON } from './common.mjs';
-import { cfg } from './config.mjs';
+import { cfg, log } from './config.mjs';
 import { DEMO_CATALOG } from './demo.mjs';
 import { DEFAULT_FUNNELS, parseFunnels, parseStep } from './funnels.mjs';
 
@@ -47,6 +47,11 @@ import { DEFAULT_FUNNELS, parseFunnels, parseStep } from './funnels.mjs';
 export const FUNNEL = ['paywall_viewed', 'purchase_started', 'purchase_result'];
 
 const NAME = /^[a-z][a-z0-9_]{1,63}$/;
+
+// The keys an app's entry is read for. Any other is ignored with a warning:
+// a misspelt one, or one from a later version (an older server ignored
+// private_screens without a word), would otherwise do nothing unseen.
+const KEYS = new Set(['events', 'highlight', 'funnels', 'breakdowns', 'app_store_id', 'conversion_values', 'private_screens']);
 
 /** Parses and checks a catalog; throws with the offending path so a bad file stops the boot, not a request. */
 export function parseCatalog(raw) {
@@ -57,6 +62,8 @@ export function parseCatalog(raw) {
     // A bare array is accepted as the events list.
     const spec = Array.isArray(entry) ? { events: entry } : entry;
     if (!spec || typeof spec !== 'object') throw new Error(`catalog.${app}: expected an object or an array of event names`);
+    const unknown = Object.keys(spec).filter((k) => !KEYS.has(k));
+    if (unknown.length) log.warn('catalog: keys this server does not read, ignored', { app, keys: unknown });
     const events = spec.events ?? [];
     if (!Array.isArray(events) || !events.every((e) => typeof e === 'string' && NAME.test(e))) {
       throw new Error(`catalog.${app}.events: expected event names matching ${NAME}`);
