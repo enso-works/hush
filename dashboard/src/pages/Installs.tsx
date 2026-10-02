@@ -81,7 +81,7 @@ function Detail({ id }: { id: string }) {
     return (
       <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">
         {note ? <p role="status" className="mb-2 font-medium text-foreground">{note}</p> : null}
-        Nothing is stored for this install: it never sent anything, or it was forgotten.
+        Nothing is stored for this install: it never sent anything, it was forgotten, or it sent nothing for longer than the server keeps an install.
       </div>
     )
   if (error) return <ErrorNote message={error} />

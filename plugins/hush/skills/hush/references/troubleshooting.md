@@ -52,6 +52,8 @@ duplicate, rejected, willRetry }` after every send.
 | An event is listed as unknown | Its name is not in the app's catalog entry, or is misspelled; or the server was not restarted after the edit. The flag is stored with each event as it arrives. | Add it to `events`, validate, restart. Only events received after the restart count as known; those already stored keep the flag until they age out of the selected period. `ticket_replied` is a built-in name; a server from before that lists it as unknown: update it (its migration marks the stored replies known) or add it to the catalog. |
 | `track(name, null)` throws | SDK 2.2.1 or older: props must be an object or omitted. | Upgrade to 2.2.2, or call `track(name)`. |
 | One prop splits into two sets of values | Different builds send different types (`true` and `'calm'`). | Keep one type per prop. |
+| A screen never shows in the `screen_viewed` breakdown, though `onFlush` reports it accepted | It is in the catalog's `private_screens`, or under one (`support/42` under `support`): the server counts it as accepted and stores nothing. | Expected for the feedback and inbox screens. Otherwise remove it from `private_screens` and restart. |
+| A prop is missing from some stored events | Its value named a screen in `private_screens`: the server drops that prop from any event. | Expected. Keep screen names out of other props. |
 
 ## 4. Sessions, entries and pro
 
@@ -76,6 +78,7 @@ duplicate, rejected, willRetry }` after every send.
 | `too_many` | Five tickets per install per day (with an email, per caller address and app), or 20 replies per ticket per day, or the per-address rate limit. | Tell the user to try tomorrow. If every user gets it on tickets with an email, the server is behind a proxy without `CLIENT_IP_HEADER`: all callers share one address. |
 | Unread badge never shows, or clears on its own | `listTickets()` marks every reply read as it fetches; calling it at launch clears `unread` before anyone looked. | Fetch when the inbox opens. For a badge, keep a local seen-set. |
 | `replyToTicket` returns `closed` | The operator closed the ticket. | Offer a new message. |
+| The dashboard's Installs page has no row for an install that sent feedback | The install sent nothing for `INSTALL_RETENTION_DAYS`, and the sweep deleted its row. Its tickets keep the install id. | Expected. Answer the ticket as usual; the app still lists it, and a new row appears when the install sends again. |
 | No alert mail for new feedback | `RESEND_API_KEY`, `MAIL_FROM` or `ALERT_EMAIL` unset, or more than 30 alerts this hour. | Tickets are stored regardless; check the dashboard. |
 
 ## 6. Attribution

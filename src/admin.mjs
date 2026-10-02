@@ -2,13 +2,21 @@
 // `installs`: at small-app volume (well under a million rows a year) a GROUP BY
 // over an indexed range is milliseconds, and rollup tables would be a second
 // source of truth to keep honest for no gain.
-import { breakdownsOf, FUNNEL, highlightOf } from './catalog.mjs';
+import { breakdownsOf, FUNNEL, highlightOf, isPrivateScreen } from './catalog.mjs';
+import { installRetention } from './config.mjs';
 import { q } from './db.mjs';
+
+// New installs and retention count the installs first seen in the last
+// `days` days, or in the install retention window when that is shorter: an
+// older install is still on record only if it sent something since, so
+// counting it would leave out the ones that stopped and flatter the app.
+// `kept` is the parameter holding installRetention (null: every install kept).
+const firstSeenSince = (days, kept) => `now() - make_interval(days => LEAST(${days}, ${kept}::int))`;
 
 export async function summary({ days, env }) {
   const { rows } = await q(
     `SELECT a.slug AS app, a.name,
-        (SELECT count(*)::int FROM installs i WHERE i.app = a.slug AND i.env = $2 AND i.first_seen >= now() - make_interval(days => $1)) AS new_installs,
+        (SELECT count(*)::int FROM installs i WHERE i.app = a.slug AND i.env = $2 AND i.first_seen >= ${firstSeenSince('$1', '$3')}) AS new_installs,
         (SELECT count(*)::int FROM installs i WHERE i.app = a.slug AND i.env = $2) AS total_installs,
         (SELECT count(DISTINCT e.install)::int FROM events e WHERE e.app = a.slug AND e.env = $2 AND e.at >= now() - interval '1 day') AS dau,
         (SELECT count(DISTINCT e.install)::int FROM events e WHERE e.app = a.slug AND e.env = $2 AND e.at >= now() - interval '7 days') AS wau,
@@ -22,7 +30,7 @@ export async function summary({ days, env }) {
         (SELECT count(*)::int FROM postbacks p WHERE p.app = a.slug AND p.verified AND p.did_win IS NOT FALSE AND p.sequence = 0
            AND p.development = ($2 = 'dev') AND p.received_at >= now() - make_interval(days => $1)) AS ad_installs
      FROM apps a ORDER BY a.slug`,
-    [days, env],
+    [days, env, installRetention],
   );
   // Active installs per day over the same window, one query for every app,
   // with the quiet days filled in: the overview draws it as a sparkline.
@@ -54,12 +62,13 @@ export async function appDetail({ app, days, env, channel = null }) {
     // Date at local midnight, which comes back over JSON shifted by the
     // reader's offset — a bar chart silently off by one.
     `SELECT to_char(d, 'YYYY-MM-DD') AS day,
-        (SELECT count(*)::int FROM installs i WHERE i.app = $1 AND i.env = $2 AND ${byChannel(4, 'i.channel')} AND i.first_seen >= d AND i.first_seen < d + interval '1 day') AS new_installs,
+        (SELECT count(*)::int FROM installs i WHERE i.app = $1 AND i.env = $2 AND ${byChannel(4, 'i.channel')} AND i.first_seen >= d AND i.first_seen < d + interval '1 day'
+           AND i.first_seen >= ${firstSeenSince('$3', '$5')}) AS new_installs,
         (SELECT count(DISTINCT e.install)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND ${byChannel(4, 'e.channel')} AND e.at >= d AND e.at < d + interval '1 day') AS active,
         (SELECT count(DISTINCT e.session)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND ${byChannel(4, 'e.channel')} AND e.at >= d AND e.at < d + interval '1 day') AS sessions
      FROM generate_series(date_trunc('day', now()) - make_interval(days => $3 - 1), date_trunc('day', now()), interval '1 day') d
      ORDER BY d`,
-    args,
+    [...args, installRetention],
   )).rows;
 
   const versions = (await q(
@@ -112,7 +121,7 @@ export async function appDetail({ app, days, env, channel = null }) {
     (await q(
       `SELECT
          (SELECT count(*)::int FROM installs i WHERE i.app = $1 AND i.env = $2 AND ${byChannel(7, 'i.channel')}
-            AND i.first_seen >= now() - make_interval(days => $3) AND i.first_seen < now() - make_interval(days => $4)) AS new_installs,
+            AND i.first_seen >= ${firstSeenSince('$3', '$8')} AND i.first_seen < now() - make_interval(days => $4)) AS new_installs,
          (SELECT count(DISTINCT e.session)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND ${byChannel(7, 'e.channel')}
             AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS sessions,
          (SELECT count(DISTINCT e.install)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND ${byChannel(7, 'e.channel')}
@@ -122,7 +131,7 @@ export async function appDetail({ app, days, env, channel = null }) {
          (SELECT count(*)::int FROM events e WHERE e.app = $1 AND e.env = $2 AND ${byChannel(7, 'e.channel')} AND e.name = $5
             AND $6::text IS NOT NULL AND e.props->>$6::text = 'true'
             AND e.at >= now() - make_interval(days => $3) AND e.at < now() - make_interval(days => $4)) AS highlight_done`,
-      [app, env, from, to, hl?.event ?? null, hl?.doneProp ?? null, channel],
+      [app, env, from, to, hl?.event ?? null, hl?.doneProp ?? null, channel, installRetention],
     )).rows[0];
   const current = await period(days, 0);
   const prior = await period(days * 2, days);
@@ -142,8 +151,8 @@ export async function appDetail({ app, days, env, channel = null }) {
        count(*) FILTER (WHERE i.first_seen < now() - interval '30 days')::int AS d30_cohort,
        count(*) FILTER (WHERE i.first_seen < now() - interval '30 days'
          AND EXISTS (SELECT 1 FROM events e WHERE e.install = i.id AND e.at >= i.first_seen + interval '30 days'))::int AS d30
-     FROM installs i WHERE i.app = $1 AND i.env = $2 AND ${byChannel(4, 'i.channel')} AND i.first_seen >= now() - make_interval(days => $3)`,
-    args,
+     FROM installs i WHERE i.app = $1 AND i.env = $2 AND ${byChannel(4, 'i.channel')} AND i.first_seen >= ${firstSeenSince('$3', '$5')}`,
+    [...args, installRetention],
   )).rows[0];
 
   // How long people stay and how often they come back. Session length comes
@@ -233,7 +242,11 @@ export async function propKeys({ app, env, days, event }) {
   return rows;
 }
 
-/** One event's props sliced by a single key (sessions by pattern, purchases by product) without any app-specific SQL living here. */
+/**
+ * One event's props sliced by a single key (sessions by pattern, purchases by
+ * product) without any app-specific SQL living here. A screen the catalog
+ * keeps private is never a row, even before the sweep has deleted its views.
+ */
 export async function breakdown({ app, env, days, event, prop, channel = null }) {
   const { rows } = await q(
     `SELECT COALESCE(props->>$5, 'unset') AS value, count(*)::int AS n, count(DISTINCT install)::int AS installs
@@ -241,5 +254,5 @@ export async function breakdown({ app, env, days, event, prop, channel = null })
      GROUP BY 1 ORDER BY n DESC LIMIT 20`,
     [app, env, days, event, prop, channel],
   );
-  return rows;
+  return rows.filter((r) => !isPrivateScreen(app, r.value));
 }

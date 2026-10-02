@@ -9,7 +9,7 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 
 | Path | What it is |
 |---|---|
-| `src/` | The server: plain Node 22 ESM, no framework, one runtime dependency (`pg`). `server.mjs` routes, `ingest.mjs` events, `catalog.mjs` the catalog, `attribution.mjs` Apple postbacks, `cli.mjs` the admin CLI. |
+| `src/` | The server: plain Node 22 ESM, no framework, one runtime dependency (`pg`). `server.mjs` routes, `ingest.mjs` events, `catalog.mjs` the catalog, `sweep.mjs` what the server deletes on its own (retention, private screens), `attribution.mjs` Apple postbacks, `cli.mjs` the admin CLI. |
 | `src/dashboard/` | The built dashboard, committed so running hush needs no build step. Never edit by hand. |
 | `migrations/` | SQL, applied in file-name order at every boot, each in a transaction. |
 | `dashboard/` | The dashboard's source (React, Tailwind, shadcn, Magic UI, Vite). Builds into `src/dashboard/`. `e2e/` drives it in Chromium. |
@@ -74,7 +74,8 @@ claude plugin validate ./plugins/hush
   install id or RevenueCat's id, no request carries an install id and a
   thread key together, nothing stored on such a ticket records when an app
   read it, and nothing on the dashboard, in an alert mail or in the log puts
-  an install id next to an email. Apps answer the App Store's
+  an install id next to an email. Nothing stores or shows a screen in an
+  app's `private_screens`. Apps answer the App Store's
   privacy questions on that ([README](README.md#what-a-ticket-carries)).
 - **Never commit secrets**: `.env`, `examples/.env`, `ADMIN_TOKEN`, App Store
   Connect `.p8` keys, RevenueCat or Resend keys, npm tokens. Never print them.

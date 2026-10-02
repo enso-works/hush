@@ -415,5 +415,23 @@
         "installs": 0
       }
     }
+  },
+  {
+    "label": "events: a private screen, accepted and not stored",
+    "status": 200,
+    "body": {
+      "accepted": 2,
+      "duplicate": 0,
+      "rejected": 0
+    }
+  },
+  {
+    "label": "events: nothing but private screens",
+    "status": 200,
+    "body": {
+      "accepted": 1,
+      "duplicate": 0,
+      "rejected": 0
+    }
   }
 ]

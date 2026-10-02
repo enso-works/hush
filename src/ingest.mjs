@@ -1,4 +1,4 @@
-import { isKnown } from './catalog.mjs';
+import { isKnown, privatePropKeys } from './catalog.mjs';
 import { q } from './db.mjs';
 import { flatObject, isUuid, str } from './http.mjs';
 
@@ -21,6 +21,13 @@ const cleanProps = (props) => flatObject(props, { maxBytes: MAX_PROPS_BYTES });
  * Returns { events, installs } of validated rows, or a string naming the first
  * invalid field. Malformed events inside an otherwise valid batch are dropped
  * rather than failing the batch: the phone would only retry them forever.
+ *
+ * A screen the app's catalog keeps private (private_screens) is never stored.
+ * A screen_viewed that names one in any prop (the screen, or the one it came
+ * from) is accepted and discarded: `discarded`, counted as accepted, so the
+ * answer is the one every shipped SDK expects. Any other event is stored
+ * without the props that name one, such as a global prop holding the current
+ * screen or an entry label.
  */
 export function parseBatch(body, { app, env, country }) {
   if (!body || typeof body !== 'object') return 'body';
@@ -48,6 +55,7 @@ export function parseBatch(body, { app, env, country }) {
   const events = [];
   const installs = new Map();
   let rejected = 0;
+  let discarded = 0;
   for (const e of body.events) {
     if (!e || typeof e !== 'object') { rejected++; continue; }
     const at = Date.parse(e.at);
@@ -63,6 +71,15 @@ export function parseBatch(body, { app, env, country }) {
       rejected++;
       continue;
     }
+    // A discarded view still says the install was active.
+    const prev = installs.get(e.install);
+    if (!prev || at < prev) installs.set(e.install, at);
+    const named = privatePropKeys(app, props);
+    if (named.length && e.name === 'screen_viewed') {
+      discarded++;
+      continue;
+    }
+    for (const k of named) delete props[k];
     events.push({
       id: e.id,
       install: e.install,
@@ -72,11 +89,9 @@ export function parseBatch(body, { app, env, country }) {
       at: new Date(at).toISOString(),
       props,
     });
-    const prev = installs.get(e.install);
-    if (!prev || at < prev) installs.set(e.install, at);
   }
-  if (events.length === 0) return 'events: none valid';
-  return { events, installs, context, rejected, app, env, country };
+  if (events.length === 0 && discarded === 0) return 'events: none valid';
+  return { events, installs, context, rejected, discarded, app, env, country };
 }
 
 export async function store(batch) {
@@ -108,6 +123,9 @@ export async function store(batch) {
     );
   }
 
+  // A batch of nothing but private screens stores no event.
+  if (batch.events.length === 0) return { accepted: batch.discarded, duplicate: 0, rejected: batch.rejected };
+
   const cols = 13;
   const values = [];
   const params = [];
@@ -117,10 +135,12 @@ export async function store(batch) {
     params.push(e.id, app, env, e.install, e.session, e.name, e.known, e.at, context.version, context.build, context.platform, JSON.stringify(e.props), context.channel);
   });
   // A retried batch collides on the event id and is counted, not stored twice.
+  // A discarded view has no row to collide with, so a retry counts it as
+  // accepted again.
   const inserted = await q(
     `INSERT INTO events (id, app, env, install, session, name, known, at, version, build, platform, props, channel)
      VALUES ${values.join(',')} ON CONFLICT (id) DO NOTHING`,
     params,
   );
-  return { accepted: inserted.rowCount, duplicate: batch.events.length - inserted.rowCount, rejected: batch.rejected };
+  return { accepted: inserted.rowCount + batch.discarded, duplicate: batch.events.length - inserted.rowCount, rejected: batch.rejected };
 }

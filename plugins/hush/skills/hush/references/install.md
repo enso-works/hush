@@ -255,7 +255,10 @@ Name screens by route pattern. A concrete path carries ids (`item/8f3a…`,
 Leave the feedback and inbox screens out. A ticket sent with an email
 carries no install id, but a `screen_viewed` for the feedback route a moment
 before it points at the install all the same. List the app's routes for
-them in `UNTRACKED` (or report them under a name other screens share).
+them in `UNTRACKED` (or report them under a name other screens share), and
+list the same names in the app's catalog entry under `private_screens`
+(`["feedback", "support"]` for the routes below): the server then drops a
+view of them, or of a screen under one, from any build.
 
 Expo Router, in the root layout:
 
@@ -524,16 +527,17 @@ End with:
   - mint keys, if missing;
   - add the event names to the app's catalog entry (list them; on a server
     from before `ticket_replied` became a built-in name, include it if
-    replies are wired) and restart the server;
+    replies are wired), and the feedback and inbox screens to its
+    `private_screens` when feedback is wired, and restart the server;
   - with hush-expo: rebuild the native app, and for attribution add
     `app_store_id` and `conversion_values` to the catalog and route the
     `.well-known` paths ([attribution.md](attribution.md));
   - set `EXPO_PUBLIC_HUSH_CHANNEL` per platform in `eas.json`
     (`build.<profile>.android.env`, `build.<profile>.ios.env`), not in a
     profile's top-level `env`;
-  - update the privacy policy and the store's privacy answers (SKILL.md, "App
-    Privacy answers"): Usage Data (Product Interaction), not linked; when the
-    feedback form asks for an email, Contact Info (Email Address) and User
-    Content (Customer Support), linked; none of it used for tracking. Without
-    an email field, Customer Support is not linked either.
+  - update the privacy policy and the store's privacy answers from the
+    table in SKILL.md, "App Privacy answers": the rows whose "When" applies
+    (always Product Interaction and Other Diagnostic Data, not linked; when
+    the feedback form asks for an email, Contact Info and Customer Support,
+    linked only for people who write in with one), none used for tracking.
 - **Anything skipped**, and why.

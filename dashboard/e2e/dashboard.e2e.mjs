@@ -46,7 +46,15 @@ describe('overview', () => {
     await page.getByRole('heading', { name: 'Overview' }).waitFor();
     for (const name of ['Stillwater', 'Tally', 'Pace']) await page.getByText(name, { exact: true }).first().waitFor();
     await page.getByText(/from ads/).first().waitFor();
-    assert.ok(await page.getByText('Installs, all time').isVisible());
+    // The installs the server keeps: those seen in INSTALL_RETENTION_DAYS, 180 here by default (a live demo
+    // may set another, and an older one says all time).
+    const total = process.env.E2E_BASE ? /^Installs(?: seen in \d+ days|, all time)$/ : 'Installs seen in 180 days';
+    assert.ok(await page.getByText(total, { exact: true }).isVisible());
+    if (!process.env.E2E_BASE) {
+      // New installs are counted inside that window too, so a year is cut to it.
+      await radio(page, '1y').click();
+      await page.getByText('New in 180 days', { exact: true }).waitFor();
+    }
     for (const period of ['7d', '90d', '30d']) {
       await radio(page, period).click();
       await page.waitForTimeout(300);

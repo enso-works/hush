@@ -20,7 +20,8 @@
 //       "breakdowns": [
 //         { "event": "workout_completed", "prop": "kind", "title": "Workouts by kind" },
 //         { "event": "onboarding_completed", "prop": "goal", "count": "installs" }
-//       ]
+//       ],
+//       "private_screens": ["support"]
 //     }
 //   }
 //
@@ -30,13 +31,14 @@
 // one before, within `window_days` (default 7) of the first; a step may
 // match props with `where`. `breakdowns` pin charts to the app page: one
 // event split by one prop, counted in events or (`count: "installs"`, for an
-// answer that can change later) in installs. All optional; an app missing from the file still
-// works, with only the common names known, no highlight, and the default
-// paywall funnel.
+// answer that can change later) in installs. `private_screens` are screens
+// the server never stores (isPrivateScreen below). All optional; an app
+// missing from the file still works, with only the common names known, no
+// highlight, and the default paywall funnel.
 import { readFileSync } from 'node:fs';
 
 import { COMMON } from './common.mjs';
-import { cfg } from './config.mjs';
+import { cfg, log } from './config.mjs';
 import { DEMO_CATALOG } from './demo.mjs';
 import { DEFAULT_FUNNELS, parseFunnels, parseStep } from './funnels.mjs';
 
@@ -45,6 +47,11 @@ import { DEFAULT_FUNNELS, parseFunnels, parseStep } from './funnels.mjs';
 export const FUNNEL = ['paywall_viewed', 'purchase_started', 'purchase_result'];
 
 const NAME = /^[a-z][a-z0-9_]{1,63}$/;
+
+// The keys an app's entry is read for. Any other is ignored with a warning:
+// a misspelt one, or one from a later version (an older server ignored
+// private_screens without a word), would otherwise do nothing unseen.
+const KEYS = new Set(['events', 'highlight', 'funnels', 'breakdowns', 'app_store_id', 'conversion_values', 'private_screens']);
 
 /** Parses and checks a catalog; throws with the offending path so a bad file stops the boot, not a request. */
 export function parseCatalog(raw) {
@@ -55,6 +62,8 @@ export function parseCatalog(raw) {
     // A bare array is accepted as the events list.
     const spec = Array.isArray(entry) ? { events: entry } : entry;
     if (!spec || typeof spec !== 'object') throw new Error(`catalog.${app}: expected an object or an array of event names`);
+    const unknown = Object.keys(spec).filter((k) => !KEYS.has(k));
+    if (unknown.length) log.warn('catalog: keys this server does not read, ignored', { app, keys: unknown });
     const events = spec.events ?? [];
     if (!Array.isArray(events) || !events.every((e) => typeof e === 'string' && NAME.test(e))) {
       throw new Error(`catalog.${app}.events: expected event names matching ${NAME}`);
@@ -76,7 +85,8 @@ export function parseCatalog(raw) {
       if (!/^[1-9][0-9]{5,11}$/.test(appStoreId)) throw new Error(`catalog.${app}.app_store_id: the App Store id, digits`);
     }
     const conversionValues = parseConversionValues(spec.conversion_values, `catalog.${app}.conversion_values`);
-    out[app] = { events, highlight, funnels, breakdowns, appStoreId, conversionValues };
+    const privateScreens = parsePrivateScreens(spec.private_screens, `catalog.${app}.private_screens`);
+    out[app] = { events, highlight, funnels, breakdowns, appStoreId, conversionValues, privateScreens };
   }
   return out;
 }
@@ -95,6 +105,25 @@ function parseBreakdowns(raw, path) {
     const title = typeof b.title === 'string' && b.title.trim() ? b.title.trim().slice(0, 60) : `${humanize(b.event)} by ${b.prop.replace(/_/g, ' ')}`;
     return { event: b.event, prop: b.prop, title, count };
   });
+}
+
+/**
+ * Screens whose views the server never stores: a name as the app passes it
+ * to screen(), which also covers every screen under it ("support" covers
+ * "support/new" and "support/42"). For the feedback and inbox screens: a
+ * view of one, next to a ticket sent with an email, would point at the
+ * install, and an app version that names a screen by its URL puts the
+ * ticket id in it. A trailing slash is refused: "support/" would match only
+ * "support//...", and leave "support/42" stored.
+ */
+function parsePrivateScreens(raw, path) {
+  if (raw == null) return [];
+  if (!Array.isArray(raw) || !raw.every((s) => typeof s === 'string' && s.trim() !== '')) {
+    throw new Error(`${path}: expected an array of screen names`);
+  }
+  const slash = raw.find((s) => s.endsWith('/'));
+  if (slash) throw new Error(`${path}: "${slash}" ends with /; write the screen name, and the screens under it are included`);
+  return [...new Set(raw)];
 }
 
 const COARSE = ['low', 'medium', 'high'];
@@ -154,3 +183,17 @@ export const appOfStoreId = (id) => Object.entries(catalog).find(([, v]) => v.ap
 
 /** The app's conversion-value milestones, in order; none by default. */
 export const conversionValuesOf = (app) => catalog[app]?.conversionValues ?? [];
+
+/** Every app whose catalog names private screens, with those names. */
+export const privateScreensByApp = () =>
+  Object.entries(catalog).filter(([, v]) => v.privateScreens.length).map(([app, v]) => [app, v.privateScreens]);
+
+/** True when a value names one of the app's private screens, or a screen under one ("support/42" under "support"). */
+export function isPrivateScreen(app, value) {
+  if (typeof value !== 'string') return false;
+  const names = catalog[app]?.privateScreens;
+  return Boolean(names?.some((n) => value === n || value.startsWith(`${n}/`)));
+}
+
+/** The keys of an event's props whose values name one of the app's private screens. */
+export const privatePropKeys = (app, props) => Object.keys(props ?? {}).filter((k) => isPrivateScreen(app, props[k]));

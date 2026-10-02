@@ -250,7 +250,10 @@ too:
 Nothing hush stores joins such a ticket to the install. Its time and
 diagnostics can still narrow it down for someone with the database, so leave
 the feedback and inbox screens out of `screen()` (or give them a name other
-screens share), and put nothing about a ticket in an event.
+screens share), and put nothing about a ticket in an event. On the server,
+list them in the catalog's `private_screens` too: it then stores no view of
+them, or of a screen under one (`support/42` under `support`), from any
+build, and deletes the ones already stored.
 
 The five a day count by the caller's address and app for a ticket with an
 email, since there is no install to count by; behind a proxy that needs the

@@ -14,7 +14,7 @@ import { forgetInstall, installDetail } from './installs.mjs';
 import { appStoreIdOf, conversionValuesOf, funnelsOf } from './catalog.mjs';
 import { aakRow, postbackSummary, skanRow, storePostback } from './attribution.mjs';
 import { CAMPAIGN_KEYS, campaignFunnel, cohorts, runFunnel, stepsFromQuery } from './funnels.mjs';
-import { cfg, log, parseApps } from './config.mjs';
+import { cfg, installRetention, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { clientKey, dailyLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
@@ -23,9 +23,10 @@ import { migrate } from './migrate.mjs';
 import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
 import { appStoreCampaigns, ascConfigured, syncAll } from './appstore.mjs';
+import { sweep, sweepPrivateScreensAtBoot } from './sweep.mjs';
 import {
   adminDelete, adminGet, adminList, adminReply, adminStatus, belongsToAnotherApp, createTicket, forgetThreads, isThreadKey, KINDS,
-  MAX_PER_DAY, parseTicket, threadKeys, ticketsForInstall, ticketsForThreads, unlinkOldClientTickets, userReply,
+  MAX_PER_DAY, parseTicket, threadKeys, ticketsForInstall, ticketsForThreads, userReply,
 } from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
@@ -240,7 +241,10 @@ const channelOf = (url) => {
 // 200 means it is a demo or a proxy added the token (ops does).
 r.get('/admin/session', async (_req, res) => json(res, 200, { demo: cfg.demo }));
 
-r.get('/admin/apps', async (_req, res, { url }) => json(res, 200, { apps: await summary({ days: days(url), env: envOf(url) }) }));
+// How long an install row outlives its last batch (null: kept), so the
+// dashboard can say what its install totals cover.
+r.get('/admin/apps', async (_req, res, { url }) =>
+  json(res, 200, { apps: await summary({ days: days(url), env: envOf(url) }), install_retention_days: installRetention }));
 
 r.get('/admin/apps/:app', async (_req, res, { url, params }) =>
   json(res, 200, await appDetail({ app: params.app, days: days(url), env: envOf(url), channel: channelOf(url) })));
@@ -482,25 +486,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// Raw events age out; installs and tickets are kept (an install row is a
-// counter, a ticket is a conversation). A ticket with an email that an older
-// app version sent with its install loses the install, and that install's
-// ticket events, once it is closed and seen or idle (unlinkOldClientTickets).
-async function sweep() {
-  try {
-    const { rowCount } = await q('DELETE FROM events WHERE at < now() - make_interval(days => $1)', [cfg.retentionDays]);
-    if (rowCount) log.info('retention sweep', { deleted: rowCount, days: cfg.retentionDays });
-  } catch (err) {
-    log.warn('retention sweep failed', { err: String(err?.message ?? err) });
-  }
-  try {
-    const unlinked = await unlinkOldClientTickets();
-    if (unlinked) log.info('tickets with an email unlinked from their install', { tickets: unlinked });
-  } catch (err) {
-    log.warn('ticket unlink sweep failed', { err: String(err?.message ?? err) });
-  }
-}
-
 // APPS registers apps at boot; an app that already has a row keeps it.
 async function registerApps() {
   for (const { slug, name } of parseApps(cfg.apps)) {
@@ -515,6 +500,20 @@ async function startDemo() {
   setInterval(() => seedDemo().catch((err) => log.error('demo reseed failed', { err: String(err?.message ?? err) })), 24 * 60 * 60 * 1000).unref();
 }
 
+// A value that is not a whole number of days keeps every install, as 0
+// does; say so rather than refuse to boot.
+if (!Number.isInteger(cfg.installRetentionDays) || cfg.installRetentionDays < 0) {
+  log.warn('install retention is off: INSTALL_RETENTION_DAYS (or RETENTION_DAYS) is not a whole number of days');
+}
+// A row that goes before its events leaves them stored without it, and the
+// install counts as new if it sends again while they are still there.
+if (installRetention !== null && installRetention < cfg.retentionDays) {
+  log.warn('INSTALL_RETENTION_DAYS is shorter than RETENTION_DAYS: an install row is deleted while its events are kept, and an install that sends again before they go counts as new', {
+    installRetentionDays: installRetention,
+    retentionDays: cfg.retentionDays,
+  });
+}
+
 // Proxy sign-in is off unless both halves are there; say so rather than
 // refuse to boot, since an empty secret usually means an unset variable.
 const proxySignIn = Boolean(cfg.adminProxyHeader && cfg.adminProxySecret.length >= 16);
@@ -525,7 +524,10 @@ if ((cfg.adminProxyHeader || cfg.adminProxySecret) && !proxySignIn) {
 migrate()
   .then(() => (cfg.demo ? startDemo() : registerApps()))
   .then(() => {
-    server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off', proxySignIn: proxySignIn ? cfg.adminProxyHeader : 'off' }));
+    server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, installRetentionDays: installRetention ?? 'off', mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off', proxySignIn: proxySignIn ? cfg.adminProxyHeader : 'off' }));
+    // Screens the catalog keeps private, stored before it named them: every
+    // prop of every event, once, while ingest already stores none.
+    void sweepPrivateScreensAtBoot();
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
     setTimeout(sweep, 60_000).unref();
     // App Store campaign reports: Apple makes one a day, so every six hours is
