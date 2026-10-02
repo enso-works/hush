@@ -201,7 +201,7 @@ export type FlushResult = {
 };
 
 /** Sent with every batch, and stored on the install: which SDK spoke. */
-export const SDK_VERSION = '2.3.0';
+export const SDK_VERSION = '2.4.0';
 
 const CHANNEL_RE = /^[a-z][a-z0-9_]{0,23}$/;
 // The server's rule for event names; anything else is dropped there anyway.

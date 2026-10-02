@@ -5,7 +5,7 @@ license: MIT
 compatibility: Expo apps on React Native 0.73 or later (Expo SDK 52 or later for @bavrk/hush-expo), bare React Native 0.73 or later with Expo modules, or a web, PWA or Capacitor app. Needs the URL of a running hush server and a write key minted on it.
 metadata:
   sdk: "@bavrk/hush"
-  sdk-version: "2.3.0"
+  sdk-version: "2.4.0"
   homepage: "https://hush.bavrk.com"
 ---
 
