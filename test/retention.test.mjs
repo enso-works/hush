@@ -130,6 +130,41 @@ describe('what names the install id', () => {
   });
 });
 
+describe('the dashboard', () => {
+  test('new installs and retention count only the installs first seen inside the window, so a year does not flatter the app', async () => {
+    const c = client(srv.base, await addApp(db, 'cut', 'Cut'));
+    // One of a cohort from 300 days ago that came back 5 days ago: the rest
+    // of it went quiet and lost its rows. From 100 days ago, one that never
+    // came back and one that did 50 days later.
+    const old = uuid();
+    const left = uuid();
+    const stayed = uuid();
+    const at = async (install, days) => {
+      const e = event(install, 'session_started');
+      await c.post('/v1/events', batch([e]));
+      await db.query('UPDATE events SET at = now() - make_interval(days => $2) WHERE id = $1', [e.id, days]);
+    };
+    await at(old, 5);
+    await at(left, 100);
+    await at(stayed, 100);
+    await at(stayed, 50);
+    for (const [install, days] of [[old, 300], [left, 100], [stayed, 100]]) {
+      await db.query('UPDATE installs SET first_seen = now() - make_interval(days => $2) WHERE id = $1', [install, days]);
+    }
+
+    const year = (await admin(srv.base).get('/admin/apps/cut?days=365')).json;
+    assert.deepEqual(year.retention.d30, { cohort: 2, retained: 1 });
+    assert.equal(year.current.new_installs, 2);
+    assert.equal(year.prior.new_installs, 0);
+    assert.equal(year.daily.reduce((n, d) => n + d.new_installs, 0), 2);
+    const overview = (await admin(srv.base).get('/admin/apps?days=365')).json.apps.find((a) => a.app === 'cut');
+    assert.deepEqual([overview.new_installs, overview.total_installs], [2, 3]);
+    // A period inside the window is its own bound, as before.
+    assert.deepEqual((await admin(srv.base).get('/admin/apps/cut?days=90')).json.retention.d30, { cohort: 0, retained: 0 });
+    assert.deepEqual((await admin(srv.base).get('/admin/apps/cut?days=150')).json.retention.d30, { cohort: 2, retained: 1 });
+  });
+});
+
 describe('configuration', () => {
   const retention = async (env) => {
     const d = await freshDatabase('hush_retention_cfg');

@@ -14,7 +14,7 @@ import { forgetInstall, installDetail } from './installs.mjs';
 import { appStoreIdOf, conversionValuesOf, funnelsOf } from './catalog.mjs';
 import { aakRow, postbackSummary, skanRow, storePostback } from './attribution.mjs';
 import { CAMPAIGN_KEYS, campaignFunnel, cohorts, runFunnel, stepsFromQuery } from './funnels.mjs';
-import { cfg, log, parseApps } from './config.mjs';
+import { cfg, installRetention, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { clientKey, dailyLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
@@ -243,8 +243,6 @@ r.get('/admin/session', async (_req, res) => json(res, 200, { demo: cfg.demo }))
 
 // How long an install row outlives its last batch (null: kept), so the
 // dashboard can say what its install totals cover.
-const installRetention = Number.isInteger(cfg.installRetentionDays) && cfg.installRetentionDays > 0 ? cfg.installRetentionDays : null;
-
 r.get('/admin/apps', async (_req, res, { url }) =>
   json(res, 200, { apps: await summary({ days: days(url), env: envOf(url) }), install_retention_days: installRetention }));
 

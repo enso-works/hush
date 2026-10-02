@@ -74,6 +74,10 @@ export const cfg = {
   ascApiBase: env('ASC_API_BASE', 'https://api.appstoreconnect.apple.com'),
 };
 
+// How long an install row outlives its last batch, in whole days; null when
+// every install is kept (0, or a value that is not a whole number of days).
+export const installRetention = Number.isInteger(cfg.installRetentionDays) && cfg.installRetentionDays > 0 ? cfg.installRetentionDays : null;
+
 export const log = {
   info: (msg, extra) => console.log(JSON.stringify({ t: new Date().toISOString(), level: 'info', msg, ...extra })),
   warn: (msg, extra) => console.log(JSON.stringify({ t: new Date().toISOString(), level: 'warn', msg, ...extra })),
