@@ -20,6 +20,9 @@ export function Overview() {
   const { prefs } = usePrefs()
   const apps = data?.apps ?? []
   const money = useRevenueByApp()
+  // Installs that sent nothing for that long are deleted, so the total is
+  // the installs seen in that window, not every install there ever was.
+  const kept = data?.install_retention_days ?? null
   const sum = (k: 'total_installs' | 'new_installs' | 'dau' | 'sessions' | 'open_tickets') => apps.reduce((n, a) => n + a[k], 0)
 
   return (
@@ -41,7 +44,7 @@ export function Overview() {
         apps.length > 0 && (
           <BlurFade delay={0.02} duration={0.3}>
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Stat label="Installs, all time" value={sum('total_installs')} />
+              <Stat label={kept ? `Installs seen in ${kept} days` : 'Installs, all time'} value={sum('total_installs')} />
               <Stat label={`New in ${prefs.days} days`} value={sum('new_installs')} />
               <Stat label="Active in the last day" value={sum('dau')} />
               <Stat label="Open feedback" value={sum('open_tickets')} />

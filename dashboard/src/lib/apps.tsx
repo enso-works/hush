@@ -6,12 +6,17 @@ import type { AppSummary } from './api'
 import { useApi } from './data'
 import { usePrefs } from './session'
 
-type Apps = ReturnType<typeof useApi<{ apps: AppSummary[] }>>
+type AppsAnswer = {
+  apps: AppSummary[]
+  /** The server deletes an install that has sent nothing for this many days; null keeps them all (absent before 2026-10). */
+  install_retention_days?: number | null
+}
+type Apps = ReturnType<typeof useApi<AppsAnswer>>
 const Ctx = createContext<Apps | null>(null)
 
 export function AppsProvider({ children }: { children: ReactNode }) {
   const { prefs } = usePrefs()
-  const apps = useApi<{ apps: AppSummary[] }>(`/admin/apps?days=${prefs.days}&env=${prefs.env}`)
+  const apps = useApi<AppsAnswer>(`/admin/apps?days=${prefs.days}&env=${prefs.env}`)
   return <Ctx.Provider value={apps}>{children}</Ctx.Provider>
 }
 

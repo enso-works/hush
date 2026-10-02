@@ -10,6 +10,7 @@ import { BlurFade } from '@/components/ui/blur-fade'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { AppDetail } from '@/lib/api'
+import { useApps } from '@/lib/apps'
 import { useApi } from '@/lib/data'
 import { countryName, flag, humanize, num, pct, plural, shortDay, when } from '@/lib/format'
 import { href } from '@/lib/route'
@@ -109,6 +110,9 @@ export function AppPage({ slug }: { slug: string }) {
   const { data: d, error, loading } = useApi<AppDetail>(
     `/admin/apps/${encodeURIComponent(slug)}?days=${prefs.days}&env=${prefs.env}${prefs.channel ? `&channel=${encodeURIComponent(prefs.channel)}` : ''}`,
   )
+  // The server deletes an install that sent nothing for that long, so the
+  // country counts are the installs seen in that window.
+  const kept = useApps().data?.install_retention_days ?? null
   const name = d?.name ?? slug
   const c = d?.current
   const p = d?.prior
@@ -249,7 +253,7 @@ export function AppPage({ slug }: { slug: string }) {
             <Panel title="Versions" sub="Installs seen on each version, this period">
               <BarList rows={d.versions.map((v) => ({ key: v.version, label: <span className="font-mono text-xs">{v.version}</span>, value: v.installs }))} />
             </Panel>
-            <Panel title="Countries" sub="All installs; fewer than ten are folded into other">
+            <Panel title="Countries" sub={`${kept ? `Installs seen in ${kept} days` : 'All installs'}; fewer than ten are folded into other`}>
               <BarList
                 empty="No countries: COUNTRY_HEADER is not set, or nothing has arrived yet."
                 rows={d.countries.map((x) => ({
