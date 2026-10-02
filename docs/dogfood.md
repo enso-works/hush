@@ -6,6 +6,39 @@ anything else, and later the evidence for what a hosted hush has to be.
 
 Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
+## 2026-10-02
+
+- **Braele, review of 2.1.0.** Braele 2.0.0 and 2.0.1 name a screen by its
+  URL, so sending a message and opening a thread sent
+  `screen_viewed { screen: 'support/<ticket id>' }` with the install id.
+  The unlink of an older app's ticket with an email deleted only
+  `ticket_opened` and `ticket_replied`, so after it those views still named
+  the ticket, on the install's page among others, and the ticket carries
+  the email. They would have stayed until the 180-day retention, and 2.0.x
+  keeps sending them until people update. Fixed with the catalog's
+  `private_screens` (Braele's entry: `["support"]`): the server stores no
+  view of a listed screen or of one under it, from any build, counts it as
+  accepted so the answer is unchanged, drops a prop that names one from any
+  other event, and deletes the views stored before, at boot and in the
+  sweep (migration 008 indexes them). No admin view shows one meanwhile.
+  Fixed in `e1b6a7f`. 2.1.0 sends no support screen views at all.
+- **Braele, privacy policy.** The policy gave one retention period, 180 days
+  for raw events, while install rows (device, OS, language, country, paid
+  flag, RevenueCat's id) were kept until forgotten. Fixed: an install that
+  has sent nothing for `INSTALL_RETENTION_DAYS` (`RETENTION_DAYS` unless
+  set) loses its row, so everything about an install's use of the app goes
+  180 days after it last sends anything. Feedback threads are still kept
+  until deleted; one without an email keeps the install id, so it can be
+  answered and the app lists it if the install comes back. Fixed in
+  `c3cea9f`; the dashboard's install total and Countries panel say they
+  count the installs seen in that window (`dcc8b42`).
+- **Braele, bavrk, open.** bavrk.com's subtree has neither change until it
+  is pulled; Braele's catalog entry gets `"private_screens": ["support"]`,
+  and braele.app/privacy can then name the install retention.
+- **hush plugin.** The skill's App Privacy table had three rows; an app on
+  hush and hush-expo that followed it would under-declare. It now has
+  Braele's eight, each with when it applies, and the README says the same.
+
 ## 2026-10-01
 
 - **Braele, review of the fix below.** A review found four joins the first

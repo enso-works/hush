@@ -158,8 +158,15 @@ The [hush plugin](plugins/hush/) for Claude Code:
 - **No advertising or device identifiers**: nothing for App Tracking
   Transparency to ask about. From a link, only its `utm_*` and `ref` tags.
 
-Raw events are deleted after `RETENTION_DAYS` (180); install rows and
-feedback threads are kept until they are forgotten: the SDK's `forget()`, the
+Raw events are deleted after `RETENTION_DAYS` (180). An install that has
+sent nothing for `INSTALL_RETENTION_DAYS` (`RETENTION_DAYS` unless set)
+loses its row too, and by then its events are gone: nothing about how it
+used the app is left. So, with the defaults, a privacy policy can say that
+everything about an install's use of the app is deleted 180 days after it
+last sends anything. Feedback threads are kept until they are forgotten, so
+a policy names them apart: a thread without an email keeps the install id
+when the row goes, so it can still be answered, and the app lists it again
+if the install comes back. They are forgotten with the SDK's `forget()`, the
 dashboard's Installs page, or Delete on one ticket. `forget()` reaches the
 install's own tickets and the tickets sent with an email whose keys are on
 the device. It cannot reach a ticket sent with an email by an app before SDK
@@ -194,21 +201,19 @@ The SDK also keeps the install id out of every URL from 2.3.0
 (`POST /v1/tickets/list`), so a proxy's access log cannot pair it with a
 reply on a ticket sent with an email from the same address.
 
-So an app on hush can answer Apple's App Privacy questions like this. Usage
-Data (Product Interaction) is collected and not linked to the user. Contact
-Info (Email Address) and User Content (Customer Support) are collected and
-linked to the user, and only for people who write in with an email; without
-an email field, Customer Support is not linked either. None of it is used for
-tracking. Other SDKs in the app answer for themselves.
-
 What no id can hide: the ticket's time, and diagnostics that the install's
 row and events also hold. On an app with few users, someone with access to
 the database could narrow a ticket down to one install by those, as they
 could match any two records by time. hush does not do that, and an app must
 not try: Apple counts data as not linked only while nobody tries to link it
 back. Do not make it easier: leave the feedback and inbox screens out of
-`screen()` (or report them under a name other screens share), and put
-nothing about a ticket in an event.
+`screen()` (or report them under a name other screens share), list them in
+the catalog's `private_screens`, and put nothing about a ticket in an event.
+The server stores no view of a screen in `private_screens`, or of a screen
+under one (`support` covers `support/new` and `support/42`), whichever build
+sends it, and deletes the views stored before the catalog named it. That
+matters for app versions that named a screen by its URL, which put the
+ticket id in it ([dogfood log](docs/dogfood.md)).
 
 App versions built with SDK 2.2.x or older still send the install id and
 RevenueCat's id with an email, and track `ticket_opened` and `ticket_replied`
@@ -221,6 +226,31 @@ opened are deleted with it. Until then that ticket is linked to that
 install, so the answers above hold in full only for builds on 2.3.0 or
 later. The dashboard never shows an install on a ticket with an email, and
 an install's page never lists one.
+
+### App Privacy answers
+
+What an app on hush and `@bavrk/hush-expo` can declare in App Store
+Connect's App Privacy section. Every row is Tracking: No. A row applies when
+its "When" does; an app that collects none of it leaves the row out.
+
+| Data type | When | Linked to the user | Purposes |
+|---|---|---|---|
+| Usage Data: Product Interaction | Always: events, sessions, screens | No | Analytics; Developer's Advertising or Marketing when hush-expo reports conversion values |
+| Usage Data: Other Usage Data | When the app sends an answer about its use as a prop, such as where the user heard of the app | No | Analytics |
+| Usage Data: Advertising Data | With hush-expo's ad attribution: hush stores Apple's postback copies | No | Developer's Advertising or Marketing; Analytics |
+| Purchases: Purchase History | When the app sends purchase events (`purchase_started`, `purchase_result`, `restore_result`) | No | Analytics; Developer's Advertising or Marketing when a conversion value marks a purchase |
+| Diagnostics: Other Diagnostic Data | Always: app version, build, OS, device model, language, channel, paid flag | No | Analytics |
+| Location: Coarse Location | When the server sets `COUNTRY_HEADER` | No | Analytics |
+| Contact Info: Email Address | When the feedback form asks for one | Yes, only for people who write in with an email | App Functionality |
+| User Content: Customer Support | When the app takes feedback | Yes, only for people who write in with an email; No without an email field | App Functionality |
+
+These hold for builds on SDK 2.3.0 or later against a server with migration
+007, with the feedback and inbox screens out of `screen()` and in
+`private_screens`, and nothing about a ticket in an event
+([above](#what-a-ticket-carries)). Other SDKs in the app answer for
+themselves, in the same rows: RevenueCat adds App Functionality to Purchase
+History. Braele's answers, which this table follows, have no Identifiers
+row for the install id or RevenueCat's anonymous id.
 
 ## Configuration
 
@@ -237,7 +267,8 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `COUNTRY_HEADER` | Header a trusted proxy sets with a two-letter country (`cf-ipcountry`). Unset: no country. |
 | `RESEND_API_KEY`, `MAIL_FROM` | Email through [Resend](https://resend.com): feedback alerts, and your replies to users who left an address. |
 | `ALERT_EMAIL`, `REPLY_HINT` | Where new feedback is announced (at most 30 an hour), and a last line saying where to answer. |
-| `RETENTION_DAYS` | Default 180. |
+| `RETENTION_DAYS` | Raw events are deleted after this many days. Default 180. |
+| `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days: no batch, and no event dated inside the window. Default `RETENTION_DAYS`, when its events are gone too; 0 keeps every row. Its tickets keep the install id. The dashboard's install total and Countries panel then count the installs seen in that window, not all time; new installs and retention over a longer period (the 1y view) count only the installs still kept, as numbers from events count only the events still kept; an install that sends again after its row went counts as new. |
 | `RC_API_KEY`, `RC_PROJECTS`, `RC_CURRENCY` | RevenueCat v2 secret key with read-only scopes; see `src/revenuecat.mjs`. `RC_STALE_MINUTES` (10), `RC_FLOOR_SECONDS` (60) and `RC_RATE_PER_MINUTE` (20) pace its refreshes. |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` (or `_FILE`) | An App Store Connect API key, for campaign reports (below). The Admin role once, to create each app's report request; Sales and Reports after. `ASC_API_BASE` changes Apple's address, for tests. |
 | `DEMO` | `1`: a public read-only showcase with invented data. It wipes its database daily, so give it one of its own; it refuses a database with write keys. |
@@ -259,7 +290,13 @@ the dashboard without touching the catalog. `breakdowns` pin charts to the
 app's page: one event split by one prop, counted per event or, for an answer
 that can change later, once per install. `app_store_id` and
 `conversion_values` are for where installs come from (below); postbacks are
-matched to an app by `app_store_id` alone, so attribution needs it. The
+matched to an app by `app_store_id` alone, so attribution needs it.
+`private_screens` lists screens, as the app names them in `screen()`, that
+the server never stores: a `screen_viewed` naming one, or a screen under one
+(`support/42` under `support`), in any prop is accepted and discarded, any
+other event loses a prop that names one, and views stored before are
+deleted at boot and in the six-hourly sweep. List the feedback and inbox
+screens there. The
 catalog is read once at boot and a mistake in it stops the boot, naming the
 path: restart after editing it. Leave out `funnels` rather than writing `[]`.
 
@@ -277,6 +314,7 @@ path: restart after editing it. Leave out `funnels` rather than writing `[]`.
       { "event": "workout_completed", "prop": "kind", "title": "Workouts by kind" },
       { "event": "onboarding_completed", "prop": "goal", "count": "installs" }
     ],
+    "private_screens": ["support", "feedback"],
     "app_store_id": "1234567890",
     "conversion_values": [
       { "value": 1, "coarse": "low", "event": "onboarding_completed", "label": "Onboarded" },
@@ -318,7 +356,7 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 
 | | |
 |---|---|
-| `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. |
+| `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored. |
 | `POST /v1/tickets` | feedback: `{ install?, kind: issue\|feature\|love, message, email?, subject?, rc_id?, diag? }` → 201 `{ id, created_at, status }`. With an email and no install, stored with neither install nor `rc_id`, and the answer adds `thread`: the key to that ticket. Without an email, `install` is required. Five a day per install, or per caller address without one; 400 on validation (message 1-4000, subject ≤120, email ≤160). |
 | `GET /v1/tickets?install=` | that install's feedback (last 50), with replies and `unread`; reading marks every reply read |
 | `POST /v1/tickets/list` | `{ install }` → the same, with the install out of the URL (SDK 2.3.0) |
@@ -334,7 +372,7 @@ no key, Apple's signature is the proof.
 
 The operator side, `Authorization: Bearer <ADMIN_TOKEN>`, is what the
 dashboard reads: `/admin/session` (asked first, to know whether to show the
-sign-in), `/admin/apps`, `/admin/apps/:app` (`?channel=`),
+sign-in), `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`),
 `/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
 `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
 `/admin/installs/:id` (+ `/forget`), `/admin/tickets`, `/admin/tickets/:id`

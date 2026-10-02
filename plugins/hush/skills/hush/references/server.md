@@ -57,6 +57,7 @@ what its `environment:` block lists.
 | `RESEND_API_KEY`, `MAIL_FROM` | Mail through Resend: feedback alerts, and replies to users who left an address. |
 | `ALERT_EMAIL`, `REPLY_HINT` | Where new feedback is announced (at most 30 mails an hour; tickets are always stored), and a last line saying where to answer. |
 | `RETENTION_DAYS` | Raw events are deleted after this many days. Default 180. Swept every 6 hours. |
+| `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days (no batch, no event dated inside the window), in the same sweep. Default `RETENTION_DAYS`; 0 keeps every row. Its tickets keep the install id: the operator can still answer them, and the app lists them again if the install comes back, as a new install. The dashboard's install total and Countries panel then count the installs seen in that window, not all time. |
 | `RC_API_KEY` | RevenueCat v2 secret key with read-only scopes, for the revenue panel. |
 | `RC_PROJECTS`, `RC_CURRENCY`, `RC_STALE_MINUTES`, `RC_FLOOR_SECONDS`, `RC_RATE_PER_MINUTE` | Project mapping (`myapp=projabc`) when names differ; currency (USD); cache and rate settings (10 min, 60 s, 20 a minute). |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16 characters or more), accepted on `/admin/*` in place of the token. Both or neither. |
@@ -126,6 +127,7 @@ highlight and the default Paywall funnel. A bare array is read as the app's
       { "event": "workout_completed", "prop": "kind", "title": "Workouts by kind" },
       { "event": "onboarding_completed", "prop": "goal", "count": "installs" }
     ],
+    "private_screens": ["support", "feedback"],
     "app_store_id": "1234567890",
     "conversion_values": [
       { "value": 1, "coarse": "low", "event": "onboarding_completed", "label": "Onboarded" },
@@ -142,6 +144,7 @@ highlight and the default Paywall funnel. A bare array is read as the app's
 | `highlight` | `{ event, done_prop? }`. The dashboard counts `event` per period, and "done" where `props[done_prop]` is `true`. `done_prop` is a prop name or null. |
 | `funnels` | Up to 10. Each `{ name, steps, window_days? }`: a name (trimmed, up to 60), 2 to 8 steps, `window_days` an integer 1 to 90 (default 7). Steps are ordered, each within `window_days` of the first. A step is an event name or `{ event, where?, label? }`; `where` has 1 to 3 props with string, number or boolean values, compared as text; `label` up to 60. Present, it replaces the default Paywall funnel. **Omit the key rather than writing `[]`**: an empty list breaks the campaigns panel. |
 | `breakdowns` | Up to 12. Each `{ event, prop, title?, count? }`: `prop` is a prop name, `title` up to 60 (default "Event by prop"), `count` `events` (default) or `installs` (for an answer that can change later). |
+| `private_screens` | Screen names, as the app passes them to `screen()`: non-empty strings, without a trailing `/`. The server never stores a `screen_viewed` that names one, or a screen under one (`support` covers `support/new` and `support/42`, not `supportive` or `Support`), in any prop: it is counted as accepted and discarded. Any other event is stored without a prop that names one. Views stored before the catalog named it are deleted at boot (every prop) and in the six-hourly sweep (the `screen` prop). Matched exactly, case included: list each spelling the app sends. For the feedback and inbox screens. |
 | `app_store_id` | The App Store id, digits (`^[1-9][0-9]{5,11}$`), string or number. Needed for App Store campaigns and to attach postbacks to the app. |
 | `conversion_values` | Up to 20 milestones `{ value, coarse?, event, where?, label?, lock? }`: `value` an integer 1 to 63, strictly increasing; `coarse` `low`, `medium` or `high` (default `low`), never lower than the one before; `event` and `where` as in a funnel step; only `lock: true` locks. See [attribution.md](attribution.md). |
 
@@ -168,6 +171,9 @@ does not:
   `conversion_values` is in `events` or is a common name.
 - `conversion_values` come with `app_store_id`. Without it, postbacks are
   stored with no app and never shown.
+- `private_screens` names the screens as the app sends them: route patterns
+  with Expo Router (`support`), route names with React Navigation
+  (`Support`, `SupportThread`).
 - No `"funnels": []`.
 
 ## 7. Funnels and breakdowns on the dashboard
@@ -185,7 +191,10 @@ does not:
   `getInstallationId()`. It never lists a ticket with an email, and a ticket
   with an email shows "Not linked to an install (email given)" and no
   customer id. A "please delete my message" that comes by email is the
-  ticket's Delete button.
+  ticket's Delete button. An install whose row went with
+  `INSTALL_RETENTION_DAYS` shows its tickets without an email, and no row.
+- No view shows a screen in `private_screens`: not the install page, not a
+  breakdown, even before the sweep has deleted a view stored earlier.
 - Every view takes the prod/dev switch and the channel filter.
 
 ## 8. The /v1 API
@@ -194,7 +203,7 @@ Apps send `Authorization: Key <write key>`. The SDK does this.
 
 | Route | Body and answer |
 |---|---|
-| `POST /v1/events` | `{ sent_at, sdk, context, events }`, up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429: drop the batch. 429 and 5xx: retry. |
+| `POST /v1/events` | `{ sent_at, sdk, context, events }`, up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429: drop the batch. 429 and 5xx: retry. A view of a screen in `private_screens` counts as accepted and is not stored. |
 | `POST /v1/tickets` | `{ install?, kind, message, email?, subject?, rc_id?, diag? }`. 201 `{ id, created_at, status }`. With an email and no install (SDK 2.3.0): stored with no install and no `rc_id`, and the answer adds `thread`, the key for that ticket (only its sha256 is stored). Without an email, `install` is required. 429 after five a day, per install, or per caller address and app without one. |
 | `GET /v1/tickets?install=` | That install's tickets under this app, with replies and `unread`. Marks replies read. |
 | `POST /v1/tickets/list` | `{ install }`. The same as the GET, with the install out of the URL and the access log (SDK 2.3.0). |
@@ -221,7 +230,7 @@ ticket: the operator deletes it with Delete, on request.
 ## 9. The admin API and the CLI
 
 The dashboard reads the admin API with `Authorization: Bearer <ADMIN_TOKEN>`:
-`/admin/session`, `/admin/apps` (`?days=&env=`), `/admin/apps/:app`
+`/admin/session`, `/admin/apps` (`?days=&env=`; with `install_retention_days`, null when off), `/admin/apps/:app`
 (`?channel=`), `/admin/apps/:app/funnels`, `/funnel?step=…`, `/breakdown?event=&prop=`,
 `/props?event=`, `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
 `/admin/installs/:id` (and `POST …/forget`), `/admin/tickets`,

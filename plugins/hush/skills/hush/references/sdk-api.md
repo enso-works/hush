@@ -96,7 +96,7 @@ The default entry exports these as module functions. `createWebHush()` and
 |---|---|---|
 | `app_first_opened` | The first `init()` ever for this storage prefix | none |
 | `session_started` | At `init()` (every cold launch), and on return after more than 30 minutes in the background. Held 2.5 s for `entry()`. | `entry` (default `'launch'`), `n` (this install's session number), `prev_fg_s` (the previous session's foreground seconds, when `n > 1`), the link's campaign tags when claimed with a URL, and the global props as they are when it commits |
-| `screen_viewed` | When the app calls `screen()` | `screen` |
+| `screen_viewed` | When the app calls `screen()`. The server stores none for a screen in the catalog's `private_screens`, or under one. | `screen` |
 | `ticket_opened` | After a successful `createTicket()` without an email | `kind` |
 | `ticket_replied` | After a successful `replyToTicket()` on a ticket sent without an email | none |
 

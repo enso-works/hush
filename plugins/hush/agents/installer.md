@@ -77,7 +77,8 @@ End with, in this order:
 - **Keys**: where the prod key and the dev key are read, prefixes only.
 - **The user must still do**: set the server URL and the prod key if the
   wiring went in with `''`; mint keys if missing; add the listed event names
-  to the app's catalog entry and restart the server; set
+  to the app's catalog entry, and the feedback and inbox screens to its
+  `private_screens` when feedback is wired, and restart the server; set
   `EXPO_PUBLIC_HUSH_CHANNEL` per platform in `eas.json`
   (`build.<profile>.android.env`, `build.<profile>.ios.env`), not in a
   profile's top-level `env`; for hush-expo, rebuild the native app, and for

@@ -228,10 +228,15 @@ joined them needs it listed when users can reply.
       { "event": "paywall_viewed", "prop": "placement", "title": "Where the paywall opens" },
       { "event": "purchase_result", "prop": "product", "title": "Purchases by product" },
       { "event": "session_started", "prop": "entry", "title": "How sessions begin" }
-    ]
+    ],
+    "private_screens": ["feedback", "support"]
   }
 }
 ```
+
+`private_screens` names the app's feedback and inbox screens as `screen()`
+reports them: the server stores no view of them, or of a screen under one.
+Leave it out for an app without feedback.
 
 Once the App Store record exists, add `app_store_id` and `conversion_values`
 ([attribution.md](attribution.md)). Validate the file before deploying it

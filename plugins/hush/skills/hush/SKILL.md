@@ -1,6 +1,6 @@
 ---
 name: hush
-description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native and web apps. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, the hush server and its catalog (events, highlight, funnels, breakdowns), and Apple ad attribution through @bavrk/hush-expo (SKAdNetwork and AdAttributionKit conversion values). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention or campaign attribution without IP addresses, advertising ids or a consent banner.
+description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native and web apps. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, the hush server and its catalog (events, highlight, funnels, breakdowns, private screens), and Apple ad attribution through @bavrk/hush-expo (SKAdNetwork and AdAttributionKit conversion values). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention or campaign attribution without IP addresses, advertising ids or a consent banner.
 license: MIT
 compatibility: Expo apps on React Native 0.73 or later (Expo SDK 52 or later for @bavrk/hush-expo), bare React Native 0.73 or later with Expo modules, or a web, PWA or Capacitor app. Needs the URL of a running hush server and a write key minted on it.
 metadata:
@@ -90,6 +90,8 @@ after the list.
    Ids, codes and tokens never go into screen names or props. Leave the
    feedback and inbox screens out (or give them a name other screens share):
    next to a ticket sent with an email, their timing points at the install.
+   List the same names in the catalog's `private_screens`, so the server
+   drops a view of them from any build, older ones included.
 9. **Do not call `listTickets()` at launch for a badge.** Fetching marks every
    reply read on the server. Keep a local seen-set instead.
 
@@ -157,7 +159,8 @@ import { useEffect } from 'react';
 
 import * as hush from '@/lib/hush';
 
-// The app's feedback and inbox routes, as screen() would name them.
+// The app's feedback and inbox routes, as screen() would name them. The
+// catalog's private_screens lists them too: ["feedback", "support"].
 const UNTRACKED = new Set(['feedback', 'support', 'support/[id]']);
 
 export default function RootLayout() {
@@ -279,14 +282,21 @@ and edge cases are in [references/sdk-api.md](references/sdk-api.md).
 
 ## App Privacy answers
 
-What an app on hush can declare in App Store Connect's App Privacy section,
-with SDK 2.3.0 or later and a hush server with migration 007:
+What an app on hush and `@bavrk/hush-expo` can declare in App Store
+Connect's App Privacy section, with SDK 2.3.0 or later and a hush server
+with migration 007. Every row is Tracking: No. A row applies when its
+"When" does; leave out the rows the app does not collect.
 
-| Data type | Collected | Linked to the user | Used for tracking | Purpose |
-|---|---|---|---|---|
-| Usage Data: Product Interaction | Yes: events, sessions, screens | No | No | Analytics |
-| Contact Info: Email Address | Only when the feedback form asks for one | Yes | No | App Functionality |
-| User Content: Customer Support | When the user sends feedback | Yes, when an email is given | No | App Functionality |
+| Data type | When | Linked to the user | Purposes |
+|---|---|---|---|
+| Usage Data: Product Interaction | Always: events, sessions, screens | No | Analytics; Developer's Advertising or Marketing when hush-expo reports conversion values |
+| Usage Data: Other Usage Data | When the app sends an answer about its use as a prop, such as where the user heard of the app | No | Analytics |
+| Usage Data: Advertising Data | With hush-expo's ad attribution: hush stores Apple's postback copies | No | Developer's Advertising or Marketing; Analytics |
+| Purchases: Purchase History | When the app sends purchase events (`purchase_started`, `purchase_result`, `restore_result`) | No | Analytics; Developer's Advertising or Marketing when a conversion value marks a purchase |
+| Diagnostics: Other Diagnostic Data | Always: app version, build, OS, device model, language, channel, paid flag | No | Analytics |
+| Location: Coarse Location | When the server sets `COUNTRY_HEADER` | No | Analytics |
+| Contact Info: Email Address | When the feedback form asks for one | Yes, only for people who write in with an email | App Functionality |
+| User Content: Customer Support | When the app takes feedback | Yes, only for people who write in with an email; No without an email field | App Functionality |
 
 Why usage data is not linked: the install id is a random UUID made on the
 device, and a ticket with an email carries neither it nor RevenueCat's id.
@@ -295,24 +305,33 @@ dashboard offers no way to do it, and the SDK tracks no `ticket_opened` or
 `ticket_replied` for it. A ticket without an email carries the install id,
 which is how the answer gets back, and nothing that says who wrote it. So
 Contact Info and Customer Support are linked only for people who write in
-with an email.
+with an email. A postback copy names no install.
 
 - The ticket's time and diagnostics (version, build, OS, device, paid flag)
   are also on the install's row and events, so someone with the database
   could still narrow a ticket down to one install on a small app. Apple
   counts data as not linked only while nobody tries to link it back: never
-  do, leave the feedback and inbox screens out of `screen()` (usage rule 8),
-  and put nothing about a ticket in an event.
-- An app without an email field: Customer Support is not linked either.
-- Other SDKs in the app (RevenueCat, a crash reporter) have answers of their
-  own.
+  do, leave the feedback and inbox screens out of `screen()` (usage rule 8)
+  and list them in the catalog's `private_screens`, and put nothing about a
+  ticket in an event.
+- Other SDKs in the app answer in the same rows: RevenueCat adds App
+  Functionality to Purchase History. Braele's answers, which this table
+  follows, have no Identifiers row for the install id or RevenueCat's
+  anonymous id.
 - Versions already in users' hands on 2.2.x or older still send the install
   id with an email, and track `ticket_opened` and `ticket_replied` with it.
   The server drops RevenueCat's id at once. It clears the install id, and
   deletes that install's ticket events since the ticket was opened, once the
   ticket is closed and that app has fetched it since (or 7 days after it
   closed), or after 30 idle days; until then that one ticket is linked to
-  that install. The answers above hold in full for builds on 2.3.0 or later.
+  that install. A version that named a screen by its URL put the ticket id
+  in it: `private_screens` drops those views, stored ones included. The
+  answers above hold in full for builds on 2.3.0 or later.
+- Retention for the privacy policy: raw events go after `RETENTION_DAYS`
+  (180), and an install's row once it has sent nothing for
+  `INSTALL_RETENTION_DAYS` (the same by default), so everything about an
+  install's use of the app is gone 180 days after it last sends anything.
+  Feedback threads stay until they are deleted.
 - "Delete my data" (`forget()`) reaches the tickets sent with an email only
   while the device holds their keys, and a 2.2.x ticket only until the server
   unlinks it. Give the support address in that setting for messages sent
@@ -326,8 +345,9 @@ The app is half the work. On the hush server, the operator:
 - mints the keys: `node src/cli.mjs keys:create myapp prod`, and `dev`. Each
   key is printed once;
 - adds every event name, a highlight, funnels and breakdowns to the app's entry
-  in `CATALOG_FILE`, then restarts the server. The catalog is read at boot, and
-  a bad one stops the boot.
+  in `CATALOG_FILE`, and the feedback and inbox screens to its
+  `private_screens`, then restarts the server. The catalog is read at boot,
+  and a bad one stops the boot.
 
 ## References
 
