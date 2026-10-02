@@ -59,6 +59,15 @@ people already using them. Regenerate the snapshot (`UPDATE_SNAPSHOTS=1 npm
 test`) only for a change every shipped SDK version handles, and say why in
 the commit.
 
+## The config evaluator
+
+Remote config targeting is evaluated on the device by `sdk/src/evaluate.js`,
+and by the server for the dashboard's Preview as. The evaluator has one
+source, `sdk/src/evaluate.js`; `src/evaluate.mjs` is a byte-identical copy,
+since the Docker image has no `sdk/` (`test/config-eval.test.mjs` fails when
+they differ). Edit the SDK's, copy it over, and add a fixture case in
+`test/__fixtures__/config-eval.json`: both copies run every case in it.
+
 ## Migrations
 
 Add a new `migrations/NNN_name.sql`; never edit one that has shipped. They

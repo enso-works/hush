@@ -423,7 +423,9 @@ An inbox:
 Settings rows:
 
 - "Share anonymous usage": a switch bound to `!hush.isOptedOut()` (read it after
-  `hushReady`), calling `optOut()` or `optIn()`. Feedback keeps working.
+  `hushReady`), calling `optOut()` or `optIn()`. Feedback keeps working, and
+  so does remote config: its request carries no identifier. A privacy policy
+  that says nothing is sent after an opt-out should mention it.
 - "Delete my data": `await hush.forget()`. On `ok: false` (`offline`,
   `failed`), the install's data is still there; offer to try again (tickets
   with an email it had already deleted stay deleted). Say in the row's text
@@ -506,7 +508,7 @@ run. Set `NSAdvertisingAttributionReportEndpoint` and
    mismatched versions.
 3. **Runtime** (the user runs it, unless they asked you to): set
    `logLevel: 'debug'` in development, start the app, and look for
-   `[hush] ready: install <uuid>, sdk 2.3.0, channel dev` and
+   `[hush] ready: install <uuid>, sdk 2.4.0, channel dev` and
    `[hush] sent N: { status: 200, …, rejected: 0 }`. Put `logLevel` back to
    `'error'` afterwards.
 4. **Dashboard**: switch to dev, open Installs, and paste the id from

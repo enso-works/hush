@@ -23,6 +23,9 @@ and this page say. MIT.
   TestFlight stays out of the store numbers), and your own events with props,
   broken down by any prop. No account, no advertising id, no IP address, so
   nothing to ask consent for.
+- **Remote config**: values the app reads at runtime (a flag, a kill switch,
+  a number, copy), declared in the catalog and changed on the dashboard
+  without a release, with targeting and rollouts worked out on the device.
 - **Revenue** (optional): RevenueCat's own figures next to your usage.
 
 Site and docs: [hush.bavrk.com](https://hush.bavrk.com). See the dashboard on
@@ -95,7 +98,7 @@ app has the link, before or after `init()` resolves. (SDK 2.2.1 and older
 need `init()` called right after `configure()`, `entry()` only after `init()`
 has resolved, and `identify()` early: see the SDK guide.) The
 [SDK guide](sdk/README.md) has the rest: screens, link tags, opt-out and
-`forget()`, the naming limits and the web entry.
+`forget()`, the naming limits, remote config and the web entry.
 
 ## Run the server
 
@@ -157,6 +160,9 @@ The [hush plugin](plugins/hush/) for Claude Code:
   memory only.
 - **No advertising or device identifiers**: nothing for App Tracking
   Transparency to ask about. From a link, only its `utm_*` and `ref` tags.
+- **Nothing for remote config**: its request carries the write key and a
+  revision, and the device never reports which value it got
+  ([below](#remote-config)).
 
 Raw events are deleted after `RETENTION_DAYS` (180). An install that has
 sent nothing for `INSTALL_RETENTION_DAYS` (`RETENTION_DAYS` unless set)
@@ -255,7 +261,8 @@ about a ticket in an event
 ([above](#what-a-ticket-carries)). Other SDKs in the app answer for
 themselves, in the same rows: RevenueCat adds App Functionality to Purchase
 History. Braele's answers, which this table follows, have no Identifiers
-row for the install id or RevenueCat's anonymous id.
+row for the install id or RevenueCat's anonymous id. Remote config adds no
+row and changes none: it collects nothing.
 
 ## Configuration
 
@@ -267,7 +274,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `openssl rand -hex 32`. The old name `TELEMETRY_ADMIN_TOKEN` still works. |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16+ characters), accepted on `/admin/*` instead of the token. Only when the proxy overwrites that header. |
 | `APPS` | Register apps at boot: `myapp=My App,other=Other`. |
-| `CATALOG_FILE` | Each app's known events, highlight metric and funnels, as JSON (below). |
+| `CATALOG_FILE` | Each app's known events, highlight metric, funnels and remote config keys, as JSON (below). |
 | `CLIENT_IP_HEADER` | Header a trusted proxy sets with the caller's address (`cf-connecting-ip`, `x-forwarded-for`), for rate limits. Unset: the socket address. Behind a proxy, set it: otherwise every caller has the proxy's address and shares its limits, and an app takes five tickets with an email a day from all its users together. The server warns once when a request comes from a private address and it is unset. |
 | `COUNTRY_HEADER` | Header a trusted proxy sets with a two-letter country (`cf-ipcountry`). Unset: no country. |
 | `RESEND_API_KEY`, `MAIL_FROM` | Email through [Resend](https://resend.com): feedback alerts, and your replies to users who left an address. |
@@ -301,7 +308,9 @@ the server never stores: a `screen_viewed` naming one, or a screen under one
 (`support/42` under `support`), in any prop is accepted and discarded, any
 other event loses a prop that names one, and views stored before are
 deleted at boot and in the six-hourly sweep. List the feedback and inbox
-screens there. The catalog is read once at boot and a mistake in it stops
+screens there. `config` declares the app's remote config keys, each with a
+type, a default, a description and optional rules
+([below](#remote-config)). The catalog is read once at boot and a mistake in it stops
 the boot, naming the path: restart after editing it. A key the server does
 not read, misspelt or from a later version, is ignored with a warning in
 the log. Leave out `funnels` rather than writing `[]`.
@@ -326,7 +335,10 @@ the log. Leave out `funnels` rather than writing `[]`.
       { "value": 1, "coarse": "low", "event": "onboarding_completed", "label": "Onboarded" },
       { "value": 8, "coarse": "medium", "event": "workout_completed", "label": "First workout" },
       { "value": 63, "coarse": "high", "event": "purchase_result", "where": { "result": "purchased" }, "label": "Purchased", "lock": true }
-    ]
+    ],
+    "config": {
+      "review_prompt_after": { "type": "number", "default": 3, "description": "Sessions before the app asks for a review." }
+    }
   }
 }
 ```
@@ -356,6 +368,94 @@ reads an advertising id, or needs an App Tracking Transparency prompt.
   verifies; test postbacks show under dev. Enter the same milestone table in
   the ad network (Meta: Events Manager).
 
+## Remote config
+
+Values the app reads at runtime and you change without a release: a feature
+flag, a kill switch, a number, copy per language. Values and targeting only:
+no experiments, no exposure events, no variant statistics.
+
+Each key is declared in the app's catalog entry, in git, with a type
+(`bool`, `number`, `string` or `json`), a default, a description and
+optional rules:
+
+```json
+"myapp": {
+  "config": {
+    "new_home": {
+      "type": "bool",
+      "default": false,
+      "description": "The redesigned home screen.",
+      "rules": [
+        { "when": { "channel": ["testflight", "dev"] }, "value": true, "note": "Testers see it first" },
+        { "when": { "platform": ["ios"], "version": ">=2.1.0" }, "rollout": 20, "value": true }
+      ]
+    },
+    "paywall_copy": {
+      "type": "string",
+      "default": "Start your free week",
+      "description": "The paywall headline.",
+      "rules": [{ "when": { "language": ["de"] }, "value": "Eine Woche gratis" }]
+    }
+  }
+}
+```
+
+A rule's `when` may ask for a platform list, an app version range
+(`>=2.1.0 <3`), a build channel list, a language list and the paid flag
+(`pro`), and every condition it has must hold. A `rollout` from 0 to 100
+puts that share of installs in, by a bucket worked out from the install id
+and the key, so an install stays in or out and raising 10 to 20 keeps the
+first 10 in. The first rule that matches decides, otherwise the default. A
+condition on something the device does not know (no channel, `pro` before
+`identify()`) does not hold. Rules a device cannot read, from a newer server,
+are skipped.
+
+The dashboard's Remote config page lists each app's keys. It can override a key's
+default, its rules or both, check a change as you type, preview what a
+device or one install would get, and revert to the catalog; every save and
+revert goes into the key's history, and a save made on a stale page is
+refused. It cannot create, rename or delete keys, or change a type. An
+override the catalog no longer fits (its key was removed, or its type
+changed) is kept, not served, and shown there to fix or delete.
+
+In the app ([SDK guide](sdk/README.md#remote-config), SDK 2.4.0):
+
+```ts
+hush.config.bool('new_home', false);          // the fallback until a value is loaded
+hush.config.string('paywall_copy', 'Start your free week');
+hush.config.ready().then(() => SplashScreen.hideAsync()); // usable: from the cache, or the first fetch
+
+const config = hush.useConfig();              // in a component: re-renders on any change
+```
+
+The SDK asks for `/v1/config` at `init()` and, at most every 15 minutes, in
+the foreground, sending the revision it holds (304 when nothing changed). The
+answer is cached on the device, so the next launch starts from it and a
+failed fetch keeps it.
+
+Remote config sends nothing new. The SDK asks for `/v1/config` with the
+app's write key and the revision it already has: no install id, no device
+details, no events. Every install of an app gets the same answer. Targeting
+and rollouts are worked out on the device from what the SDK already knows
+(platform, app version, build channel, the language the app shows or the
+phone's, the paid flag the app passed to `identify()`, and the install id
+for the rollout). The device never reports which value it got. The server
+learns nothing new: for an install that sends events, it could work the
+value out from what those events already carry (platform, version,
+channel, locale, paid flag, install id), which is what the dashboard's
+Preview as does. A user who opted out still gets config, since the request
+says nothing about them; an app whose privacy policy says nothing is sent
+after an opt-out must mention this request. The App Privacy answers do not
+change. An app that reports a config value in an event, say as a global
+prop, sends it like any other prop.
+
+Limits, for the catalog and overrides alike: 100 keys per app, 20 rules per
+key, strings up to 2000 characters, a `json` value (an object or an array)
+up to 8 KB and 32 levels deep, everything served for an app up to 64 KB,
+descriptions and notes up to 200 characters. One config serves the app's
+prod and dev keys; target a dev build with a `channel: ["dev"]` rule. The
+server needs migration 009.
+
 ## API
 
 Apps send `Authorization: Key <write key>`; the SDK does this for you.
@@ -369,9 +469,10 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 | `POST /v1/tickets/threads` | `{ threads: [key, …] }` (up to 50) → the same answer for the tickets those keys open. Reading marks replies read by the time of the newest one shown, never the time of the request. |
 | `POST /v1/tickets/:id/reply` | `{ install, body }` or `{ thread, body }` → 201, 404 for a wrong install or key, 409 once closed, 429 after 20 replies a day |
 | `POST /v1/forget` | `{ install }` → 200 `{ ok, deleted }`: that install's events, feedback and row, under the calling app. `{ threads }` on its own → 200 `{ ok, deleted: { tickets } }`; both in one request is a 400 |
-| `GET /v1/config` | the app's `conversion_values` from the catalog, for the SDK |
+| `GET /v1/config` | `{ conversion_values, config: { revision, keys } }`: the catalog's conversion values, and its remote config keys merged with the dashboard's overrides (an app without any gets `keys: {}`). Every 200 has `ETag: "<revision>"`; `If-None-Match` with that revision gets a 304 with no body. Older SDKs read `conversion_values` only. |
 
-`/v1` answers CORS for any origin, so web and Capacitor apps can send.
+`/v1` answers CORS for any origin, so web and Capacitor apps can send, and
+exposes `ETag`.
 `POST /.well-known/skadnetwork/report-attribution` and
 `/.well-known/appattribution/report-attribution` take Apple's postback copies:
 no key, Apple's signature is the proof.
@@ -383,8 +484,14 @@ sign-in), `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?c
 `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
 `/admin/installs/:id` (+ `/forget`), `/admin/tickets`, `/admin/tickets/:id`
 (+ `/reply`, `/status`, and `DELETE`), `/admin/revenue` (`?refresh=1` asks RevenueCat
-now). Writes must be `Content-Type: application/json`. CLI:
-`node src/cli.mjs apps:list | apps:add <slug> <name> | keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id> | rc:projects | rc:link <app> <project_id> | rc:sync | rc:charts | rc:poll | asc:request <app> | asc:sync [app] | migrate`.
+now), and for remote config `/admin/apps/:app/config` (every key with its
+catalog entry, override and what is served, and the orphaned overrides),
+`/config/history?key=&limit=&before=`, `/config/preview?install=&platform=&version=&channel=&language=&pro=&key=&draft=`,
+and `POST` (override, with the `base` change id the editor loaded; 409 when
+it is stale) and `DELETE` (revert to the catalog) on `/config/:key`. Writes
+must be `Content-Type: application/json`. CLI:
+`node src/cli.mjs apps:list | apps:add <slug> <name> | keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id> | rc:projects | rc:link <app> <project_id> | rc:sync | rc:charts | rc:poll | asc:request <app> | asc:sync [app] | config:show <app> | config:history <app> [key] | migrate`
+(`config:show` prints the `/v1/config` answer; both are read-only).
 
 Limits are honest about what this is: rate limits are in memory, per
 process, and reset on restart. One instance is plenty for small apps.

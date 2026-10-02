@@ -8,6 +8,16 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
 ## 2026-10-02
 
+- **hush, remote config.** Changing Braele's paywall copy, or turning a
+  feature on or off, took an app release each time, and a broken feature
+  stayed on until the next build was reviewed. hush now serves remote
+  config: values and targeting, declared in the catalog with a type, a
+  default and rules, overridden on the dashboard with a history, and
+  evaluated on the device (platform, version, channel, language, paid flag,
+  a rollout by install). The request carries no install id and the device
+  reports nothing back, so the App Privacy answers stay as they are. Server
+  with migration 009, SDK 2.4.0, the dashboard's Remote config page. Open:
+  Braele and app-template adopt it in their own changes.
 - **hush, review of the two fixes below.** Install retention made the 1y
   view flatter the app: an install first seen more than 180 days ago is
   still on record only if it kept sending, so the ones that stopped left
