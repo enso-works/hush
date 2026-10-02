@@ -19,8 +19,13 @@ export function router() {
         let ok = true;
         for (let i = 0; i < r.parts.length; i++) {
           const want = r.parts[i];
-          if (want.startsWith(':')) params[want.slice(1)] = decodeURIComponent(parts[i]);
-          else if (want !== parts[i]) { ok = false; break; }
+          if (want.startsWith(':')) {
+            // %E0%A4 is valid hex but not UTF-8, and decodeURIComponent throws
+            // on it outside any handler's try: an unanswered request then
+            // takes the whole process down. Such a path names nothing here.
+            try { params[want.slice(1)] = decodeURIComponent(parts[i]); }
+            catch { ok = false; break; }
+          } else if (want !== parts[i]) { ok = false; break; }
         }
         if (ok) return { handler: r.handler, params };
       }
