@@ -430,6 +430,17 @@ describe('deleting one ticket', () => {
   });
 });
 
+test('a path parameter that is not UTF-8 is a 404, and the server stays up', async () => {
+  // %E0%A4 is valid percent-encoding of bytes that are not UTF-8. Decoding it
+  // used to throw outside the handler, and one such request, no key needed,
+  // ended the process.
+  for (const [method, path] of [['POST', '/v1/tickets/%E0%A4/reply'], ['GET', '/admin/tickets/%E0%A4'], ['DELETE', '/admin/tickets/%FF']]) {
+    const res = await fetch(`${srv.base}${path}`, { method, headers: { 'content-type': 'application/json' }, body: method === 'GET' ? undefined : '{}' });
+    assert.equal(res.status, 404, `${method} ${path}`);
+  }
+  assert.equal((await fetch(`${srv.base}/healthz`)).status, 200);
+});
+
 test('the log never holds a thread key, nor an install id next to an email', async () => {
   // Give the dry-run mails a moment to be logged.
   await new Promise((r) => setTimeout(r, 200));
