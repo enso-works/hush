@@ -303,7 +303,8 @@ function KeyWorkspace({
     }
   }
 
-  const draft: PreviewDraft = !changed
+  // What Save would serve: a stale override counts as a draft, as for canSave.
+  const draft: PreviewDraft = !(changed || (stale && override !== null))
     ? { state: 'none' }
     : !valid
       ? { state: 'invalid' }
