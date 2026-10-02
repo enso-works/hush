@@ -20,6 +20,9 @@ declare module 'expo-device' {
 declare module 'expo-localization' {
   export function getLocales(): { languageTag: string }[];
 }
+declare module 'react' {
+  export function useSyncExternalStore<T>(subscribe: (onStoreChange: () => void) => () => void, getSnapshot: () => T, getServerSnapshot?: () => T): T;
+}
 declare module 'react-native' {
   export type AppStateStatus = 'active' | 'background' | 'inactive' | 'unknown' | 'extension';
   export const AppState: { addEventListener(type: 'change', listener: (state: AppStateStatus) => void): { remove(): void } };

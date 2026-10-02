@@ -17,9 +17,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Localization from 'expo-localization';
+import { useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
 
-import { createHush } from './core.ts';
+import { createHush, type HushRemoteConfig } from './core.ts';
 
 declare const __DEV__: boolean | undefined;
 
@@ -72,11 +73,37 @@ export const {
   replyToTicket,
   listTickets,
   telemetryAvailable,
+  config,
 } = client;
+
+// Counts config changes. Registered here, before any component's listener,
+// so a component re-rendering on a change already reads the new count.
+let configVersion = 0;
+config.onChange(() => {
+  configVersion += 1;
+});
+const subscribeConfig = (onStoreChange: () => void) => config.onChange(() => onStoreChange());
+const configSnapshot = () => configVersion;
+
+/**
+ * Remote config in a component: re-renders when any value changes. It returns
+ * the same object every time: read values during render, and memoize on the
+ * value, not on config.
+ *
+ *   const config = useConfig();
+ *   if (config.bool('new_home', false)) return <NewHome />;
+ */
+export function useConfig(): HushRemoteConfig {
+  useSyncExternalStore(subscribeConfig, configSnapshot, configSnapshot);
+  return config;
+}
 
 export { SDK_VERSION, createHush } from './core.ts';
 export type {
   AttributionBridge,
+  ConfigRefreshResult,
+  ConfigSnapshotEntry,
+  ConfigType,
   ConversionValue,
   DeviceInfo,
   Entry,
@@ -84,9 +111,11 @@ export type {
   Hush,
   HushConfig,
   HushPlatform,
+  HushRemoteConfig,
   HushStorage,
   LifecycleState,
   Props,
+  RemoteConfigOptions,
   Ticket,
   TicketKind,
 } from './core.ts';

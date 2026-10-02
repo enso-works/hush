@@ -65,6 +65,7 @@
     "expo-constants": "*",
     "expo-device": "*",
     "expo-localization": "*",
+    "react": ">=18",
     "react-native": ">=0.73"
   },
   "peerDependenciesMeta": {
@@ -78,6 +79,9 @@
       "optional": true
     },
     "expo-localization": {
+      "optional": true
+    },
+    "react": {
       "optional": true
     },
     "react-native": {

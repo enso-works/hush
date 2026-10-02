@@ -328,7 +328,8 @@ test("Apple's conversion value: registered at 0 once, raised as the catalog's mi
   configFetches = 0;
   const updates = [];
   const attribution = { update: async (v) => void updates.push(v) };
-  let sdk = await launch({ attribution });
+  // Without remote config, as in 2.3: attribution fetches the milestones on its own.
+  let sdk = await launch({ attribution, remoteConfig: false });
   assert.deepEqual(updates, [{ fine: 0, coarse: 'low', lock: false }], 'the install registers');
   sdk.track('onboarding_completed');
   sdk.track('purchase_result', { result: 'cancelled' });
@@ -339,7 +340,7 @@ test("Apple's conversion value: registered at 0 once, raised as the catalog's mi
   assert.deepEqual(updates.at(-1), { fine: 63, coarse: 'high', lock: true });
 
   // The next launch neither registers again nor fetches the milestones again (cached for 12 hours).
-  sdk = await launch({ attribution });
+  sdk = await launch({ attribution, remoteConfig: false });
   assert.equal(updates.length, 3);
   assert.equal(configFetches, 1);
 
@@ -442,7 +443,8 @@ test('forget keeps the conversion value: it is the device, not the identity, tha
 
 test('without a bridge nothing is fetched or set, and the web entry takes one too', async () => {
   configFetches = 0;
-  const sdk = await launch();
+  // With remote config on, /v1/config is fetched for the config itself (sdk-config.test.mjs).
+  const sdk = await launch({ remoteConfig: false });
   sdk.track('tutorial_done');
   await settle();
   assert.equal(configFetches, 0);
