@@ -4,8 +4,8 @@ Server, dashboard and docs: [github.com/enso-works/hush](https://github.com/enso
 · [hush.bavrk.com/docs](https://hush.bavrk.com/docs). Native iOS companion:
 [`@bavrk/hush-expo`](https://www.npmjs.com/package/@bavrk/hush-expo).
 
-The SDK for [hush](https://hush.bavrk.com): in-app feedback and anonymous
-usage tracking, sent to your own hush server. It queues events on the device,
+The SDK for [hush](https://hush.bavrk.com): in-app feedback, anonymous
+usage tracking and remote config, with your own hush server. It queues events on the device,
 sends them in small batches, and survives being offline, killed or
 backgrounded. It never throws into your app and never blocks a render: if the
 server is down, or the url or key is missing, the app behaves exactly as
@@ -165,7 +165,7 @@ For milestones a code path might fire twice. The SDK remembers what it sent
 ## The user's choices
 
 ```ts
-hush.optOut();            // "don't share anonymous usage": remembered, nothing queued or sent
+hush.optOut();            // "don't share anonymous usage": remembered: no usage data is queued or sent; the app still asks /v1/config for its config, a request with no identifier
 hush.optIn();
 hush.isOptedOut();        // after init(), or once optOut() has run
 
@@ -282,18 +282,167 @@ is cleared, the app's `forget()` no longer reaches the ticket: the operator
 deletes it on request. The dashboard never shows an install on a ticket with
 an email.
 
+## Remote config
+
+Values the app reads at runtime and you change on the dashboard, without a
+release: a feature flag, a kill switch, a staged rollout, copy per language.
+Values and targeting only: no experiments, no exposure events, no variant
+statistics.
+
+Each key is declared in the server's catalog with a type (`bool`, `number`,
+`string` or `json`), a default, a description and optional rules. The
+dashboard can override a key's default, its rules or both, with a history;
+it cannot create keys.
+
+```json
+"myapp": {
+  "config": {
+    "new_home": {
+      "type": "bool", "default": false, "description": "The redesigned home screen.",
+      "rules": [
+        { "when": { "channel": ["testflight", "dev"] }, "value": true },
+        { "when": { "platform": ["ios"], "version": ">=2.1.0" }, "rollout": 20, "value": true }
+      ]
+    },
+    "session_presets": { "type": "json", "default": [3, 5, 10], "description": "Session lengths, in minutes." }
+  }
+}
+```
+
+A rule may ask for a platform, an app version range, a build channel, a
+language and the paid flag; every condition it has must hold. A rollout puts
+that share of installs in, by a bucket from the install id and the key, so an
+install stays in or out, and raising 10 to 20 keeps the first 10 in. The
+first rule that matches decides; otherwise the default. A condition on
+something the device does not know (no channel, `pro` before `identify()`)
+does not hold.
+
+```ts
+const config = hush.config; // the same on the web and core entries
+
+config.bool('new_home', false);
+config.number('review_prompt_after', 3);
+config.string('paywall_copy', 'Start your free week');
+config.json<number[]>('session_presets', [3, 5, 10]);
+```
+
+The getters never throw. The fallback comes back when the key is not in the
+server's config, has another type, has no usable value, or nothing is loaded
+yet; with `logLevel: 'error'` the first three say so, once per key.
+
+Values are not there on the first render: getters return their fallbacks
+until init() has read storage. An app that must not show a fallback first
+holds its splash screen until `config.ready()`:
+
+```ts
+SplashScreen.preventAutoHideAsync(); // at module load
+config.ready().then(() => SplashScreen.hideAsync());
+```
+
+`ready(timeoutMs = 3000)` calls `init()` and resolves once values are usable:
+at once from the cache, and on a first launch when the first fetch answers or
+fails. It never rejects and gives up after its timeout.
+
+A fetch can change a value while a screen shows it. Read such a value once
+and keep it: `useState(() => config.bool('new_home', false))`, or a ref.
+
+In a component, `useConfig()` (React Native entry) re-renders on any change:
+
+```tsx
+import { useConfig } from '@bavrk/hush';
+
+function Home() {
+  const config = useConfig();
+  return config.bool('new_home', false) ? <NewHome /> : <ClassicHome />;
+}
+```
+
+It returns the same object every time: read values during render, and
+memoize on the value, not on config.
+
+`json()` returns an object or an array, its shape unchecked. The value is
+frozen: copy it before changing it (`[...presets].sort()`). In a development
+build the fallback is frozen too. An equal value from a later fetch keeps the
+same reference.
+
+- `config.onChange((keys) => ...)`: the keys whose value changed, after a
+  fetch, `identify({ pro })`, or `forget()`. Returns a function that removes
+  the listener.
+- `config.refresh()`: fetches now, `{ status, changed }`.
+- `config.revision()`: the revision in use, or null.
+- `config.snapshot()`: every key with its value, the rule that decided it
+  and this install's bucket, for a debug screen.
+
+**Timing and the cache.** The SDK fetches `/v1/config` at `init()`, then on
+returning to the foreground and while in it, at most every `refreshMinutes`
+(15 by default). A request is limited to 15 s. One that fails (offline, 429,
+5xx) is tried again after 1, 2, 4 ... minutes, up to `refreshMinutes`. The
+answer is kept under `<prefix>.config.v1`, and the next launch starts from
+it; a failed fetch keeps it. The SDK sends the revision it holds and the
+server answers 304 when nothing changed. With an attribution bridge one
+request serves both the milestones and the config.
+
+**Language.** Pass the language the app shows when it is not always the
+phone's first: `language: () => locale`, the locale your i18n module
+resolved. Otherwise a phone set to Catalan, then Spanish, gets your Spanish UI
+and your default copy. It is read when values are evaluated (each fetch,
+`identify()`, `forget()`), not at every getter call.
+
+```ts
+hush.configure({ url, key, remoteConfig: { language: () => i18n.locale } });
+```
+
+**The web.** `@bavrk/hush/web` takes the platform from the user agent, so an
+iPhone browser is `ios` and matches rules meant for the native app. A browser
+build that shares an app with the native one passes
+`createWebHush({ platform: 'web' })`.
+
+**An older server.** A server without remote config answers without it: the
+getters return their fallbacks, and nothing is logged. A server rolled back
+to such a build keeps the cached values (a kill switch set on the dashboard
+stays set) until it serves config again.
+
+**`forget()` and `optOut()`.** Neither stops config: the request carries
+nothing about the user, and an app's features should not depend on its
+analytics choice. `forget()` keeps the cache, drops the stored paid flag,
+and gives a new install id, so rollouts re-bucket as for a new install.
+
+**Measuring a variant** is up to the app: put the value in a global prop,
+`hush.setGlobalProps({ paywall_copy: config.string('paywall_copy', 'a') })`,
+and compare funnels by it. The SDK reports nothing about config by itself.
+
+`remoteConfig: false` turns all of it off for an app that does not want the
+request: no fetch, no cache, every getter returns its fallback.
+
+Remote config sends nothing new. The SDK asks for `/v1/config` with the
+app's write key and the revision it already has: no install id, no device
+details, no events. Every install of an app gets the same answer. Targeting
+and rollouts are worked out on the device from what the SDK already knows
+(platform, app version, build channel, the language the app shows or the
+phone's, the paid flag the app passed to `identify()`, and the install id
+for the rollout). The device never reports which value it got. The server
+learns nothing new: for an install that sends events, it could work the
+value out from what those events already carry (platform, version,
+channel, locale, paid flag, install id), which is what the dashboard's
+Preview as does. A user who opted out still gets config, since the request
+says nothing about them; an app whose privacy policy says nothing is sent
+after an opt-out must mention this request. The App Privacy answers do not
+change. An app that reports a config value in an event, say as a global
+prop, sends it like any other prop.
+
 ## Options
 
 | | |
 |---|---|
 | `url` | the hush server; missing or not a string turns the SDK off (2.2.1 and older throw), so give env vars a fallback |
 | `key` | a write key; empty or missing turns the SDK off |
-| `storagePrefix` | Storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id: an app moving from a copied SDK passes the prefix it used before. It also forgets the user's opt-out, once-events, session count, the ad-attribution state and the keys of tickets sent with an email. |
+| `storagePrefix` | Storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id: an app moving from a copied SDK passes the prefix it used before. It also forgets the user's opt-out, once-events, session count, the ad-attribution state, the keys of tickets sent with an email, and the config cache (`.config.v1`: fallbacks until the next fetch). |
 | `runInBackground` | wraps the flush that runs when the app goes to the background, e.g. in a native background task, so the request is not cut off by suspension |
 | `channel` | where this build came from: `app_store`, `testflight`, `play`, `internal`... (snake_case, 24 chars). The dashboard filters by it, so TestFlight and dev-client builds on a prod key stop counting as store users. Pass it per EAS build profile, e.g. `process.env.EXPO_PUBLIC_HUSH_CHANNEL`. Default `dev` in `__DEV__` builds, otherwise not sent. |
 | `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name or a missing url), `debug` (every send) |
 | `onFlush` | called after every send with its result |
 | `attribution` | a bridge `{ update({ fine, coarse, lock }) }` that sets Apple's conversion value, e.g. `hushExpo.attribution` from `@bavrk/hush-expo`; see [Ad attribution](#ad-attribution-ios) below |
+| `remoteConfig` | [Remote config](#remote-config): on by default. `false` never fetches it, and every getter returns its fallback. `{ refreshMinutes }`: how often to fetch again at most, on returning to the foreground and while in it (default 15, 1 to 1440). `{ language: () => locale }`: the language the app shows, for language rules (default: the phone's first locale) |
 
 ## The web, and web apps shipped as native ones
 
@@ -383,6 +532,8 @@ install id out of every URL. No call in the app changes for it, though the
 support screens and the "delete my data" text above deserve a look.
 Messages sent with an email from earlier builds leave `forget()`'s reach
 when the server unlinks them, starting with the server's update.
+2.4.0 adds [remote config](#remote-config). Any server works; config needs
+one with migration 009, and an older one gives every getter its fallback.
 2.2.2 makes the order of calls at startup safe: an early `entry()` is held for
 its session, early events keep the launch's session id and the last launch's
 queue, the paid flag is left out until `identify()`, a missing `url` turns the
@@ -401,7 +552,9 @@ A ticket with an email carries neither the install id nor RevenueCat's id
 (2.3.0 and later): nothing hush stores joins the usage data to the person
 who wrote, and the dashboard offers no way to. Timing and build details can
 still narrow a ticket down for someone with the database; an app keeps
-"not linked" true by never trying.
+"not linked" true by never trying. Remote config sends nothing new: its
+request carries the write key and a revision, nothing about the user
+([Remote config](#remote-config)).
 
 SDK 2 talks to any hush server; an older server ignores the fields it does
 not know (`channel`, `sdk`), and `forget()` needs a server with `/v1/forget`. See the privacy model in the
