@@ -57,6 +57,7 @@
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "test": "node --import ./test/register.mjs --test test/*.test.mjs",
     "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc -p tsconfig.build.json --module commonjs --moduleResolution node10 --outDir dist/cjs --declaration false && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json && sed -i.bak 's#\\./core\\.ts#./core.js#g' dist/esm/*.d.ts && rm dist/esm/*.bak",
     "prepublishOnly": "npm run typecheck && npm run build"
   },
@@ -89,6 +90,11 @@
     }
   },
   "devDependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/plugin-transform-react-jsx": "7.29.7",
+    "babel-plugin-react-compiler": "1.0.0",
+    "react": "19.1.0",
+    "react-test-renderer": "19.1.0",
     "typescript": "~5.9.3"
   },
   "publishConfig": {

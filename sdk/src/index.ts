@@ -76,26 +76,30 @@ export const {
   config,
 } = client;
 
-// Counts config changes. Registered here, before any component's listener,
-// so a component re-rendering on a change already reads the new count.
-let configVersion = 0;
+// What useConfig() returns: a new frozen copy of `config` after every change,
+// the same one in between. A component compiled by the React Compiler caches
+// whatever it derives from config.json(...) or config.string(...) for as long
+// as `config` is the same object, so a change has to be a new object or the
+// component keeps its first values. Registered here, before any component's
+// listener, so a component re-rendering on a change already reads the new copy.
+let configView: HushRemoteConfig = Object.freeze({ ...config });
 config.onChange(() => {
-  configVersion += 1;
+  configView = Object.freeze({ ...config });
 });
 const subscribeConfig = (onStoreChange: () => void) => config.onChange(() => onStoreChange());
-const configSnapshot = () => configVersion;
+const configSnapshot = () => configView;
 
 /**
- * Remote config in a component: re-renders when any value changes. It returns
- * the same object every time: read values during render, and memoize on the
- * value, not on config.
+ * Remote config in a component: re-renders when any value changes. Its
+ * methods are config's; the object itself is new after each change and the
+ * same in between, so a value derived from it (useMemo, or the React
+ * Compiler's own memoizing) follows changes.
  *
  *   const config = useConfig();
  *   if (config.bool('new_home', false)) return <NewHome />;
  */
 export function useConfig(): HushRemoteConfig {
-  useSyncExternalStore(subscribeConfig, configSnapshot, configSnapshot);
-  return config;
+  return useSyncExternalStore(subscribeConfig, configSnapshot, configSnapshot);
 }
 
 export { SDK_VERSION, createHush } from './core.ts';

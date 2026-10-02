@@ -651,12 +651,17 @@ test('json(): frozen, the same reference across calls and across a new revision 
   }
 });
 
-test('useConfig() subscribes through onChange; the snapshot it reads moves with a change; it returns config', async () => {
+test('useConfig() subscribes through onChange; the snapshot it returns is a frozen copy of config, new with each change', async () => {
   const sdk = await launch();
   await sdk.config.ready();
-  assert.equal(sdk.useConfig(), sdk.config);
+  const view = sdk.useConfig();
+  assert.notEqual(view, sdk.config);
+  assert.ok(Object.isFrozen(view));
+  assert.deepEqual(Object.keys(view).sort(), Object.keys(sdk.config).sort());
+  assert.equal(view.number('review_prompt_after', 0), 3);
   const { subscribe, getSnapshot } = globalThis.__hushReact.at(-1);
   const before = getSnapshot();
+  assert.equal(before, view);
   let renders = 0;
   const unsubscribe = subscribe(() => renders++);
   assert.equal(getSnapshot(), before, 'stable while nothing changes');
@@ -664,6 +669,7 @@ test('useConfig() subscribes through onChange; the snapshot it reads moves with 
   await sdk.config.refresh();
   assert.equal(renders, 1);
   assert.notEqual(getSnapshot(), before);
+  assert.equal(getSnapshot().number('review_prompt_after', 0), 5);
   unsubscribe();
   server.body = answer({ ...KEYS, review_prompt_after: { type: 'number', default: 6, rules: [] } }, 'cccccccccccccccc');
   await sdk.config.refresh();
