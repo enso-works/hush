@@ -424,8 +424,12 @@ Settings rows:
 
 - "Share anonymous usage": a switch bound to `!hush.isOptedOut()` (read it after
   `hushReady`), calling `optOut()` or `optIn()`. Feedback keeps working, and
-  so does remote config: its request carries no identifier. A privacy policy
-  that says nothing is sent after an opt-out should mention it.
+  so does remote config: its request carries nothing the SDK adds about the
+  user, but like any request it arrives with the device's IP address and the
+  platform's User-Agent; hush keeps neither, though a TLS proxy's access log
+  may. An app that promises nothing leaves the device after an opt-out says
+  in its privacy policy that this request does, or sets
+  `remoteConfig: false`.
 - "Delete my data": `await hush.forget()`. On `ok: false` (`offline`,
   `failed`), the install's data is still there; offer to try again (tickets
   with an email it had already deleted stay deleted). Say in the row's text

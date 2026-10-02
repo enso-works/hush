@@ -108,8 +108,9 @@ same shape; and the app reads each key with the getter of its type.
 
 - **Context.** The SDK knows the platform, the app version, the build
   channel, the language and the paid flag. The language is the one the app
-  passes (`remoteConfig.language`), otherwise the phone's first locale,
-  reduced to its primary subtag (`pt` of `pt-BR`). The paid flag is what
+  passes (`identify({ language })`, then `remoteConfig.language`), otherwise
+  the phone's first locale, reduced to its primary subtag (`pt` of
+  `pt-BR`). The paid flag is what
   `identify({ pro })` gave, in this process or stored from an earlier one.
 - **A rule matches** when every condition in its `when` holds and the
   install's bucket is inside its rollout. Lists match when they contain the
@@ -134,6 +135,11 @@ same shape; and the app reads each key with the getter of its type.
   rule or the default decides. That is how an older SDK reads a newer server.
 - `forget()` gives a new install id, so rollouts re-bucket as for a new
   install.
+- **When values are worked out.** When a stored config loads, a fetch brings
+  a new revision, `identify()` changes the paid flag or the language,
+  `forget()` gives a new install id, or `configure()` runs again. Not on a
+  304, a 200 with the revision the device already has, or a getter call.
+  `onChange` hears the keys whose value changed each time.
 
 ## 4. In the app
 
@@ -152,8 +158,10 @@ hush.config.json<number[]>('session_presets', [3, 5, 10]);
 - **The getters never throw.** The fallback comes back when the key is not
   in the server's config, has another type, has no usable value, or nothing
   is loaded yet (remote config off, an older server, before `init()` has read
-  storage). With `logLevel: 'error'`, the first three log once per key:
-  `config "new_home" is a bool, read as string: using the fallback`.
+  storage). With `logLevel: 'error'`, a key not in the server's config, one
+  of another type and one with no usable value log once per key and reason
+  (`config "new_home" is a bool, read as string: using the fallback`);
+  nothing loaded yet logs nothing.
 - **Not on the first render.** Getters return their fallbacks until `init()`
   has read storage, one AsyncStorage round trip. An app that must not show a
   fallback first holds its splash screen:
@@ -167,11 +175,27 @@ hush.config.json<number[]>('session_presets', [3, 5, 10]);
   usable: at once from the cache, and on a first launch when the first fetch
   answers or fails. It never rejects and gives up after its timeout.
 - **Values that must hold for a screen or a session.** A fetch can change a
-  value while a screen shows it. Read it once and keep it:
-  `useState(() => config.bool('new_home', false))`, or a ref.
+  value while a screen shows it. Read it once it is loaded, not at the first
+  render: a screen mounted at launch (a root or tab screen, which Expo
+  Router keeps mounted) renders before `init()` has read storage, even
+  behind a held splash, so `useState(() => config.bool('new_home', false))`
+  there keeps the fallback for good. Render no screen until `config.ready()`
+  resolves (the root layout returns `null` until then), or latch the value
+  when it is ready:
+
+  ```tsx
+  const [newHome, setNewHome] = useState<boolean | null>(null);
+  useEffect(() => {
+    void hush.config.ready().then(() => setNewHome(hush.config.bool('new_home', false)));
+  }, []);
+  if (newHome === null) return null; // a moment at most: ready() gives up after 3 s
+  ```
 - **In a component**, `useConfig()` (React Native entry) re-renders on any
-  change. It returns the same object every time: read values during render,
-  and memoize on the value, not on `config`.
+  change. It returns a frozen object with `config`'s methods, new after each
+  change and the same in between, so what a component derives from it (in
+  `useMemo`, or by the React Compiler) follows a change. Read from it, not from `hush.config`: a compiled component that
+  reads `hush.config` directly, or calls a helper that does, keeps its first
+  values; pass the object to the helper instead.
 
   ```tsx
   const config = hush.useConfig();
@@ -182,17 +206,25 @@ hush.config.json<number[]>('session_presets', [3, 5, 10]);
   is frozen: copy it before changing it (`[...presets].sort()`). In a
   development build the fallback is frozen too. An equal value from a later
   fetch keeps the same reference.
-- **The rest:** `config.onChange((keys) => …)` after a fetch,
-  `identify({ pro })` or `forget()` changes values (returns an unsubscribe);
+- **The rest:** `config.onChange((keys) => …)` whenever values are worked
+  out again and some changed ([section 3](#3-how-a-device-gets-its-value);
+  returns an unsubscribe);
   `config.refresh()` fetches now (`{ status, changed }`); `config.revision()`;
   `config.snapshot()` lists every key with its value, the rule that decided it
   (-1 for the default) and this install's bucket, for a debug screen.
-- **Options:** `remoteConfig: false` turns it off (no request, no cache,
-  every getter returns its fallback). `{ refreshMinutes }` (default 15, 1 to
-  1440). `{ language: () => locale }`: the language the app shows, when it is
-  not always the phone's first, such as the locale the i18n module resolved;
+- **Options:** `remoteConfig: false` turns it off (no config request, no
+  cache, every getter returns its fallback; with an attribution bridge,
+  attribution still asks `/v1/config` for its milestones on its own, as in
+  2.3: at `init()` when its copy is over 12 hours old, never for an
+  opted-out user). The config code stays in the bundle either way (3.5 to
+  3.7 KB gzip). `{ refreshMinutes }` (default 15, 1 to 1440).
+  `{ language: () => locale }`: the language the app shows, when it is not
+  always the phone's first, such as the locale the i18n module resolved;
   otherwise a phone set to Catalan, then Spanish, gets the Spanish UI and the
-  default copy. Read at each evaluation; it never leaves the device.
+  default copy. Read when values are worked out, which a language switch
+  does not cause: after an in-app switch call `identify({ language })`,
+  which works them out at once and wins over the function (`''` hands back
+  to it). Neither leaves the device.
 - **The web entry** takes the platform from the user agent, so an iPhone
   browser is `ios` and matches rules meant for the native app. A browser
   build that shares an app with the native one passes
@@ -207,7 +239,15 @@ from it, pro rules included; a failed fetch keeps it. The SDK sends the
 revision it holds as `If-None-Match`, and the server answers 304 when nothing
 changed. With an attribution bridge, one request serves the conversion-value
 milestones and the config. A change on the dashboard reaches a device in the
-foreground within `refreshMinutes`, and the others when they next come back.
+foreground within `refreshMinutes`. A device coming back to the foreground
+fetches only if a fetch is due by then (`refreshMinutes` since the last);
+otherwise within `refreshMinutes` of its last fetch. The cache names the
+server and key it came from: another app on the same web origin with the
+default prefix, or a `configure()` with another url or key, starts without
+it. When `init()` cannot read the install id, the rest of the SDK stays off
+for that launch, but config still loads its cache and fetches (no rollout
+below 100 matches without the install id), and `refresh()` tries `init()`
+again.
 
 **An older server** answers without `config`: every getter returns its
 fallback, and nothing is logged. A server rolled back to such a build keeps
@@ -215,8 +255,8 @@ the device's cached values (a kill switch set on the dashboard stays set)
 until it serves config again.
 
 **`optOut()` and `forget()`** do not stop config: the request carries nothing
-about the user, and an app's features should not depend on its analytics
-choice. `forget()` keeps the cache, drops the stored paid flag, and gives a
+the SDK adds about the user ([section 7](#7-privacy)), and an app's features
+should not depend on its analytics choice. `forget()` keeps the cache, drops the stored paid flag, and gives a
 new install id.
 
 ## 5. Patterns
@@ -263,14 +303,24 @@ in so the rules match the UI, not the phone's first locale:
 
 ```ts
 hush.configure({ url, key, remoteConfig: { language: () => i18n.locale } });
+i18n.on('languageChanged', (lng) => hush.identify({ language: lng })); // an in-app switch
 ```
 
 **Measuring a variant.** The SDK reports nothing about config. To compare,
 the app puts the value in a global prop and the dashboard splits funnels and
-breakdowns by it:
+breakdowns by it. Use a key whose values are short names, not the copy
+itself: an event's props, global ones included, are capped at 2 KB, and a
+string value can be 2000 characters.
+
+```json
+"paywall_variant": { "type": "string", "default": "a", "description": "The paywall variant on show.",
+  "rules": [{ "rollout": 50, "value": "b", "note": "Half see b" }] }
+```
 
 ```ts
-hush.setGlobalProps({ paywall_copy: hush.config.string('paywall_copy', 'a') });
+const tagVariant = () => hush.setGlobalProps({ paywall_variant: hush.config.string('paywall_variant', 'a') });
+hush.config.ready().then(tagVariant);
+hush.config.onChange((keys) => keys.includes('paywall_variant') && tagVariant());
 ```
 
 Set it once the value is usable (after `config.ready()`) and again from
@@ -305,33 +355,41 @@ The app page links to its Remote config page.
 
 CLI on the server, read-only: `node src/cli.mjs config:show <app>` prints the
 `/v1/config` answer; `config:history <app> [key]` lists the latest 50
-changes.
+changes. `config:show` builds its answer in the CLI, from the catalog file as
+it is on disk now and the stored overrides: run it in the server's container
+(its `CATALOG_FILE` and `DATABASE_URL`). After a catalog edit it shows the new
+catalog while the server still serves the old one, until the server
+restarts.
 
 ## 7. Privacy
 
 Remote config sends nothing new. The SDK asks for `/v1/config` with the
-app's write key and the revision it already has: no install id, no device
-details, no events. Every install of an app gets the same answer. Targeting
-and rollouts are worked out on the device from what the SDK already knows
-(platform, app version, build channel, the language the app shows or the
-phone's, the paid flag the app passed to `identify()`, and the install id
-for the rollout). The device never reports which value it got. The server
-learns nothing new: for an install that sends events, it could work the
-value out from what those events already carry (platform, version,
-channel, locale, paid flag, install id), which is what the dashboard's
-Preview as does. A user who opted out still gets config, since the request
-says nothing about them; an app whose privacy policy says nothing is sent
-after an opt-out must mention this request. The App Privacy answers do not
-change. An app that reports a config value in an event, say as a global
-prop, sends it like any other prop.
+app's write key and the revision it already has, and adds nothing about the
+device: no install id, no device details, no events. Like any request, it
+arrives with the device's IP address and the platform's User-Agent; hush
+keeps neither (the address is only hashed, salted, for in-memory rate
+limits), but a TLS proxy in front of it may keep both in its access log.
+Every install of an app gets the same answer. Targeting and rollouts are
+worked out on the device from what the SDK already knows (platform, app
+version, build channel, the language the app shows or the phone's, the paid
+flag the app passed to `identify()`, and the install id for the rollout).
+The device never reports which value it got. The server learns nothing new:
+for an install that sends events, it could work the value out from what
+those events already carry (platform, version, channel, locale, paid flag,
+install id), which is what the dashboard's Preview as does. A user who opted
+out still gets config. An app that promises nothing leaves the device after
+an opt-out should say in its privacy policy that this request does, or use
+`remoteConfig: false`. The App Privacy answers do not change. An app that
+reports a config value in an event, say as a global prop, sends it like any
+other prop.
 
 ## 8. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| A getter always returns the fallback | The key is not in the catalog or misspelt in the app; the getter is not the key's type; the server has no migration 009 (no `config` in `/v1/config`); `remoteConfig: false`; the SDK is off (no url or key); or the read happens before `init()` has read storage. | `logLevel: 'error'` names the first three. `curl -H 'Authorization: Key …' https://<server>/v1/config` shows what is served. Wait for `config.ready()`. |
-| A value does not change after a dashboard save | The device fetches at most every `refreshMinutes` (15), in the foreground; a device in the background fetches on its next return. A screen that kept the value shows it until it mounts again. | Wait, or call `config.refresh()` from a debug screen. |
-| A rule never matches | Missing context: no channel sent, `pro` before `identify()`, an unreadable version. The language rule reads the phone's first locale when the app passes no `language`. The rollout bucket is outside it. | `config.snapshot()` shows the rule and bucket; the dashboard's Preview as with the install id shows what the server works out. |
+| A getter always returns the fallback | The key is not in the catalog or misspelt in the app; the getter is not the key's type; the server has no migration 009 (no `config` in `/v1/config`); `remoteConfig: false`; the SDK is off (no url or key); or the read happens before `init()` has read storage. | `logLevel: 'error'` logs a key not in the server's config, one of another type and one with no usable value, once per key; the other causes log nothing. `curl -H 'Authorization: Key …' https://<server>/v1/config` shows what is served. Wait for `config.ready()`. |
+| A value does not change after a dashboard save | The device fetches at most every `refreshMinutes` (15), in the foreground; a device coming back from the background fetches only once a fetch is due. A screen that kept the value shows it until it mounts again. A compiled component that reads `hush.config` instead of `useConfig()`'s object keeps its first value. | Wait, or call `config.refresh()` from a debug screen. Read through `useConfig()` in components. |
+| A rule never matches | Missing context: no channel sent, `pro` before any `identify()` (and none stored from an earlier launch), an unreadable version. The language rule reads the phone's first locale when the app passes no `language`, and an in-app switch takes effect only through `identify({ language })`. The rollout bucket is outside it. | `config.snapshot()` shows the rule and bucket; the dashboard's Preview as with the install id shows what the server works out. |
 | The revision does not move after a catalog edit | The server was not restarted: the catalog is read at boot. Or the edit changed only a description or a note, which are not served. | Restart. |
 | `/v1/config` answers 304 every time | Nothing in the answer changed since the revision the device holds. Expected. | None. |
 | An override is listed as not served | Its key left the catalog (an orphan), its type changed, or its key came back after being orphaned. | Save it again, or revert it, on the dashboard. |

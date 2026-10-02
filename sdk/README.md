@@ -165,7 +165,7 @@ For milestones a code path might fire twice. The SDK remembers what it sent
 ## The user's choices
 
 ```ts
-hush.optOut();            // "don't share anonymous usage": remembered: no usage data is queued or sent; the app still asks /v1/config for its config, a request with no identifier
+hush.optOut();            // "don't share anonymous usage": remembered: no usage data is queued or sent; the app still asks /v1/config for its config (see Privacy under Remote config)
 hush.optIn();
 hush.isOptedOut();        // after init(), or once optOut() has run
 
@@ -314,8 +314,9 @@ language and the paid flag; every condition it has must hold. A rollout puts
 that share of installs in, by a bucket from the install id and the key, so an
 install stays in or out, and raising 10 to 20 keeps the first 10 in. The
 first rule that matches decides; otherwise the default. A condition on
-something the device does not know (no channel, `pro` before `identify()`)
-does not hold.
+something the device does not know (no channel, `pro` before any
+`identify()`, though a paid flag stored at an earlier launch counts) does
+not hold.
 
 ```ts
 const config = hush.config; // the same on the web and core entries
@@ -328,7 +329,10 @@ config.json<number[]>('session_presets', [3, 5, 10]);
 
 The getters never throw. The fallback comes back when the key is not in the
 server's config, has another type, has no usable value, or nothing is loaded
-yet; with `logLevel: 'error'` the first three say so, once per key.
+yet. With `logLevel: 'error'` the SDK logs a key not in the server's config,
+one of another type and one with no usable value, once per key and reason;
+nothing loaded yet (before `init()` has read storage, an older server,
+remote config off) logs nothing.
 
 Values are not there on the first render: getters return their fallbacks
 until init() has read storage. An app that must not show a fallback first
@@ -343,8 +347,22 @@ config.ready().then(() => SplashScreen.hideAsync());
 at once from the cache, and on a first launch when the first fetch answers or
 fails. It never rejects and gives up after its timeout.
 
-A fetch can change a value while a screen shows it. Read such a value once
-and keep it: `useState(() => config.bool('new_home', false))`, or a ref.
+A fetch can change a value while a screen shows it. To keep one for the
+life of a screen, read it once it is loaded, not at the first render: a
+screen mounted at launch (a root or tab screen, which Expo Router keeps
+mounted) renders before `init()` has read storage, even behind a held
+splash, so `useState(() => config.bool('new_home', false))` there keeps the
+fallback for good. Either render no screen until `config.ready()` resolves
+(the root layout returns `null` until then, as it does while fonts load),
+or latch the value when it is ready:
+
+```tsx
+const [newHome, setNewHome] = useState<boolean | null>(null);
+useEffect(() => {
+  void hush.config.ready().then(() => setNewHome(hush.config.bool('new_home', false)));
+}, []);
+if (newHome === null) return null; // a moment at most: ready() gives up after 3 s
+```
 
 In a component, `useConfig()` (React Native entry) re-renders on any change:
 
@@ -357,17 +375,25 @@ function Home() {
 }
 ```
 
-It returns the same object every time: read values during render, and
-memoize on the value, not on config.
+It returns a frozen object with `config`'s methods, new after each change
+and the same in between, so a value derived from it (in `useMemo`, or by the
+React Compiler, which memoizes components on its own) follows a change. In a
+component, read from what `useConfig()` returns, not from `hush.config`: a
+compiled component that reads `hush.config` directly, or calls a helper that
+does, keeps its first values. Pass the object to such a helper instead.
 
 `json()` returns an object or an array, its shape unchecked. The value is
 frozen: copy it before changing it (`[...presets].sort()`). In a development
 build the fallback is frozen too. An equal value from a later fetch keeps the
 same reference.
 
-- `config.onChange((keys) => ...)`: the keys whose value changed, after a
-  fetch, `identify({ pro })`, or `forget()`. Returns a function that removes
-  the listener.
+- `config.onChange((keys) => ...)`: the keys whose value changed. Returns a
+  function that removes the listener. Values are worked out again, and
+  `onChange` called for what changed, when a stored config loads, a fetch
+  brings a new revision, `identify()` changes the paid flag or the language,
+  `forget()` gives a new install id, or `configure()` runs again. A 304, or a
+  200 with the revision the device already has, changes nothing; nor does a
+  getter call.
 - `config.refresh()`: fetches now, `{ status, changed }`.
 - `config.revision()`: the revision in use, or null.
 - `config.snapshot()`: every key with its value, the rule that decided it
@@ -380,16 +406,28 @@ returning to the foreground and while in it, at most every `refreshMinutes`
 answer is kept under `<prefix>.config.v1`, and the next launch starts from
 it; a failed fetch keeps it. The SDK sends the revision it holds and the
 server answers 304 when nothing changed. With an attribution bridge one
-request serves both the milestones and the config.
+request serves both the milestones and the config. The cache names the
+server and key it came from (a hash, not the key): another app on the same
+web origin with the default prefix, or a `configure()` with another url or
+key, starts without it. When `init()` cannot read the install id from
+storage, the rest of the SDK stays off for that launch, but config still
+loads its cache and fetches (rollouts below 100 wait for the install id),
+and `refresh()` tries `init()` again.
 
 **Language.** Pass the language the app shows when it is not always the
 phone's first: `language: () => locale`, the locale your i18n module
 resolved. Otherwise a phone set to Catalan, then Spanish, gets your Spanish UI
-and your default copy. It is read when values are evaluated (each fetch,
-`identify()`, `forget()`), not at every getter call.
+and your default copy. It is read when values are worked out (above), not at
+every getter call, and nothing works them out when the app switches
+language. After an in-app switch, call `identify({ language })`: values
+follow at once and `onChange` hears the keys that changed. A language given
+to `identify()` wins over the function for the rest of the process (`''`
+hands back to it). It is never sent or stored.
 
 ```ts
 hush.configure({ url, key, remoteConfig: { language: () => i18n.locale } });
+
+i18n.on('languageChanged', (lng) => hush.identify({ language: lng }));
 ```
 
 **The web.** `@bavrk/hush/web` takes the platform from the user agent, so an
@@ -403,32 +441,51 @@ to such a build keeps the cached values (a kill switch set on the dashboard
 stays set) until it serves config again.
 
 **`forget()` and `optOut()`.** Neither stops config: the request carries
-nothing about the user, and an app's features should not depend on its
-analytics choice. `forget()` keeps the cache, drops the stored paid flag,
-and gives a new install id, so rollouts re-bucket as for a new install.
+nothing the SDK adds about the user (Privacy, below), and an app's features
+should not depend on its analytics choice. `forget()` keeps the cache,
+drops the stored paid flag, and gives a new install id, so rollouts
+re-bucket as for a new install.
 
-**Measuring a variant** is up to the app: put the value in a global prop,
-`hush.setGlobalProps({ paywall_copy: config.string('paywall_copy', 'a') })`,
-and compare funnels by it. The SDK reports nothing about config by itself.
+**Measuring a variant** is up to the app: put the value in a global prop
+and compare funnels by it. Use a key whose values are short names
+(`paywall_variant`, default `a`), not the copy itself: an event's props,
+global ones included, are capped at 2 KB, and a string value can be 2000
+characters. Set it once the value is usable, after `ready()`, and again
+from `onChange`. The SDK reports nothing about config by itself.
 
-`remoteConfig: false` turns all of it off for an app that does not want the
-request: no fetch, no cache, every getter returns its fallback.
+```ts
+const tagVariant = () => hush.setGlobalProps({ paywall_variant: config.string('paywall_variant', 'a') });
+config.ready().then(tagVariant);
+config.onChange((keys) => keys.includes('paywall_variant') && tagVariant());
+```
 
-Remote config sends nothing new. The SDK asks for `/v1/config` with the
-app's write key and the revision it already has: no install id, no device
-details, no events. Every install of an app gets the same answer. Targeting
-and rollouts are worked out on the device from what the SDK already knows
-(platform, app version, build channel, the language the app shows or the
-phone's, the paid flag the app passed to `identify()`, and the install id
-for the rollout). The device never reports which value it got. The server
-learns nothing new: for an install that sends events, it could work the
-value out from what those events already carry (platform, version,
-channel, locale, paid flag, install id), which is what the dashboard's
-Preview as does. A user who opted out still gets config, since the request
-says nothing about them; an app whose privacy policy says nothing is sent
-after an opt-out must mention this request. The App Privacy answers do not
-change. An app that reports a config value in an event, say as a global
-prop, sends it like any other prop.
+`remoteConfig: false` turns it off for an app that does not want the
+request: no config request, no cache, every getter returns its fallback.
+With an attribution bridge, attribution still asks `/v1/config` for its
+milestones on its own, as 2.3 does: at `init()` when its copy is older than
+12 hours, and never for an opted-out user. The config code stays in the
+bundle either way: it is part of `createHush`, so a bundler cannot drop it
+(3.5 to 3.7 KB gzip, minified, per entry).
+
+**Privacy.** Remote config sends nothing new. The SDK asks for `/v1/config` with the
+app's write key and the revision it already has, and adds nothing about the
+device: no install id, no device details, no events. Like any request, it
+arrives with the device's IP address and the platform's User-Agent; hush
+keeps neither (the address is only hashed, salted, for in-memory rate
+limits), but a TLS proxy in front of it may keep both in its access log.
+Every install of an app gets the same answer. Targeting and rollouts are
+worked out on the device from what the SDK already knows (platform, app
+version, build channel, the language the app shows or the phone's, the paid
+flag the app passed to `identify()`, and the install id for the rollout).
+The device never reports which value it got. The server learns nothing new:
+for an install that sends events, it could work the value out from what
+those events already carry (platform, version, channel, locale, paid flag,
+install id), which is what the dashboard's Preview as does. A user who opted
+out still gets config. An app that promises nothing leaves the device after
+an opt-out should say in its privacy policy that this request does, or use
+`remoteConfig: false`. The App Privacy answers do not change. An app that
+reports a config value in an event, say as a global prop, sends it like any
+other prop.
 
 ## Options
 
@@ -532,8 +589,15 @@ install id out of every URL. No call in the app changes for it, though the
 support screens and the "delete my data" text above deserve a look.
 Messages sent with an email from earlier builds leave `forget()`'s reach
 when the server unlinks them, starting with the server's update.
-2.4.0 adds [remote config](#remote-config). Any server works; config needs
-one with migration 009, and an older one gives every getter its fallback.
+2.4.0 adds [remote config](#remote-config), on by default. Any server
+works; config needs one with migration 009, and an older one gives every
+getter its fallback. An app that never reads a value still pays for it: one
+`GET /v1/config` at each launch, and at most one every 15 minutes in the
+foreground, mostly 304s with no body; a new storage key,
+`<prefix>.config.v1`; a request that goes on after `optOut()`; with
+`logLevel: 'debug'`, a line for each 304 or failed request; and 3.5 to
+3.7 KB gzip in the bundle. `remoteConfig: false` gives exactly 2.3's
+behaviour, the bundle aside.
 2.2.2 makes the order of calls at startup safe: an early `entry()` is held for
 its session, early events keep the launch's session id and the last launch's
 queue, the paid flag is left out until `identify()`, a missing `url` turns the
@@ -553,7 +617,9 @@ A ticket with an email carries neither the install id nor RevenueCat's id
 who wrote, and the dashboard offers no way to. Timing and build details can
 still narrow a ticket down for someone with the database; an app keeps
 "not linked" true by never trying. Remote config sends nothing new: its
-request carries the write key and a revision, nothing about the user
+request carries the write key and a revision, nothing the SDK adds about
+the user. Like any request it arrives with the device's IP address and the
+platform's User-Agent; hush keeps neither, but a TLS proxy's access log may
 ([Remote config](#remote-config)).
 
 SDK 2 talks to any hush server; an older server ignores the fields it does

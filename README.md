@@ -161,7 +161,9 @@ The [hush plugin](plugins/hush/) for Claude Code:
 - **No advertising or device identifiers**: nothing for App Tracking
   Transparency to ask about. From a link, only its `utm_*` and `ref` tags.
 - **Nothing for remote config**: its request carries the write key and a
-  revision, and the device never reports which value it got
+  revision, and the device never reports which value it got. Like any
+  request it arrives with the device's IP address and the platform's
+  User-Agent; hush keeps neither, but a TLS proxy's access log may
   ([below](#remote-config)).
 
 Raw events are deleted after `RETENTION_DAYS` (180). An install that has
@@ -376,29 +378,36 @@ no experiments, no exposure events, no variant statistics.
 
 Each key is declared in the app's catalog entry, in git, with a type
 (`bool`, `number`, `string` or `json`), a default, a description and
-optional rules:
+optional rules. A whole catalog with one app:
 
 ```json
-"myapp": {
-  "config": {
-    "new_home": {
-      "type": "bool",
-      "default": false,
-      "description": "The redesigned home screen.",
-      "rules": [
-        { "when": { "channel": ["testflight", "dev"] }, "value": true, "note": "Testers see it first" },
-        { "when": { "platform": ["ios"], "version": ">=2.1.0" }, "rollout": 20, "value": true }
-      ]
-    },
-    "paywall_copy": {
-      "type": "string",
-      "default": "Start your free week",
-      "description": "The paywall headline.",
-      "rules": [{ "when": { "language": ["de"] }, "value": "Eine Woche gratis" }]
+{
+  "myapp": {
+    "events": ["onboarding_completed"],
+    "config": {
+      "new_home": {
+        "type": "bool",
+        "default": false,
+        "description": "The redesigned home screen.",
+        "rules": [
+          { "when": { "channel": ["testflight", "dev"] }, "value": true, "note": "Testers see it first" },
+          { "when": { "platform": ["ios"], "version": ">=2.1.0" }, "rollout": 20, "value": true }
+        ]
+      },
+      "paywall_copy": {
+        "type": "string",
+        "default": "Start your free week",
+        "description": "The paywall headline.",
+        "rules": [{ "when": { "language": ["de"] }, "value": "Eine Woche gratis" }]
+      }
     }
   }
 }
 ```
+
+A key's name follows the event-name rule, `^[a-z][a-z0-9_]{1,63}$`. The
+server reads the catalog at boot: restart it after adding or changing a key.
+A mistake stops the boot with its path and message.
 
 A rule's `when` may ask for a platform list, an app version range
 (`>=2.1.0 <3`), a build channel list, a language list and the paid flag
@@ -407,47 +416,63 @@ puts that share of installs in, by a bucket worked out from the install id
 and the key, so an install stays in or out and raising 10 to 20 keeps the
 first 10 in. The first rule that matches decides, otherwise the default. A
 condition on something the device does not know (no channel, `pro` before
-`identify()`) does not hold. Rules a device cannot read, from a newer server,
+any `identify()`, though a paid flag stored at an earlier launch counts)
+does not hold. Rules a device cannot read, from a newer server,
 are skipped.
 
-The dashboard's Remote config page lists each app's keys. It can override a key's
+The dashboard's Remote config page (the Remote config link under the app's
+name on its page) lists the app's keys. It can override a key's
 default, its rules or both, check a change as you type, preview what a
 device or one install would get, and revert to the catalog; every save and
 revert goes into the key's history, and a save made on a stale page is
 refused. It cannot create, rename or delete keys, or change a type. An
 override the catalog no longer fits (its key was removed, or its type
-changed) is kept, not served, and shown there to fix or delete.
+changed) is kept, not served, and shown there to fix or delete. So is one
+whose key left the catalog while the server restarted and then came back:
+the key may mean something else now, so its old override stays unserved
+until someone saves it again or reverts it.
 
 In the app ([SDK guide](sdk/README.md#remote-config), SDK 2.4.0):
 
 ```ts
-hush.config.bool('new_home', false);          // the fallback until a value is loaded
-hush.config.string('paywall_copy', 'Start your free week');
+SplashScreen.preventAutoHideAsync();          // at module load
 hush.config.ready().then(() => SplashScreen.hideAsync()); // usable: from the cache, or the first fetch
 
-const config = hush.useConfig();              // in a component: re-renders on any change
+hush.config.bool('new_home', false);          // the fallback until a value is loaded
+hush.config.string('paywall_copy', 'Start your free week');
+
+const config = hush.useConfig();              // in a component: re-renders on any change, a new object after each
+hush.identify({ language: 'de' });            // an in-app language switch: values follow at once
 ```
 
-The SDK asks for `/v1/config` at `init()` and, at most every 15 minutes, in
-the foreground, sending the revision it holds (304 when nothing changed). The
-answer is cached on the device, so the next launch starts from it and a
-failed fetch keeps it.
+The SDK asks for `/v1/config` at `init()`, then on returning to the
+foreground and while in it, at most every `refreshMinutes` (15 by default),
+sending the revision it holds (304 when nothing changed). A failed request
+is tried again after 1, 2, 4 ... minutes, up to `refreshMinutes`. The answer
+is cached on the device, so the next launch starts from it and a failed
+fetch keeps it. Values are worked out again when a new revision arrives,
+`identify()` changes the paid flag or the language, or `forget()` gives a
+new install id; a 304 changes nothing.
 
 Remote config sends nothing new. The SDK asks for `/v1/config` with the
-app's write key and the revision it already has: no install id, no device
-details, no events. Every install of an app gets the same answer. Targeting
-and rollouts are worked out on the device from what the SDK already knows
-(platform, app version, build channel, the language the app shows or the
-phone's, the paid flag the app passed to `identify()`, and the install id
-for the rollout). The device never reports which value it got. The server
-learns nothing new: for an install that sends events, it could work the
-value out from what those events already carry (platform, version,
-channel, locale, paid flag, install id), which is what the dashboard's
-Preview as does. A user who opted out still gets config, since the request
-says nothing about them; an app whose privacy policy says nothing is sent
-after an opt-out must mention this request. The App Privacy answers do not
-change. An app that reports a config value in an event, say as a global
-prop, sends it like any other prop.
+app's write key and the revision it already has, and adds nothing about the
+device: no install id, no device details, no events. Like any request, it
+arrives with the device's IP address and the platform's User-Agent; hush
+keeps neither (the address is only hashed, salted, for in-memory rate
+limits), but a TLS proxy in front of it may keep both in its access log.
+Every install of an app gets the same answer. Targeting and rollouts are
+worked out on the device from what the SDK already knows (platform, app
+version, build channel, the language the app shows or the phone's, the paid
+flag the app passed to `identify()`, and the install id for the rollout).
+The device never reports which value it got. The server learns nothing new:
+for an install that sends events, it could work the value out from what
+those events already carry (platform, version, channel, locale, paid flag,
+install id), which is what the dashboard's Preview as does. A user who opted
+out still gets config. An app that promises nothing leaves the device after
+an opt-out should say in its privacy policy that this request does, or use
+`remoteConfig: false`. The App Privacy answers do not change. An app that
+reports a config value in an event, say as a global prop, sends it like any
+other prop.
 
 Limits, for the catalog and overrides alike: 100 keys per app, 20 rules per
 key, strings up to 2000 characters, a `json` value (an object or an array)
@@ -488,10 +513,14 @@ now), and for remote config `/admin/apps/:app/config` (every key with its
 catalog entry, override and what is served, and the orphaned overrides),
 `/config/history?key=&limit=&before=`, `/config/preview?install=&platform=&version=&channel=&language=&pro=&key=&draft=`,
 and `POST` (override, with the `base` change id the editor loaded; 409 when
-it is stale) and `DELETE` (revert to the catalog) on `/config/:key`. Writes
+it is stale) and `DELETE` (revert to the catalog, with `base` too) on
+`/config/:key`. Writes
 must be `Content-Type: application/json`. CLI:
 `node src/cli.mjs apps:list | apps:add <slug> <name> | keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id> | rc:projects | rc:link <app> <project_id> | rc:sync | rc:charts | rc:poll | asc:request <app> | asc:sync [app] | config:show <app> | config:history <app> [key] | migrate`
-(`config:show` prints the `/v1/config` answer; both are read-only).
+(`config:show` prints the `/v1/config` answer, built in the CLI from the
+catalog file as it is on disk now and the stored overrides: run it in the
+server's container, and after a catalog edit it runs ahead of the server
+until the server restarts. Both are read-only).
 
 Limits are honest about what this is: rate limits are in memory, per
 process, and reset on restart. One instance is plenty for small apps.

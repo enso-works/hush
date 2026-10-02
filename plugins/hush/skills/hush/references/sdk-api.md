@@ -57,7 +57,7 @@ off`). 2.2.1 and older throw a TypeError on a non-string `url`.
 | `storagePrefix` | `string` | `'hush'` | Prefix for the stored keys `<p>.install.v1`, `.queue.v1`, `.first.v1`, `.once.v1`, `.optout.v1`, `.sessions.v1`, `.attribution.v1`, `.threads.v1`, `.config.v1`. Changing it gives every install a new id, a second `app_first_opened`, and loses opt-outs, once-keys, session counts, attribution state, the thread keys of tickets sent with an email (the app no longer lists those) and the config cache (`.config.v1`: getters return their fallbacks until the next fetch). |
 | `runInBackground` | `(work: () => Promise<void>) => Promise<void>` | runs `work` directly | Wraps the flush that runs when the app backgrounds. `hushExpo.runInBackground` asks iOS for background time. |
 | `attribution` | `AttributionBridge` | none | `{ update(v: ConversionValue): Promise<void> \| void }`. Turns on Apple conversion values; see [attribution.md](attribution.md). |
-| `remoteConfig` | `boolean \| RemoteConfigOptions` | on | Remote config (2.4.0, section 12). `false`: no request, no cache, every getter returns its fallback. `{ refreshMinutes }`: how often to fetch again at most, on returning to the foreground and while in it (default 15; a finite number is clamped to 1..1440). `{ language: () => string }`: the language the app shows, for language rules, read at each evaluation (missing, throwing or empty: the phone's first locale); it never leaves the device. |
+| `remoteConfig` | `boolean \| RemoteConfigOptions` | on | Remote config (2.4.0, section 12). `false`: no config request, no cache, every getter returns its fallback; with an `attribution` bridge, attribution still fetches `/v1/config` for its milestones on its own, as in 2.3 (at `init()` when its copy is over 12 hours old, never for an opted-out user). The config code stays in the bundle either way. `{ refreshMinutes }`: how often to fetch again at most, on returning to the foreground and while in it (default 15; a finite number is clamped to 1..1440). `{ language: () => string }`: the language the app shows, for language rules, read when values are worked out (missing, throwing or empty: the phone's first locale); a language given to `identify()` wins. It never leaves the device. |
 
 `FlushResult` is `{ status: number | 'offline'; accepted; duplicate; rejected; willRetry }`.
 
@@ -68,17 +68,17 @@ The default entry exports these as module functions. `createWebHush()` and
 
 | Function | Signature | Behaviour |
 |---|---|---|
-| `init` | `(): Promise<void>` | Reads storage; creates or loads the install id; drops the stored queue if opted out; merges the persisted queue (events older than 7 days dropped) with the events tracked before it, and saves the result; sends `app_first_opened` once; starts the launch's session and attribution; listens for app state; starts the 30 s timer; flushes. Safe to call again or concurrently: one run, and every caller resolves once the session exists (2.2.1 and older: a second call during a first launch could resolve before it). Never throws. Does nothing if the SDK is off or `configure()` has not run. |
+| `init` | `(): Promise<void>` | Reads storage, `<p>.config.v1` and the attribution state included; creates or loads the install id; drops the stored queue if opted out; merges the persisted queue (events older than 7 days dropped) with the events tracked before it, and saves the result; sends `app_first_opened` once; starts the launch's session; evaluates the stored config; starts attribution and the `/v1/config` request; listens for app state; starts the 30 s timer; flushes. When the install id, first-open marker or opt-out cannot be read, the rest stays off for this launch (a later `init()` tries again), but remote config still loads its stored config and makes its request. Safe to call again or concurrently: one run, and every caller resolves once the session exists (2.2.1 and older: a second call during a first launch could resolve before it). Never throws. Does nothing if the SDK is off or `configure()` has not run. |
 | `track` | `(name: string, props?: Props \| null, options?: { once?: true \| string } \| null): void` | Queues an event. An invalid name, or a prop value that is not a string, number, boolean or null, drops the event on the device (logged at `error`). `null` props are no props (2.2.1 and older throw). `once: true` keys on `name`; `once: 'k'` keys on `name:k`. Tracked before `init()` resolves: queued under the launch's session id, merged with the stored queue at `init()`. |
 | `screen` | `(name: string): void` | Queues `screen_viewed { screen: name }`. A name that is not a string is ignored; over 200 characters the server rejects it. |
 | `entry` | `(source: Entry, options?: { url?: string } \| null): void` | Sets `entry` on the held `session_started`, adds the link's campaign tags, and commits it. With no session pending, it is held for the next one (section 5). |
-| `identify` | `(next: { rcId?: string; pro?: boolean }): void` | Sets RevenueCat's customer id (only a non-empty string; it cannot be cleared) and the paid flag. Both ride in every batch (`rc_id`, `pro`) and on tickets. Until `pro` is set, it is left out, and the server keeps what it has (2.2.1 and older send `false`). |
+| `identify` | `(next: { rcId?: string; pro?: boolean; language?: string }): void` | Sets RevenueCat's customer id (only a non-empty string; it cannot be cleared) and the paid flag. Both ride in every batch (`rc_id`, `pro`) and on tickets. Until `pro` is set, it is left out, and the server keeps what it has (2.2.1 and older send `false`). `language` (2.4.0): the language the app shows, for remote config's language rules, ahead of `remoteConfig.language` for the rest of the process (`''` hands back to it); never sent or stored. A `pro` or `language` that changes what the rules see works the values out again at once, and `config.onChange` hears what changed: call it from an in-app language switch. |
 | `setGlobalProps` | `(props: Props): void` | Merged into every event queued afterwards; the event's own props win. Memory only. They count toward the 40-key and 2 KB limits. A value that is not flat is not set (logged at `error`). |
 | `removeGlobalProp` | `(key: string): void` | |
 | `clearGlobalProps` | `(): void` | |
 | `installationId` | `(): string` | `''` until `init()` has read it. |
 | `getInstallationId` | `(timeoutMs = 3000): Promise<string>` | Waits for `init()` up to the timeout. `''` when the SDK is off. |
-| `optOut` | `(): void` | Remembered. Drops the queue and the pending session. No usage data is queued or sent, and nothing is set for attribution, until `optIn()`; the app still asks `/v1/config` for its remote config, a request with no identifier. Tickets still work. |
+| `optOut` | `(): void` | Remembered. Drops the queue and the pending session. No usage data is queued or sent, and nothing is set for attribution, until `optIn()`; the app still asks `/v1/config` for its remote config: nothing the SDK adds about the user, though like any request it arrives with the device's IP address and the platform's User-Agent (hush keeps neither; a TLS proxy's access log may). `remoteConfig: false` stops it. Tickets still work. |
 | `optIn` | `(): void` | Clears the flag, starts a new session if ready, and starts attribution if it never started. |
 | `isOptedOut` | `(): boolean` | `false` until `init()` has read storage, unless `optOut()` ran this launch. An `optOut()` or `optIn()` made before `init()` has read storage wins over the stored choice (2.2.1 and older: the stored one wins). |
 | `forget` | `(): Promise<{ ok: boolean; error?: 'unavailable' \| 'offline' \| 'failed' }>` | `POST /v1/forget`. A batch already in flight lands first, and no new one is sent until the server answers. First the tickets sent with an email, by their thread keys (`{ threads }`, up to 50 a request, never with the install id); each key is dropped once its request succeeds. Then the install: the server deletes its events, tickets with replies, and install row under this app. The SDK then clears its queue (events tracked while the request was out included), once-keys and session count, mints a new install id and starts a new session. It keeps the first-open marker (no second `app_first_opened`), the opt-out flag, the attribution state and the config cache (without its stored paid flag; rollouts re-bucket for the new id). On `offline` or `failed` the install id and its data stay, but tickets with an email already deleted on the way stay deleted; calling it again finishes the rest. `failed` also when the stored thread keys cannot be read. It cannot reach a ticket with an email whose key is gone (reinstall, new `storagePrefix`), or one a build before 2.3.0 sent once the server has unlinked it: the operator deletes those. A second call while one is out gets its result. |
@@ -90,7 +90,7 @@ The default entry exports these as module functions. `createWebHush()` and
 | `setEnabled` | `(next: boolean): void` | For development and tests. `false` clears the queue and stops everything; `true` works only with a url and a non-empty key. Not remembered. |
 | `telemetryAvailable` | `(): boolean` | Whether the SDK is on. |
 | `config` | `HushRemoteConfig` | Remote config: `bool`, `number`, `string`, `json`, `ready`, `onChange`, `refresh`, `revision`, `snapshot` (section 12). On every entry. |
-| `useConfig` | `(): HushRemoteConfig` | React Native entry only. Returns `config` and re-renders the component when any value changes (`useSyncExternalStore`; `react` >= 18 is an optional peer). |
+| `useConfig` | `(): HushRemoteConfig` | React Native entry only. Re-renders the component when any value changes (`useSyncExternalStore`; `react` >= 18 is an optional peer). Returns a frozen object with `config`'s methods, new after each change and the same in between, so what a component derives from it (`useMemo`, the React Compiler's memoizing) follows a change. In a component read from it, not from `hush.config`. |
 | `SDK_VERSION` | `'2.4.0'` | Sent as `sdk` with every batch. |
 | `createHush` | `(platform: HushPlatform) => Hush` | Also exported from the default entry. |
 
@@ -293,7 +293,7 @@ patterns: [remote-config.md](remote-config.md).
 | `bool`, `number`, `string` | `(key: string, fallback: T): T` | The value for this device when the key's type is the getter's and it has a usable value; otherwise the fallback. Never throws. With `logLevel: 'error'` logs once per key and reason: another type (`config "x" is a bool, read as string: using the fallback`), a type this SDK does not read, no usable value, or a key not in a loaded config. Nothing loaded yet, remote config off or an older server: the fallback, no log. |
 | `json` | `<T = unknown>(key: string, fallback: T): T` | An object or an array, shape unchecked, deep-frozen; the same reference until the value changes (deep-equal, key order ignored, keeps it). In a development build a fallback object or array is deep-frozen too. |
 | `ready` | `(timeoutMs = 3000): Promise<void>` | Calls `init()`. Resolves once a stored config has been loaded and evaluated, or on a first launch once the first fetch settles, or at the timeout (clamped 0..60000); at once when the SDK or remote config is off. Never rejects. Usable, not latest. |
-| `onChange` | `(listener: (keys: string[]) => void): () => void` | Called synchronously after an evaluation with the sorted keys whose value appeared, disappeared or changed, the first load included. Evaluations: a stored config loads, a 200 brings one, `identify()` changes `pro`, `forget()` sets a new install id, `configure()` runs again. A listener that throws is ignored. |
+| `onChange` | `(listener: (keys: string[]) => void): () => void` | Called synchronously after an evaluation with the sorted keys whose value appeared, disappeared or changed, the first load included. Evaluations: a stored config loads, a 200 brings a new revision, `identify()` changes `pro` or the language, `forget()` sets a new install id, `configure()` runs again. A 304, a 200 with the revision in use and a getter call evaluate nothing. A listener that throws is ignored. |
 | `refresh` | `(): Promise<ConfigRefreshResult>` | Waits for `init()`, then fetches now whatever `refreshMinutes` says, sharing a request in flight. `status` is the HTTP status, `'offline'` (failed or past 15 s) or `'off'`. Never rejects. |
 | `revision` | `(): string \| null` | The revision in use; null before anything loads, against an older server, or off. |
 | `snapshot` | `(): ConfigSnapshotEntry[]` | Every key, sorted, with `type`, `value` (missing when it has none), `rule` (-1 for the default) and `bucket` (0-99, null before `init()` has the install id). For a debug screen. `[]` when off. |
@@ -304,21 +304,27 @@ patterns: [remote-config.md](remote-config.md).
   timer while in the foreground when due, and on `refresh()`. One at a time,
   15 s each. Due `refreshMinutes` after a 200, a 304 or another status; after
   offline, a timeout, 429 or 5xx after 1, 2, 4 ... minutes, at most
-  `refreshMinutes`. Not stopped by `optOut()`, `pause()` or a send in
-  flight; stopped by `setEnabled(false)` (loaded values stay readable).
+  `refreshMinutes`. On `active` only when due, so a device back after less
+  than `refreshMinutes` waits for the timer. Not stopped by `optOut()`,
+  `pause()` or a send in flight; stopped by `setEnabled(false)` (loaded
+  values stay readable). Also made when `init()` failed to read the install
+  id: one at that `init()`, and on `refresh()`.
 - **The answer.** A 200 with `config` is cached and evaluated. A 200 without
   it, from a server that never had config, caches an empty config; from one
   rolled back after serving config, keeps the cache. A 304, an error or a
   body that does not parse keeps everything.
 - **Storage.** `<prefix>.config.v1`: the server's `config` plus the last
   `pro` that `identify()` gave, so pro rules apply at the next launch before
-  `identify()` runs. Written after a 200 that brings config and when `pro`
+  `identify()` runs, and `source`, a hash of the url and key it came from. A
+  stored config with another `source` (another app on the same web origin
+  with the default prefix) is no cache; a `configure()` with another url or
+  key drops the one in memory. Written after a 200 that brings config and when `pro`
   changes, never removed. `forget()` drops the stored `pro` and keeps the
   rest; `optOut()` keeps it all. Batches still carry `pro` only once
   `identify()` has given it in this process.
 - **Context.** `platform`, `version` and `locale` from `device()`, the
-  configured `channel`, `language` from `remoteConfig.language` or the
-  locale, `pro` from `identify()` or the cache. A missing field never
+  configured `channel`, `language` from `identify({ language })`, then
+  `remoteConfig.language`, then the locale, `pro` from `identify()` or the cache. A missing field never
   matches a condition on it.
 - **Attribution.** With a bridge and remote config on, the one request at
   each `init()` and refresh brings both the milestones and the config. With

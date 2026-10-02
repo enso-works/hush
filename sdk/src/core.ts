@@ -15,7 +15,8 @@
  * retried forever.
  *
  * Remote config (`config`): values the server's catalog declares and its
- * dashboard changes, fetched from /v1/config with nothing about the user,
+ * dashboard changes, fetched from /v1/config with nothing the SDK adds about
+ * the user (the request still has the device's IP address and User-Agent),
  * kept in storage, and evaluated here by evaluate.js, the same file the
  * server's "preview as" runs.
  */
@@ -87,7 +88,9 @@ export type HushConfig = {
    * Remote config: values declared in the server's catalog and changed on its
    * dashboard, evaluated on the device. Fetched at init() and, at most every
    * refreshMinutes, on returning to the foreground and while in it. false:
-   * never fetched, and every getter returns its fallback.
+   * no config request and no cache, and every getter returns its fallback;
+   * an attribution bridge still fetches its milestones from /v1/config on
+   * its own, as in 2.3 (at init(), when its copy is over 12 hours old).
    */
   remoteConfig?: boolean | RemoteConfigOptions;
 };
@@ -1426,8 +1429,10 @@ export function createHush(platform: HushPlatform) {
   /**
    * The user's "don't share anonymous usage": remembered across launches.
    * No usage data is queued or sent until optIn(); what was queued is
-   * dropped. The app still asks /v1/config for its config, a request with no
-   * identifier. Feedback keeps working, since a user sends that on purpose.
+   * dropped. The app still asks /v1/config for its config: nothing the SDK
+   * adds about the user, though like any request it carries the device's IP
+   * address and User-Agent (remoteConfig: false stops it). Feedback keeps
+   * working, since a user sends that on purpose.
    */
   function optOut(): void {
     if (!ready) choiceBeforeInit = true;

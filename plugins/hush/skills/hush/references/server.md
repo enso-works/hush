@@ -258,14 +258,16 @@ the writes):
 |---|---|
 | `GET /admin/apps/:app/config` | Every key with its catalog entry, its override, what is served (`effective`) and from where (`source`), `problem` when an override is not served, `fits`, and `change`, the id of the key's latest history row. Also the `revision`, `size_bytes`, the `limits`, and `orphans`: overrides whose key left the catalog. |
 | `POST /admin/apps/:app/config/:key` | `{ base, default?, rules?, note? }`: override the default, the rules or both (the rest comes from the catalog). `base` is the `change` the editor loaded; another latest change is a 409 with the current view. 400 with `path` and `message` for a check that fails, 404 for a key the catalog lacks. Bodies up to 160 KB. |
-| `DELETE /admin/apps/:app/config/:key` | `{ base, note? }`: revert to the catalog. Works for orphans too. 404 when nothing is stored. |
+| `DELETE /admin/apps/:app/config/:key` | `{ base, note? }`: revert to the catalog. `base` is required here too: another latest change is a 409. Works for orphans too. 404 when nothing is stored. |
 | `GET /admin/apps/:app/config/history` | `?key=&limit=&before=`: changes newest first (`limit` 1 to 50, default 20; `before` an id), with the override and what was served before and after, and `more`. |
 | `GET /admin/apps/:app/config/preview` | `?platform=&version=&channel=&language=&pro=` or `?install=<id>` (the install's row fills what is not given), `key=` for one key, `draft=` (JSON `{ default?, rules? }`) for an unsaved change. Per key, each outcome with its share of the 100 buckets; with an install, its value, rule and bucket. `warnings` for context that cannot be read. |
 
 Every save and revert is one history row; history is kept with the app. A
 server that finds an override its catalog no longer fits (key removed, type
 changed) keeps it, serves the catalog's entry, and logs
-`config: override not served` at boot.
+`config: override not served` at boot. So does one whose key left the
+catalog while the server restarted and then came back: it stays unserved
+until it is saved again or reverted.
 
 CLI, `node src/cli.mjs <command>`: `apps:list`, `apps:add`, `keys:create`,
 `keys:list`, `keys:revoke`, `rc:projects`, `rc:link <app> <project_id>`,
@@ -273,3 +275,8 @@ CLI, `node src/cli.mjs <command>`: `apps:list`, `apps:add`, `keys:create`,
 `config:show <app>` (the `/v1/config` answer), `config:history <app> [key]`
 (the latest 50 changes, one per line), `migrate`. The config commands are
 read-only: changes go through the dashboard, which records the history.
+`config:show` builds its answer in the CLI, from the catalog file as it is
+on disk now and the stored overrides, so run it in the server's container
+(`docker compose exec hush node src/cli.mjs config:show <app>`). After a
+catalog edit it shows the new catalog while the running server still serves
+the old one, until the server restarts.

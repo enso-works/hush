@@ -29,7 +29,8 @@ What it does:
   number, copy) declared in the catalog, overridden on the dashboard without
   a release, with rules by platform, version, channel, language and paid
   flag, and staged rollouts, all worked out on the device. The request
-  carries nothing about the user.
+  carries nothing the SDK adds about the user (like any request, it has the
+  device's IP address and User-Agent).
 
 What it is not:
 
@@ -272,7 +273,7 @@ Pass `version`, or the dashboard shows version `unknown`;
 | `track(name, props?, { once? })` | Queues an event. |
 | `screen(name)` | Queues `screen_viewed { screen }`. |
 | `entry(source, { url? })` | How the session began: `'link'`, `'notification'`, `'widget'`, `'quick_action'`, `'siri'` or another label. A link keeps only its `utm_*` and `ref` tags. Held until the session exists. |
-| `identify({ rcId?, pro? })` | RevenueCat's customer id and the paid flag, sent with every batch once set. |
+| `identify({ rcId?, pro?, language? })` | RevenueCat's customer id and the paid flag, sent with every batch once set. `language`: the language the app shows, for remote config rules only, never sent; call it on an in-app language switch and values follow at once. |
 | `setGlobalProps(props)`, `removeGlobalProp(key)`, `clearGlobalProps()` | Props merged into every later event. Memory only: set them each launch. |
 | `createTicket({ kind, message, email?, subject? })` | Sends feedback. `kind` is `issue`, `feature` or `love`. Returns `{ ok, id?, error? }`. With an email it sends no install id and keeps a thread key for the ticket instead (2.3.0). |
 | `listTickets()` | This install's tickets and the ones it sent with an email, with replies and `unread`. Marks replies read. |
@@ -284,8 +285,8 @@ Pass `version`, or the dashboard shows version `unknown`;
 | `telemetryAvailable()` | Whether the SDK is on (a url and a non-empty key). |
 | `config.bool(key, fallback)`, `.number`, `.string`, `.json` | A remote config value for this device, or the fallback (nothing loaded yet, not in the catalog, another type). Never throws. `json()` is frozen. |
 | `config.ready(timeoutMs?)` | Resolves once values are usable: from the cache, or the first fetch on a first launch. Hold the splash screen on it. Never rejects; 3 s by default. |
-| `useConfig()` | React Native: returns `config` and re-renders when a value changes. |
-| `config.onChange(fn)`, `config.refresh()`, `config.revision()`, `config.snapshot()` | Changed keys after a fetch, `identify({ pro })` or `forget()`; fetch now; the revision in use; every key with its value, rule and bucket for a debug screen. |
+| `useConfig()` | React Native: re-renders when a value changes, and returns a frozen copy of `config` that is new after each change, so the React Compiler's memoizing follows it. In components read from it, not from `hush.config`. |
+| `config.onChange(fn)`, `config.refresh()`, `config.revision()`, `config.snapshot()` | Changed keys when values are worked out again (a new revision, `identify()` changing `pro` or the language, `forget()`, `configure()`; never a 304); fetch now; the revision in use; every key with its value, rule and bucket for a debug screen. |
 
 Options: `url`, `key`, `channel`, `logLevel` (`silent`, `error`, `debug`),
 `onFlush`, `storagePrefix`, `runInBackground`, `attribution`, `remoteConfig`
@@ -350,7 +351,12 @@ with an email. A postback copy names no install.
   server's database backups keep it until they expire: the policy names
   that retention too. Feedback threads stay until they are deleted.
 - Remote config adds no row and changes none: its request carries the write
-  key and a revision, and the device never reports which value it got
+  key and a revision, and the device never reports which value it got. Like
+  any request it arrives with the device's IP address and the platform's
+  User-Agent; hush keeps neither (the address is only hashed, salted, for
+  in-memory rate limits), but a TLS proxy's access log may. It goes on after
+  an opt-out: a policy that promises nothing leaves the device then says
+  so, or the app sets `remoteConfig: false`
   ([references/remote-config.md](references/remote-config.md#7-privacy)).
 - "Delete my data" (`forget()`) reaches the tickets sent with an email only
   while the device holds their keys, and a 2.2.x ticket only until the server
