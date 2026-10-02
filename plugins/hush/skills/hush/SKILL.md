@@ -284,8 +284,9 @@ and edge cases are in [references/sdk-api.md](references/sdk-api.md).
 
 What an app on hush and `@bavrk/hush-expo` can declare in App Store
 Connect's App Privacy section, with SDK 2.3.0 or later and a hush server
-with migration 007. Every row is Tracking: No. A row applies when its
-"When" does; leave out the rows the app does not collect.
+with migration 008 (`private_screens`; an older server ignores the key).
+Every row is Tracking: No. A row applies when its "When" does; leave out
+the rows the app does not collect.
 
 | Data type | When | Linked to the user | Purposes |
 |---|---|---|---|
@@ -325,13 +326,16 @@ with an email. A postback copy names no install.
   ticket is closed and that app has fetched it since (or 7 days after it
   closed), or after 30 idle days; until then that one ticket is linked to
   that install. A version that named a screen by its URL put the ticket id
-  in it: `private_screens` drops those views, stored ones included. The
-  answers above hold in full for builds on 2.3.0 or later.
+  in it: `private_screens` drops those views, stored ones included (a
+  backup taken before keeps them until it expires). The answers above hold
+  in full for builds on 2.3.0 or later.
 - Retention for the privacy policy: raw events go after `RETENTION_DAYS`
   (180), and an install's row once it has sent nothing for
-  `INSTALL_RETENTION_DAYS` (the same by default), so everything about an
-  install's use of the app is gone 180 days after it last sends anything.
-  Feedback threads stay until they are deleted.
+  `INSTALL_RETENTION_DAYS` (the same by default; set shorter, the row goes
+  before its events), so everything about an install's use of the app is
+  gone from the live database 180 days after it last sends anything. The
+  server's database backups keep it until they expire: the policy names
+  that retention too. Feedback threads stay until they are deleted.
 - "Delete my data" (`forget()`) reaches the tickets sent with an email only
   while the device holds their keys, and a 2.2.x ticket only until the server
   unlinks it. Give the support address in that setting for messages sent

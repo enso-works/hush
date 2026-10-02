@@ -160,23 +160,26 @@ The [hush plugin](plugins/hush/) for Claude Code:
 
 Raw events are deleted after `RETENTION_DAYS` (180). An install that has
 sent nothing for `INSTALL_RETENTION_DAYS` (`RETENTION_DAYS` unless set)
-loses its row too, and by then its events are gone: nothing about how it
-used the app is left. So, with the defaults, a privacy policy can say that
-everything about an install's use of the app is deleted 180 days after it
-last sends anything. Feedback threads are kept until they are forgotten, so
-a policy names them apart: a thread without an email keeps the install id
-when the row goes, so it can still be answered, and the app lists it again
-if the install comes back. They are forgotten with the SDK's `forget()`, the
-dashboard's Installs page, or Delete on one ticket. `forget()` reaches the
-install's own tickets and the tickets sent with an email whose keys are on
-the device. It cannot reach a ticket sent with an email by an app before SDK
-2.3.0 once that ticket is unlinked ([below](#what-a-ticket-carries)), nor
-one whose key went with a reinstall: the operator deletes those with Delete,
-on request. So the app's "delete my data" text should give the support
-address for messages sent with an email. The write key ships inside the app,
-so it is not a secret: it identifies the app, can be revoked, and can read
-nothing but the calling install's own feedback, or a ticket whose key the
-caller holds.
+loses its row too. With that window at least as long as `RETENTION_DAYS`,
+as by default, its events are gone by then: nothing about how it used the
+app is left. A shorter one deletes the row and leaves its events until they
+age out, and the server warns at boot. So, with the defaults, a privacy
+policy can say that everything about an install's use of the app is
+deleted from the live database 180 days after it last sends anything, and
+from backups as they expire: name how long yours are kept, if you keep any.
+Feedback threads are kept until they are forgotten, so a policy names them
+apart: a thread without an email keeps the install id when the row goes, so
+it can still be answered, and the app lists it again if the install comes
+back. They are forgotten with the SDK's `forget()`, the dashboard's Installs
+page, or Delete on one ticket. `forget()` reaches the install's own tickets
+and the tickets sent with an email whose keys are on the device. It cannot
+reach a ticket sent with an email by an app before SDK 2.3.0 once that
+ticket is unlinked ([below](#what-a-ticket-carries)), nor one whose key went
+with a reinstall: the operator deletes those with Delete, on request. So the
+app's "delete my data" text should give the support address for messages
+sent with an email. The write key ships inside the app, so it is not a
+secret: it identifies the app, can be revoked, and can read nothing but the
+calling install's own feedback, or a ticket whose key the caller holds.
 
 ### What a ticket carries
 
@@ -211,9 +214,10 @@ back. Do not make it easier: leave the feedback and inbox screens out of
 the catalog's `private_screens`, and put nothing about a ticket in an event.
 The server stores no view of a screen in `private_screens`, or of a screen
 under one (`support` covers `support/new` and `support/42`), whichever build
-sends it, and deletes the views stored before the catalog named it. That
-matters for app versions that named a screen by its URL, which put the
-ticket id in it ([dogfood log](docs/dogfood.md)).
+sends it, and deletes the views stored before the catalog named it; backups
+taken before then keep them until they expire. That matters for app versions
+that named a screen by its URL, which put the ticket id in it
+([dogfood log](docs/dogfood.md)).
 
 App versions built with SDK 2.2.x or older still send the install id and
 RevenueCat's id with an email, and track `ticket_opened` and `ticket_replied`
@@ -245,8 +249,9 @@ its "When" does; an app that collects none of it leaves the row out.
 | User Content: Customer Support | When the app takes feedback | Yes, only for people who write in with an email; No without an email field | App Functionality |
 
 These hold for builds on SDK 2.3.0 or later against a server with migration
-007, with the feedback and inbox screens out of `screen()` and in
-`private_screens`, and nothing about a ticket in an event
+008 (`private_screens`; an older server ignores the key), with the feedback
+and inbox screens out of `screen()` and in `private_screens`, and nothing
+about a ticket in an event
 ([above](#what-a-ticket-carries)). Other SDKs in the app answer for
 themselves, in the same rows: RevenueCat adds App Functionality to Purchase
 History. Braele's answers, which this table follows, have no Identifiers
@@ -268,7 +273,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `RESEND_API_KEY`, `MAIL_FROM` | Email through [Resend](https://resend.com): feedback alerts, and your replies to users who left an address. |
 | `ALERT_EMAIL`, `REPLY_HINT` | Where new feedback is announced (at most 30 an hour), and a last line saying where to answer. |
 | `RETENTION_DAYS` | Raw events are deleted after this many days. Default 180. |
-| `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days: no batch, and no event dated inside the window. Default `RETENTION_DAYS`, when its events are gone too; 0 keeps every row. Its tickets keep the install id. The dashboard's install total and Countries panel then count the installs seen in that window, not all time; new installs and retention over a longer period (the 1y view) count only the installs still kept, as numbers from events count only the events still kept; an install that sends again after its row went counts as new. |
+| `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days: no batch, and no event dated inside the window. Default `RETENTION_DAYS`, when its events are gone too; 0 keeps every row. Shorter than `RETENTION_DAYS`, the row goes while its events stay, and an install that sends again before they go counts as new; the server warns at boot. Its tickets keep the install id. The dashboard's install total and Countries panel then count the installs seen in that window, not all time. New installs and retention count only the installs first seen inside the window, so a longer period (the 1y view) is cut to it and says so: an older install is on record only if it kept sending, and counting it would push the retention rate up. An install that sends again after its row went counts as new. |
 | `RC_API_KEY`, `RC_PROJECTS`, `RC_CURRENCY` | RevenueCat v2 secret key with read-only scopes; see `src/revenuecat.mjs`. `RC_STALE_MINUTES` (10), `RC_FLOOR_SECONDS` (60) and `RC_RATE_PER_MINUTE` (20) pace its refreshes. |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` (or `_FILE`) | An App Store Connect API key, for campaign reports (below). The Admin role once, to create each app's report request; Sales and Reports after. `ASC_API_BASE` changes Apple's address, for tests. |
 | `DEMO` | `1`: a public read-only showcase with invented data. It wipes its database daily, so give it one of its own; it refuses a database with write keys. |
@@ -296,9 +301,10 @@ the server never stores: a `screen_viewed` naming one, or a screen under one
 (`support/42` under `support`), in any prop is accepted and discarded, any
 other event loses a prop that names one, and views stored before are
 deleted at boot and in the six-hourly sweep. List the feedback and inbox
-screens there. The
-catalog is read once at boot and a mistake in it stops the boot, naming the
-path: restart after editing it. Leave out `funnels` rather than writing `[]`.
+screens there. The catalog is read once at boot and a mistake in it stops
+the boot, naming the path: restart after editing it. A key the server does
+not read, misspelt or from a later version, is ignored with a warning in
+the log. Leave out `funnels` rather than writing `[]`.
 
 ```json
 {

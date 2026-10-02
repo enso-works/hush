@@ -8,6 +8,22 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
 ## 2026-10-02
 
+- **hush, review of the two fixes below.** Install retention made the 1y
+  view flatter the app: an install first seen more than 180 days ago is
+  still on record only if it kept sending, so the ones that stopped left
+  the Retention panel's cohort and the new-install counts. Day 30 read 100%
+  on a cohort that was at 10%. New installs and retention now count only
+  the installs first seen inside the window (`a47e505`), and the dashboard
+  says when a period is cut to it (`b482077`). An `INSTALL_RETENTION_DAYS`
+  shorter than `RETENTION_DAYS` deletes the row while its events stay; the
+  server warns at boot (`89ec910`). The App Privacy answers asked for a
+  server with migration 007, where `private_screens` is ignored without a
+  word: they ask for 008 now, and a catalog key the server does not read is
+  logged (`f502f93`). The policy sentence left out backups: bavrk's nightly
+  dumps of bavrk-db keep everything 14 days on the server, and 90 in R2
+  once R2 is configured, so braele.app/privacy should say deleted from the
+  live database 180 days after the last send, and from backups within 90
+  days after that.
 - **Braele, review of 2.1.0.** Braele 2.0.0 and 2.0.1 name a screen by its
   URL, so sending a message and opening a thread sent
   `screen_viewed { screen: 'support/<ticket id>' }` with the install id.
@@ -34,7 +50,8 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
   count the installs seen in that window (`dcc8b42`).
 - **Braele, bavrk, open.** bavrk.com's subtree has neither change until it
   is pulled; Braele's catalog entry gets `"private_screens": ["support"]`,
-  and braele.app/privacy can then name the install retention.
+  and braele.app/privacy can then name the install retention, and the
+  backups' after it (above).
 - **hush plugin.** The skill's App Privacy table had three rows; an app on
   hush and hush-expo that followed it would under-declare. It now has
   Braele's eight, each with when it applies, and the README says the same.

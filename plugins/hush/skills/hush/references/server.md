@@ -57,7 +57,7 @@ what its `environment:` block lists.
 | `RESEND_API_KEY`, `MAIL_FROM` | Mail through Resend: feedback alerts, and replies to users who left an address. |
 | `ALERT_EMAIL`, `REPLY_HINT` | Where new feedback is announced (at most 30 mails an hour; tickets are always stored), and a last line saying where to answer. |
 | `RETENTION_DAYS` | Raw events are deleted after this many days. Default 180. Swept every 6 hours. |
-| `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days (no batch, no event dated inside the window), in the same sweep. Default `RETENTION_DAYS`; 0 keeps every row. Its tickets keep the install id: the operator can still answer them, and the app lists them again if the install comes back, as a new install. The dashboard's install total and Countries panel then count the installs seen in that window, not all time. |
+| `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days (no batch, no event dated inside the window), in the same sweep. Default `RETENTION_DAYS`; 0 keeps every row. Not shorter than `RETENTION_DAYS`: the row would go while its events stay, and the install would count as new if it sent again before they went (the server warns at boot). Its tickets keep the install id: the operator can still answer them, and the app lists them again if the install comes back, as a new install. The dashboard's install total and Countries panel then count the installs seen in that window, not all time; new installs and retention count only the installs first seen inside it, so the 1y view is cut to it and says so. |
 | `RC_API_KEY` | RevenueCat v2 secret key with read-only scopes, for the revenue panel. |
 | `RC_PROJECTS`, `RC_CURRENCY`, `RC_STALE_MINUTES`, `RC_FLOOR_SECONDS`, `RC_RATE_PER_MINUTE` | Project mapping (`myapp=projabc`) when names differ; currency (USD); cache and rate settings (10 min, 60 s, 20 a minute). |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16 characters or more), accepted on `/admin/*` in place of the token. Both or neither. |
@@ -162,8 +162,10 @@ env -u CATALOG_FILE node --input-type=module -e "import { readFileSync } from 'n
 ```
 
 It prints `ok`, or throws with the path of the first problem, such as
-`catalog.myapp.events: expected event names matching …`. Check by eye what it
-does not:
+`catalog.myapp.events: expected event names matching …`. A key in an app's
+entry that the server does not read, misspelt or from a later version, is
+ignored with a warning line before `ok` (a server before this check ignores
+it without one). Check by eye what it does not:
 
 - The key is the app's slug on the server, the `<app>` in its write keys. Any
   other key is accepted and never matches an app.
