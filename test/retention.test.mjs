@@ -174,7 +174,13 @@ describe('configuration', () => {
       const listening = () => s.logs.join('').split('\n').find((l) => l.includes('hush listening'));
       for (let i = 0; i < 20 && !listening(); i++) await new Promise((r) => setTimeout(r, 50));
       const line = listening();
-      return { days, logged: JSON.parse(line).installRetentionDays, warned: s.logs.join('').includes('install retention is off') };
+      const logs = s.logs.join('');
+      return {
+        days,
+        logged: JSON.parse(line).installRetentionDays,
+        warned: logs.includes('install retention is off'),
+        ...(logs.includes('INSTALL_RETENTION_DAYS is shorter than RETENTION_DAYS') && { shorter: true }),
+      };
     } finally {
       await s.stop();
       await d.drop();
@@ -189,5 +195,10 @@ describe('configuration', () => {
     // Empty, as docker compose passes an unset variable: the default.
     assert.deepEqual(await retention({ INSTALL_RETENTION_DAYS: '' }), { days: 180, logged: 180, warned: false });
     assert.deepEqual(await retention({ INSTALL_RETENTION_DAYS: '180d' }), { days: null, logged: 'off', warned: true });
+  });
+
+  test('a window shorter than RETENTION_DAYS is kept, with a warning: rows go before their events', async () => {
+    assert.deepEqual(await retention({ INSTALL_RETENTION_DAYS: '30' }), { days: 30, logged: 30, warned: false, shorter: true });
+    assert.deepEqual(await retention({ RETENTION_DAYS: '30', INSTALL_RETENTION_DAYS: '30' }), { days: 30, logged: 30, warned: false });
   });
 });

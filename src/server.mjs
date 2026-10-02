@@ -505,6 +505,14 @@ async function startDemo() {
 if (!Number.isInteger(cfg.installRetentionDays) || cfg.installRetentionDays < 0) {
   log.warn('install retention is off: INSTALL_RETENTION_DAYS (or RETENTION_DAYS) is not a whole number of days');
 }
+// A row that goes before its events leaves them stored without it, and the
+// install counts as new if it sends again while they are still there.
+if (installRetention !== null && installRetention < cfg.retentionDays) {
+  log.warn('INSTALL_RETENTION_DAYS is shorter than RETENTION_DAYS: an install row is deleted while its events are kept, and an install that sends again before they go counts as new', {
+    installRetentionDays: installRetention,
+    retentionDays: cfg.retentionDays,
+  });
+}
 
 // Proxy sign-in is off unless both halves are there; say so rather than
 // refuse to boot, since an empty secret usually means an unset variable.
