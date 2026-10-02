@@ -1,7 +1,8 @@
-// What the server deletes on its own: raw events after RETENTION_DAYS, the
-// install id on an older app version's ticket with an email once its inbox
-// no longer needs it (unlinkOldClientTickets in tickets.mjs), and the
-// screens each app's catalog keeps private.
+// What the server deletes on its own: raw events after RETENTION_DAYS,
+// installs that have sent nothing for INSTALL_RETENTION_DAYS, the install id
+// on an older app version's ticket with an email once its inbox no longer
+// needs it (unlinkOldClientTickets in tickets.mjs), and the screens each
+// app's catalog keeps private.
 // server.mjs runs sweep() a minute after boot and every six hours, and
 // deletePrivateScreens({ everyProp: true }) once at boot.
 import { privateScreensByApp } from './catalog.mjs';
@@ -55,6 +56,28 @@ export async function deletePrivateScreens({ everyProp = false } = {}) {
   return { views, stripped };
 }
 
+/**
+ * Deletes the installs that have sent nothing for INSTALL_RETENTION_DAYS
+ * (RETENTION_DAYS unless set; 0 keeps every install): no batch since
+ * (last_seen), and no event dated inside the window, which a clock running
+ * fast can leave. By then their events are gone, so the row is all that is
+ * left of them. Nothing depends on the row being there: a ticket without an
+ * email keeps the install id, so the operator can still answer it and the
+ * app still lists it by that id; postbacks and RevenueCat's figures name no
+ * install; forget() deletes by the id. An install that sends again gets a
+ * new row and counts as new from that day. Returns how many.
+ */
+export async function deleteIdleInstalls(days = cfg.installRetentionDays) {
+  if (!Number.isInteger(days) || days <= 0) return 0;
+  const { rowCount } = await q(
+    `DELETE FROM installs i
+      WHERE i.last_seen < now() - make_interval(days => $1)
+        AND NOT EXISTS (SELECT 1 FROM events e WHERE e.install = i.id AND e.at >= now() - make_interval(days => $1))`,
+    [days],
+  );
+  return rowCount;
+}
+
 // One failing step is logged and does not stop the others.
 async function step(failure, fn) {
   try {
@@ -65,16 +88,20 @@ async function step(failure, fn) {
 }
 
 /**
- * Raw events age out; installs and tickets are kept (an install row is a
- * counter, a ticket is a conversation), except that a ticket with an email
- * that an older app version sent with its install loses the install, and
- * that install's ticket events, once it is closed and seen or idle. Then
- * the private screens, by the screen prop.
+ * Raw events age out, then the installs that have sent nothing for
+ * INSTALL_RETENTION_DAYS. Tickets are kept (a ticket is a conversation), except that a ticket with
+ * an email that an older app version sent with its install loses the
+ * install, and that install's ticket events, once it is closed and seen or
+ * idle. Then the private screens, by the screen prop.
  */
 export async function sweep() {
   await step('retention sweep failed', async () => {
     const { rowCount } = await q('DELETE FROM events WHERE at < now() - make_interval(days => $1)', [cfg.retentionDays]);
     if (rowCount) log.info('retention sweep', { deleted: rowCount, days: cfg.retentionDays });
+  });
+  await step('install retention sweep failed', async () => {
+    const installs = await deleteIdleInstalls();
+    if (installs) log.info('idle installs deleted', { installs, days: cfg.installRetentionDays });
   });
   await step('ticket unlink sweep failed', async () => {
     const unlinked = await unlinkOldClientTickets();

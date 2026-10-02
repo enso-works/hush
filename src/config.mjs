@@ -43,6 +43,10 @@ export const cfg = {
   // have a database of its own; it refuses to start on one with write keys.
   demo: env('DEMO') === '1',
   retentionDays: Number(env('RETENTION_DAYS', '180')),
+  // Installs that have sent nothing for this many days are deleted, in the
+  // same sweep (src/sweep.mjs). Unset: RETENTION_DAYS, when the install's
+  // events are gone and its row is all that is left. 0 keeps every install.
+  installRetentionDays: Number(env('INSTALL_RETENTION_DAYS') || env('RETENTION_DAYS', '180')),
   // RevenueCat, read-only. A v2 *secret* key: it never reaches a browser or a
   // phone, only the poller in this process. Empty = the revenue section says
   // the key is missing instead of the pages breaking.

@@ -241,7 +241,12 @@ const channelOf = (url) => {
 // 200 means it is a demo or a proxy added the token (ops does).
 r.get('/admin/session', async (_req, res) => json(res, 200, { demo: cfg.demo }));
 
-r.get('/admin/apps', async (_req, res, { url }) => json(res, 200, { apps: await summary({ days: days(url), env: envOf(url) }) }));
+// How long an install row outlives its last batch (null: kept), so the
+// dashboard can say what its install totals cover.
+const installRetention = Number.isInteger(cfg.installRetentionDays) && cfg.installRetentionDays > 0 ? cfg.installRetentionDays : null;
+
+r.get('/admin/apps', async (_req, res, { url }) =>
+  json(res, 200, { apps: await summary({ days: days(url), env: envOf(url) }), install_retention_days: installRetention }));
 
 r.get('/admin/apps/:app', async (_req, res, { url, params }) =>
   json(res, 200, await appDetail({ app: params.app, days: days(url), env: envOf(url), channel: channelOf(url) })));
@@ -497,6 +502,12 @@ async function startDemo() {
   setInterval(() => seedDemo().catch((err) => log.error('demo reseed failed', { err: String(err?.message ?? err) })), 24 * 60 * 60 * 1000).unref();
 }
 
+// A value that is not a whole number of days keeps every install, as 0
+// does; say so rather than refuse to boot.
+if (!Number.isInteger(cfg.installRetentionDays) || cfg.installRetentionDays < 0) {
+  log.warn('install retention is off: INSTALL_RETENTION_DAYS (or RETENTION_DAYS) is not a whole number of days');
+}
+
 // Proxy sign-in is off unless both halves are there; say so rather than
 // refuse to boot, since an empty secret usually means an unset variable.
 const proxySignIn = Boolean(cfg.adminProxyHeader && cfg.adminProxySecret.length >= 16);
@@ -507,7 +518,7 @@ if ((cfg.adminProxyHeader || cfg.adminProxySecret) && !proxySignIn) {
 migrate()
   .then(() => (cfg.demo ? startDemo() : registerApps()))
   .then(() => {
-    server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off', proxySignIn: proxySignIn ? cfg.adminProxyHeader : 'off' }));
+    server.listen(cfg.port, '0.0.0.0', () => log.info('hush listening', { port: cfg.port, retentionDays: cfg.retentionDays, installRetentionDays: installRetention ?? 'off', mail: cfg.mailDryRun ? 'dry-run' : cfg.resendKey ? 'resend' : 'off', revenuecat: rcConfigured() ? `on demand, cache ${cfg.rcStaleMinutes}m` : 'off', proxySignIn: proxySignIn ? cfg.adminProxyHeader : 'off' }));
     // Screens the catalog keeps private, stored before it named them: every
     // prop of every event, once, while ingest already stores none.
     void sweepPrivateScreensAtBoot();
