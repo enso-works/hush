@@ -110,6 +110,13 @@ test('the /v1 surface answers exactly as shipped apps expect', async () => {
   await step('forget: threads', n.post('/v1/forget', { threads: [u.json.thread] }));
   await step('forget: install', n.post('/v1/forget', { install: OLD }));
 
+  // Added with private_screens (2026-10-02): a view of a screen the catalog
+  // keeps private, or of one under it, is never stored, and the answer counts
+  // it as accepted, as every shipped SDK expects. Braele 2.0.x sends
+  // support/<ticket id>.
+  await step('events: a private screen, accepted and not stored', c.post('/v1/events', batch([ev(10, 'screen_viewed', { screen: 'support/42' }), ev(11, 'screen_viewed', { screen: 'home' })])));
+  await step('events: nothing but private screens', c.post('/v1/events', batch([ev(12, 'screen_viewed', { screen: 'support' })])));
+
   if (!existsSync(SNAPSHOT) || process.env.UPDATE_SNAPSHOTS === '1') {
     writeFileSync(SNAPSHOT, `${JSON.stringify(steps, null, 2)}\n`);
     console.log(`snapshot written: ${SNAPSHOT}`);
