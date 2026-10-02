@@ -99,7 +99,9 @@ export type RemoteConfigOptions = {
   refreshMinutes?: number;
   /**
    * The language the app shows, for language rules: a language or a locale
-   * ('es', 'pt-BR'). Read at each evaluation. Missing, throwing, or not a
+   * ('es', 'pt-BR'). Read at each evaluation, which this function does not
+   * cause: after an in-app switch, identify({ language }) evaluates at once.
+   * A language given to identify() wins. Missing, throwing, or not a
    * non-empty string: the phone's first locale. It never leaves the device.
    */
   language?: () => string;
@@ -154,6 +156,21 @@ type Milestone = { value: number; coarse: ConversionValue['coarse']; event: stri
 
 /** The config as the server sent it, kept under `<prefix>.config.v1`. revision null: a server without remote config. */
 type StoredConfig = { revision: string | null; keys: Record<string, unknown> };
+
+/**
+ * Which server and key a stored config came from: FNV-1a over `<url> <key>`,
+ * so the key itself is not written next to it. Two apps on one web origin
+ * with the default prefix share the storage key, not the config.
+ */
+function configSource(url: string, key: string): string {
+  let h = 0x811c9dc5;
+  const s = `${url} ${key}`;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
 
 /** One key's evaluation for this device, with its value frozen. */
 type ConfigSlot = { type: string; has: boolean; value: unknown; rule: number };
@@ -385,6 +402,13 @@ export function createHush(platform: HushPlatform) {
     refreshMs = minutes * 60_000;
     appLanguage = typeof rc.language === 'function' ? rc.language : undefined;
     enabled = TELEMETRY_KEY.length > 0 && TELEMETRY_URL.length > 0;
+    CONFIG_SOURCE = configSource(TELEMETRY_URL, TELEMETRY_KEY);
+    // Another server or key: its config is not this one's.
+    if (cache && cacheSource !== CONFIG_SOURCE) {
+      cache = null;
+      configMissing = false;
+      evaluateConfig();
+    }
     // The channel or the language may differ now.
     if (cache) evaluateConfig();
     // An empty string key is the documented way to leave the SDK off (dev
@@ -698,11 +722,18 @@ export function createHush(platform: HushPlatform) {
   // --- remote config
 
   let CONFIG_KEY = 'hush.config.v1';
+  let CONFIG_SOURCE = '';
   let configOn = true;
   let refreshMs = 15 * 60_000;
   let appLanguage: (() => string) | undefined;
-  // What the server last sent (or the stored copy), null until init() has read storage.
+  // What the server last sent (or the stored copy), null until init() has read
+  // storage; and the configSource() it came from.
   let cache: StoredConfig | null = null;
+  let cacheSource = '';
+  // identify()'s language: the language the app shows, as of this process.
+  let identifiedLanguage: string | undefined;
+  // The context of the last evaluation.
+  let evaluatedWith: ReturnType<typeof configContext> | undefined;
   // The paid flag to store with the cache: identify()'s, kept for the next
   // launch's pro rules before identify() runs there. Never sent.
   let storedPro: boolean | undefined;
@@ -734,9 +765,9 @@ export function createHush(platform: HushPlatform) {
 
   function configContext() {
     const d = platform.device();
-    let language: unknown;
+    let language: unknown = identifiedLanguage;
     try {
-      language = appLanguage?.();
+      language ??= appLanguage?.();
     } catch {
       // The app's function failed: the phone's locale instead.
     }
@@ -752,7 +783,7 @@ export function createHush(platform: HushPlatform) {
   function writeConfig(): void {
     if (!configOn || !cache) return;
     try {
-      const data: StoredConfig & { pro?: boolean } = { revision: cache.revision, keys: cache.keys };
+      const data: StoredConfig & { pro?: boolean; source: string } = { revision: cache.revision, keys: cache.keys, source: cacheSource };
       if (typeof storedPro === 'boolean') data.pro = storedPro;
       void storage.setItem(CONFIG_KEY, JSON.stringify(data)).catch(() => {});
     } catch (err) {
@@ -763,7 +794,9 @@ export function createHush(platform: HushPlatform) {
   /** Evaluates every key for this device, keeps equal values' references, and tells the listeners what changed. */
   function evaluateConfig(): string[] {
     const keys = configOn && cache ? cache.keys : {};
-    const results = evaluateAll(keys, configContext(), installId || null);
+    const context = configContext();
+    evaluatedWith = context;
+    const results = evaluateAll(keys, context, installId || null);
     const next: Record<string, ConfigSlot> = Object.create(null);
     const changed: string[] = [];
     for (const key of Object.keys(results)) {
@@ -801,10 +834,15 @@ export function createHush(platform: HushPlatform) {
     for (const w of waiters) w();
   }
 
-  /** The stored config as init() read it; anything malformed is no cache, and the next 200 overwrites it. */
+  /**
+   * The stored config as init() read it; anything malformed, or stored for
+   * another server or key, is no cache, and the next 200 overwrites it.
+   */
   function loadConfig(raw: unknown): void {
     if (!isRecord(raw) || !isRecord(raw.keys) || (raw.revision !== null && typeof raw.revision !== 'string')) return;
+    if (raw.source !== CONFIG_SOURCE) return;
     cache = { revision: raw.revision, keys: raw.keys };
+    cacheSource = CONFIG_SOURCE;
     const filePro = typeof raw.pro === 'boolean' ? raw.pro : undefined;
     // identify() before init() is newer than the stored flag.
     if (isPro !== undefined) {
@@ -871,12 +909,14 @@ export function createHush(platform: HushPlatform) {
 
   async function runConfigRequest(): Promise<ConfigRefreshResult> {
     const startedAt = Date.now();
+    const source = CONFIG_SOURCE;
     const headers: Record<string, string> = { Authorization: `Key ${TELEMETRY_KEY}` };
     if (mayRevalidate()) headers['If-None-Match'] = `"${cache!.revision}"`;
     const answer = await getWithin(`${TELEMETRY_URL}/v1/config`, headers);
     let result: ConfigRefreshResult = { status: answer.status, changed: [] };
     try {
-      result = applyAnswer(answer);
+      // configure() pointed the SDK at another server or key meanwhile: the answer is not for it.
+      if (source === CONFIG_SOURCE) result = applyAnswer(answer);
     } catch (err) {
       log('error', 'config not applied', err);
     }
@@ -922,6 +962,7 @@ export function createHush(platform: HushPlatform) {
       configMissing = false;
       if (cache && cache.revision !== null && cache.revision === revision) return { status, changed: [] };
       cache = { revision, keys: config.keys as Record<string, unknown> };
+      cacheSource = CONFIG_SOURCE;
       writeConfig();
       return { status, changed: evaluateConfig() };
     }
@@ -929,6 +970,7 @@ export function createHush(platform: HushPlatform) {
       if (!cache || cache.revision === null) {
         // A server from before remote config, from the start: nothing to read, cached so ready() is quick next time.
         cache = { revision: null, keys: {} };
+        cacheSource = CONFIG_SOURCE;
         writeConfig();
         return { status, changed: evaluateConfig() };
       }
@@ -969,7 +1011,7 @@ export function createHush(platform: HushPlatform) {
     const off: ConfigRefreshResult = { status: 'off', changed: [] };
     if (!enabled || !configOn) return Promise.resolve(off);
     return init()
-      .then(() => (ready ? configRequest() : off))
+      .then(() => (ready || configStarted ? configRequest() : off))
       .catch(() => off);
   }
 
@@ -1154,6 +1196,9 @@ export function createHush(platform: HushPlatform) {
   }
 
   async function initOnce(): Promise<void> {
+    // Remote config needs none of the reads below that may fail init(): it
+    // starts with or without them.
+    const configRead = configOn ? readStored(CONFIG_KEY) : Promise.resolve(null);
     try {
       // The install id, the first-launch marker and the opt-out are small and
       // have no safe default (a guess counts a new install, or ignores the
@@ -1168,7 +1213,7 @@ export function createHush(platform: HushPlatform) {
         readStored(QUEUE_KEY),
         readStored(ONCE_KEY),
         readStored(SESSIONS_KEY),
-        configOn ? readStored(CONFIG_KEY) : null,
+        configRead,
         attribution ? storage.getItem(ATTRIBUTION_KEY).catch((): typeof READ_FAILED => READ_FAILED) : undefined,
       ]);
       installId = stored ?? uuid();
@@ -1218,7 +1263,10 @@ export function createHush(platform: HushPlatform) {
         void storage.setItem(FIRST_KEY, new Date().toISOString()).catch(() => {});
       }
       startSession(true);
-      if (configOn) loadConfig(storedConfig);
+      // An earlier init() that failed has the config already, maybe newer
+      // than storage; the install id is new to it, and with it the buckets.
+      if (configOn && !configStarted) loadConfig(storedConfig);
+      else if (cache) evaluateConfig();
       void startAttribution(storedAttribution ?? null);
       if (configOn) {
         configStarted = true;
@@ -1235,7 +1283,20 @@ export function createHush(platform: HushPlatform) {
       log('debug', `ready: install ${installId}, sdk ${SDK_VERSION}, channel ${CHANNEL ?? '(none)'}${optedOut ? ', opted out' : ''}`);
       void flush();
     } catch {
-      // Anything failing here just leaves telemetry off for this launch.
+      // Anything failing here just leaves telemetry off for this launch. The
+      // config does not depend on it: the stored one is read and one request
+      // made, without an install id (rollouts below 100 do not match), and
+      // refresh() fetches again. A later init() (refresh() calls it) may still
+      // start the rest.
+      if (configOn && !configStarted) {
+        try {
+          loadConfig(await configRead);
+          configStarted = true;
+          void configRequest();
+        } catch {
+          // Nothing more to try this launch.
+        }
+      }
     }
   }
 
@@ -1323,18 +1384,29 @@ export function createHush(platform: HushPlatform) {
    * RevenueCat's own anonymous customer id, so purchases can be joined to
    * installs without ever setting an appUserID; and whether the install is on
    * a paid plan. Until `pro` is given, batches carry no flag at all.
+   * `language`: the language the app shows, for remote config's language
+   * rules, ahead of remoteConfig.language; '' goes back to it. Never sent.
+   * A `pro` or `language` that changes what a rule sees evaluates the config
+   * again at once, and onChange hears the keys that changed: call it from
+   * an in-app language switch.
    */
-  function identify(next: { rcId?: string; pro?: boolean }): void {
+  function identify(next: { rcId?: string; pro?: boolean; language?: string }): void {
     if (typeof next?.rcId === 'string' && next.rcId) rcId = next.rcId;
     if (typeof next?.pro === 'boolean') {
-      const before = proInUse();
       isPro = next.pro;
       if (configOn && storedPro !== next.pro) {
         // With no cache yet it waits in memory for the first write.
         storedPro = next.pro;
         writeConfig();
       }
-      if (cache && proInUse() !== before) evaluateConfig();
+    }
+    // Never sent and never stored: it is only for language rules.
+    if (typeof next?.language === 'string') identifiedLanguage = next.language.trim() || undefined;
+    // Against what the last evaluation saw, so a remoteConfig.language that
+    // moved since is caught up too.
+    if (cache) {
+      const now = configContext();
+      if (now.pro !== evaluatedWith?.pro || now.language !== evaluatedWith?.language) evaluateConfig();
     }
   }
 

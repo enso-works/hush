@@ -115,8 +115,20 @@ const appState = async (state) => {
   for (const fn of h.listeners) fn(state);
   await settle();
 };
+/** What the SDK stores with a config to say which server and key it came from: FNV-1a, 32 bits, hex. */
+function sourceOf(url, key) {
+  let x = 0x811c9dc5;
+  for (const ch of `${url} ${key}`) {
+    x ^= ch.charCodeAt(0);
+    x = Math.imul(x, 0x01000193);
+  }
+  return (x >>> 0).toString(16).padStart(8, '0');
+}
+const SOURCE = sourceOf('https://hush.test', 'hush_app_prod_x');
 const stored = (key = 'hush.config.v1') => (h.storage.has(key) ? JSON.parse(h.storage.get(key)) : undefined);
-const store = (value, key = 'hush.config.v1') => h.storage.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+/** A stored config; an object gets this app's source unless it names one. */
+const store = (value, key = 'hush.config.v1') =>
+  h.storage.set(key, typeof value === 'string' ? value : JSON.stringify('source' in value ? value : { ...value, source: SOURCE }));
 /** console.warn and console.log, captured: the SDK's 'error' and 'debug' lines. */
 function captureConsole() {
   const lines = [];
@@ -164,7 +176,7 @@ test('first launch: ready() waits for the fetch, values follow, and the cache is
   release();
   await ready;
   assert.deepEqual(values(sdk.config), SERVED);
-  assert.deepEqual(stored(), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS });
+  assert.deepEqual(stored(), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS, source: SOURCE });
   assert.equal(configCalls[0].auth, 'Key hush_app_prod_x');
   assert.equal(configCalls[0].inm, null);
 
@@ -172,7 +184,7 @@ test('first launch: ready() waits for the fetch, values follow, and the cache is
   server.mode = 'ok';
   const other = await launch({ storagePrefix: 'braele' });
   await other.config.ready();
-  assert.deepEqual(stored('braele.config.v1'), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS });
+  assert.deepEqual(stored('braele.config.v1'), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS, source: SOURCE });
   assert.equal(stored('hush.config.v1'), undefined);
 });
 
@@ -209,7 +221,7 @@ test('off: an empty key or remoteConfig false makes no request; ready() at once,
     sdk.identify({ pro: true });
     await settle();
     assert.equal(configCalls.length, 0, JSON.stringify(config));
-    assert.deepEqual(stored(), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS }, 'the cache is neither read nor written');
+    assert.deepEqual(stored(), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS, source: SOURCE }, 'the cache is neither read nor written');
   }
 });
 
@@ -255,7 +267,7 @@ test('an older server: fallbacks and no lines; after a newer one, its cache stay
     let sdk = await launch({ logLevel: 'debug' });
     await sdk.config.ready();
     assert.deepEqual(values(sdk.config), FALLBACKS);
-    assert.deepEqual(stored(), { revision: null, keys: {} });
+    assert.deepEqual(stored(), { revision: null, keys: {}, source: SOURCE });
     assert.equal(sdk.config.revision(), null);
     assert.equal(
       out.lines.filter(([, l]) => l.includes('using the fallback')).length,
@@ -536,6 +548,138 @@ test('remoteConfig.language wins over the phone\'s locale; one that throws or re
   assert.equal(await make(() => 42), 'hola (ca)');
 });
 
+test('identify({ language }): an in-app switch evaluates at once, wins over remoteConfig.language, and is never sent; a 304 alone does not evaluate', async () => {
+  const keys = { greeting: { type: 'string', default: 'hello', rules: [{ when: { language: ['es'] }, value: 'hola' }, { when: { language: ['de'] }, value: 'hallo' }] } };
+  server.body = answer(keys);
+  let shown = 'en';
+  const sdk = await launch({ remoteConfig: { language: () => shown } });
+  await sdk.config.ready();
+  assert.equal(sdk.config.string('greeting', '?'), 'hello');
+  const changes = [];
+  sdk.config.onChange((k) => changes.push(k));
+
+  // The function alone is read at the next evaluation; a 304 is not one.
+  shown = 'es';
+  assert.equal((await sdk.config.refresh()).status, 304);
+  assert.equal(sdk.config.string('greeting', '?'), 'hello', 'nothing evaluated yet');
+
+  sdk.identify({ language: 'es' });
+  assert.deepEqual(changes, [['greeting']]);
+  assert.equal(sdk.config.string('greeting', '?'), 'hola');
+  sdk.identify({ language: 'es' });
+  assert.equal(changes.length, 1, 'the same language: no call');
+  sdk.identify({ language: 'de-AT' });
+  assert.equal(sdk.config.string('greeting', '?'), 'hallo', 'it wins over the function');
+  sdk.identify({ language: '' });
+  assert.equal(sdk.config.string('greeting', '?'), 'hola', "'' goes back to the function");
+
+  sdk.identify({ language: 'de' });
+  sdk.track('opened_x');
+  await sdk.flushNow();
+  assert.equal(JSON.stringify(sent.at(-1).body).includes('"de"'), false, 'the language is not in a batch');
+  assert.equal(stored().language, undefined, 'nor stored');
+});
+
+test('identify({ language }) before init(): the first evaluation uses it', async () => {
+  const keys = { greeting: { type: 'string', default: 'hello', rules: [{ when: { language: ['es'] }, value: 'hola' }] } };
+  server.body = answer(keys);
+  const sdk = await load();
+  sdk.identify({ language: 'es-MX' });
+  await sdk.init();
+  await sdk.config.ready();
+  assert.equal(sdk.config.string('greeting', '?'), 'hola');
+});
+
+test('the install id cannot be read: the stored config still loads, one request goes out, refresh() fetches; a later init() adds the buckets', async () => {
+  const keys = {
+    kill: { type: 'bool', default: true, rules: [] },
+    paywall_variant: { type: 'string', default: 'a', rules: [{ rollout: 20, value: 'b' }] },
+  };
+  store({ revision: 'aaaaaaaaaaaaaaaa', keys });
+  h.storage.set('hush.install.v1', ONE); // bucket 19: inside the 20% rollout
+  h.failReads['hush.install.v1'] = 1;
+  server.body = answer(keys);
+  const sdk = await load();
+  let resolved = false;
+  const ready = sdk.config.ready().then(() => (resolved = true));
+  await settle();
+  assert.equal(resolved, true, 'ready() at once, from the stored config');
+  await ready;
+  assert.equal(sdk.config.bool('kill', false), true, 'the stored kill switch');
+  assert.equal(sdk.config.string('paywall_variant', '?'), 'a', 'no install id: no bucket, the default');
+  assert.equal(sdk.installationId(), '', 'telemetry stayed off');
+  assert.equal(configCalls.length, 1, "init()'s request went out");
+  assert.equal(configCalls[0].inm, '"aaaaaaaaaaaaaaaa"');
+
+  // refresh() runs init() again; storage reads now, so the rest starts and the buckets apply.
+  const changes = [];
+  sdk.config.onChange((k) => changes.push(k));
+  const result = await sdk.config.refresh();
+  assert.equal(result.status, 304);
+  assert.equal(sdk.installationId(), ONE);
+  assert.equal(sdk.config.string('paywall_variant', '?'), 'b');
+  assert.deepEqual(changes, [['paywall_variant']]);
+});
+
+test('the install id cannot be read on any try: refresh() still fetches and applies a new revision', async () => {
+  const sdk = await load();
+  const getItem = h.failReads;
+  h.failReads = new Proxy(getItem, { get: (t, k) => (k === 'hush.install.v1' ? 1 : t[k]), set: () => true });
+  await sdk.config.ready();
+  assert.equal(sdk.config.number('review_prompt_after', 0), 3);
+  server.body = answer({ ...KEYS, review_prompt_after: { type: 'number', default: 7, rules: [] } }, 'bbbbbbbbbbbbbbbb');
+  const result = await sdk.config.refresh();
+  assert.deepEqual(result, { status: 200, changed: ['review_prompt_after'] });
+  assert.equal(sdk.config.number('review_prompt_after', 0), 7);
+  assert.equal(sdk.installationId(), '');
+  assert.equal(stored().revision, 'bbbbbbbbbbbbbbbb');
+});
+
+test('a stored config from another server or key is no cache; configure() with another key drops the one in memory', async () => {
+  // Another app on the same web origin with the default prefix wrote it.
+  store({ revision: 'zzzzzzzzzzzzzzzz', keys: { ...KEYS, review_prompt_after: { type: 'number', default: 99, rules: [] } }, source: sourceOf('https://hush.test', 'hush_other_prod_x') });
+  server.mode = 'held';
+  const sdk = await launch();
+  assert.deepEqual(values(sdk.config), FALLBACKS, "not the other app's values");
+  assert.equal(sdk.config.revision(), null);
+  assert.equal(configCalls[0].inm, null, "nor its revision in If-None-Match");
+  release();
+  await settle();
+  assert.deepEqual(values(sdk.config), SERVED);
+  assert.equal(stored().source, SOURCE, 'overwritten by this app');
+
+  // A cache from before the source was stored: no cache either.
+  h.storage.clear();
+  h.storage.set('hush.config.v1', JSON.stringify({ revision: 'aaaaaaaaaaaaaaaa', keys: KEYS }));
+  server.mode = 'hang';
+  const old = await launch();
+  assert.deepEqual(values(old.config), FALLBACKS);
+
+  // The same app on another server: what came from the first is dropped, and onChange says so.
+  server.mode = 'ok';
+  h.storage.clear();
+  const app = await launch();
+  await app.config.ready();
+  assert.deepEqual(values(app.config), SERVED);
+  const changes = [];
+  app.config.onChange((k) => changes.push(k));
+  server.mode = 'hang';
+  app.configure({ url: 'https://hush.test', key: 'hush_app_dev_x' });
+  assert.deepEqual(values(app.config), FALLBACKS);
+  assert.equal(app.config.revision(), null);
+  assert.deepEqual(changes, [['new_home', 'paywall_copy', 'review_prompt_after', 'session_presets']]);
+});
+
+test('an answer that arrives after configure() switched server or key is not applied', async () => {
+  server.mode = 'held';
+  const sdk = await launch();
+  sdk.configure({ url: 'https://hush.test', key: 'hush_app_dev_x' });
+  release();
+  await settle();
+  assert.deepEqual(values(sdk.config), FALLBACKS);
+  assert.equal(stored(), undefined);
+});
+
 test('forget(): a new install id, the cache kept, values evaluated again, onChange for what changed', async () => {
   h.storage.set('hush.install.v1', ONE);
   server.body = answer({
@@ -690,7 +834,7 @@ test('the web entry: config in localStorage, If-None-Match on the next page load
     };
     let hush = await page();
     assert.deepEqual(values(hush.config), SERVED);
-    assert.deepEqual(JSON.parse(mem.get('hush.config.v1')), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS });
+    assert.deepEqual(JSON.parse(mem.get('hush.config.v1')), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS, source: sourceOf('https://hush.test', 'hush_web_prod_x') });
     hush = await page();
     await settle();
     assert.equal(configCalls.at(-1).inm, '"aaaaaaaaaaaaaaaa"');
@@ -702,7 +846,7 @@ test('the web entry: config in localStorage, If-None-Match on the next page load
 });
 
 test('a stored config that does not parse, or is not one, is ignored and overwritten by the next 200', async () => {
-  for (const bad of ['{"revision":"aaaa', '[1,2]', JSON.stringify({ revision: 5, keys: {} }), JSON.stringify({ revision: 'x', keys: [] }), JSON.stringify({ revision: 'x', keys: KEYS, pro: 'yes' })]) {
+  for (const bad of ['{"revision":"aaaa', '[1,2]', JSON.stringify({ revision: 5, keys: {} }), JSON.stringify({ revision: 'x', keys: [] }), JSON.stringify({ revision: 'x', keys: KEYS, pro: 'yes', source: SOURCE })]) {
     h.storage.clear();
     store(bad);
     server.mode = 'held';
@@ -712,7 +856,7 @@ test('a stored config that does not parse, or is not one, is ignored and overwri
     release();
     await settle();
     assert.deepEqual(values(sdk.config), SERVED, bad);
-    assert.deepEqual(stored(), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS }, `${bad}: a pro that is not a boolean is not kept`);
+    assert.deepEqual(stored(), { revision: 'aaaaaaaaaaaaaaaa', keys: KEYS, source: SOURCE }, `${bad}: a pro that is not a boolean is not kept`);
     server.mode = 'ok';
   }
 });
@@ -726,7 +870,7 @@ test('a key named after an Object property that the config does not have returns
   }
   // From an untrusted cache: a "__proto__" key never becomes a prototype.
   h.storage.clear();
-  store(`{"revision":"aaaaaaaaaaaaaaaa","keys":{"__proto__":{"type":"string","default":"x","rules":[]}}}`);
+  store(`{"revision":"aaaaaaaaaaaaaaaa","source":"${SOURCE}","keys":{"__proto__":{"type":"string","default":"x","rules":[]}}}`);
   server.mode = 'hang';
   const next = await launch();
   assert.equal(next.config.string('constructor', 'fb'), 'fb');
