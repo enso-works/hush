@@ -260,8 +260,10 @@ export function evaluate(entry, context, place) {
  * @returns {Record<string, ConfigEvaluation>}
  */
 export function evaluateAll(keys, context, install) {
+  // No prototype: a key named "__proto__" is an entry like any other, not the
+  // object's prototype.
   /** @type {Record<string, ConfigEvaluation>} */
-  const out = {};
+  const out = Object.create(null);
   if (!isObject(keys)) return out;
   for (const [key, entry] of Object.entries(keys)) {
     out[key] = evaluate(entry, context, typeof install === 'string' && install ? bucket(install, key) : null);

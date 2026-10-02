@@ -2252,6 +2252,36 @@
         "rule": -1,
         "value": "a"
       }
+    },
+    {
+      "name": "a key named __proto__ is a key like any other",
+      "entry": {
+        "type": "string",
+        "default": "a",
+        "rules": [
+          {
+            "when": {
+              "platform": [
+                "ios"
+              ]
+            },
+            "value": "b"
+          }
+        ]
+      },
+      "context": {
+        "platform": "ios",
+        "version": "2.1.0",
+        "channel": "app_store",
+        "language": "de-AT",
+        "pro": false
+      },
+      "install": "11111111-1111-4111-8111-111111111111",
+      "key": "__proto__",
+      "expect": {
+        "rule": 0,
+        "value": "b"
+      }
     }
   ]
 }

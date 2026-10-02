@@ -37,9 +37,13 @@ for (const [name, file] of [['server', SERVER], ['sdk', SDK]]) {
     });
     test('cases', () => {
       for (const c of fixture.cases) {
-        const got = 'install' in c
-          ? impl.evaluateAll({ [c.key]: c.entry }, c.context, c.install)[c.key]
-          : impl.evaluate(c.entry, c.context, c.bucket);
+        let got;
+        if ('install' in c) {
+          const all = impl.evaluateAll({ [c.key]: c.entry }, c.context, c.install);
+          // Own keys, so a key named __proto__ is caught when it sets the prototype instead.
+          assert.deepEqual(Object.keys(all), [c.key], `${c.name}: evaluateAll's own keys`);
+          got = all[c.key];
+        } else got = impl.evaluate(c.entry, c.context, c.bucket);
         assert.deepStrictEqual(shape(got), c.expect, c.name);
       }
     });
@@ -50,5 +54,5 @@ test('the fixture has the sizes the spec gives it', () => {
   assert.equal(fixture.buckets.length, 12);
   assert.equal(fixture.versions.length, 26);
   assert.equal(fixture.languages.length, 11);
-  assert.equal(fixture.cases.length, 76);
+  assert.equal(fixture.cases.length, 77);
 });
