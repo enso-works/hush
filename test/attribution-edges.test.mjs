@@ -152,7 +152,11 @@ describe('conversion values in the catalog', () => {
   test('/v1/config: the app\'s own values, an empty list without any, and CORS for web apps', async () => {
     assert.deepEqual((await client(srv.base, shopKey).get('/v1/config')).json.conversion_values.map((m) => m.value), [10]);
     const bareKey = await addApp(db, 'bare', 'Bare');
-    assert.deepEqual((await client(srv.base, bareKey).get('/v1/config')).json, { conversion_values: [] });
+    // Since remote config (SDK 2.4.0) the answer always has a config section,
+    // empty for an app that declares no keys.
+    const bare = (await client(srv.base, bareKey).get('/v1/config')).json;
+    assert.match(bare.config.revision, /^[0-9a-f]{16}$/);
+    assert.deepEqual(bare, { conversion_values: [], config: { revision: bare.config.revision, keys: {} } });
     const pre = await fetch(`${srv.base}/v1/config`, { method: 'OPTIONS', headers: { Origin: 'https://game.example', 'Access-Control-Request-Method': 'GET' } });
     assert.equal(pre.status, 204);
   });

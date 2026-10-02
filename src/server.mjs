@@ -16,6 +16,7 @@ import { aakRow, postbackSummary, skanRow, storePostback } from './attribution.m
 import { CAMPAIGN_KEYS, campaignFunnel, cohorts, runFunnel, stepsFromQuery } from './funnels.mjs';
 import { cfg, installRetention, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
+import { adminConfig, appExists, checkOverridesAtBoot, configAnswer, history, matchesRevision, preview, revertOverride, setOverride } from './remote-config.mjs';
 import { clientKey, dailyLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
@@ -30,6 +31,9 @@ import {
 } from './tickets.mjs';
 
 const MAX_BODY = 64 * 1024;
+// A config override may serve up to 64 KB, and its rule notes and change
+// note come on top of that.
+const MAX_CONFIG_BODY = 160 * 1024;
 // Checked before the write key is even looked up, so a flood of made-up keys
 // is refused without a database query. Generous: a phone sends a batch every
 // few minutes, the per-route limits below are the real ones. The address they
@@ -189,13 +193,25 @@ r.post('/v1/forget', async (req, res, { key }) => {
   return json(res, 200, { ok: true, deleted });
 });
 
-// What an app's SDK reads at start: the conversion-value milestones it sets
-// for Apple's ad attribution (catalog conversion_values). Public by nature:
-// the same table is entered in the ad network.
-r.get('/v1/config', async (_req, res, { key }) =>
-  json(res, 200, {
-    conversion_values: conversionValuesOf(key.app).map(({ value, coarse, event, where, lock }) => ({ value, coarse, event, where, lock })),
-  }));
+// What an app's SDK reads at start and on returning to the foreground: the
+// conversion-value milestones it sets for Apple's ad attribution (catalog
+// conversion_values), and since SDK 2.4.0 the app's remote config, the
+// catalog's keys merged with the dashboard's overrides
+// (src/remote-config.mjs). Public by nature: every install of the app gets
+// the same answer, and the request carries nothing about the device. The
+// revision covers the whole answer, so a 304 means nothing in it changed.
+// Shipped SDKs read conversion_values only and never send If-None-Match.
+r.get('/v1/config', async (req, res, { key }) => {
+  const { body, revision } = await configAnswer(key.app);
+  res.setHeader('ETag', `"${revision}"`);
+  if (matchesRevision(req.headers['if-none-match'], revision)) {
+    // No body, and still no-store: the SDK keeps its own cache, and no HTTP
+    // cache should answer for it.
+    res.writeHead(304, { 'Cache-Control': 'no-store' });
+    return res.end();
+  }
+  return json(res, 200, body);
+});
 
 r.get('/v1/tickets', async (_req, res, { url, key }) => {
   const install = url.searchParams.get('install');
@@ -332,6 +348,37 @@ r.get('/admin/apps/:app/breakdown', async (_req, res, { url, params }) => {
   return json(res, 200, { rows: await breakdown({ app: params.app, env: envOf(url), days: days(url), event, prop, channel: channelOf(url) }) });
 });
 
+// Remote config: the catalog's keys with the dashboard's overrides, the
+// writes that change them (each with a history row), and what a device
+// would get. Keys exist only in the catalog; a write overrides a declared
+// key's default, its rules or both.
+const configRoute = (handler) => async (req, res, ctx) => {
+  if (!(await appExists(ctx.params.app))) return json(res, 404, { error: 'unknown app' });
+  return handler(req, res, ctx);
+};
+const reply = (res, { status, body }) => json(res, status, body);
+
+r.get('/admin/apps/:app/config', configRoute(async (_req, res, { params }) => json(res, 200, await adminConfig(params.app))));
+
+r.get('/admin/apps/:app/config/history', configRoute(async (_req, res, { url, params }) => {
+  const before = url.searchParams.get('before');
+  return json(res, 200, await history(params.app, {
+    key: str(url.searchParams.get('key'), 64),
+    limit: url.searchParams.get('limit') ?? 20,
+    before: /^[1-9][0-9]{0,17}$/.test(before ?? '') ? before : null,
+  }));
+}));
+
+// A GET, so the read-only demo can preview too.
+r.get('/admin/apps/:app/config/preview', configRoute(async (_req, res, { url, params }) => reply(res, await preview(params.app, url.searchParams))));
+
+// Not GET: a key named "history" or "preview" does not meet the routes above.
+r.post('/admin/apps/:app/config/:key', configRoute(async (req, res, { params }) =>
+  reply(res, await setOverride(params.app, params.key, await readJson(req, MAX_CONFIG_BODY)))));
+
+r.delete('/admin/apps/:app/config/:key', configRoute(async (req, res, { params }) =>
+  reply(res, await revertOverride(params.app, params.key, await readJson(req, MAX_CONFIG_BODY)))));
+
 // One install: its row, latest events and tickets (never one with an email:
 // those are not linked to an install). For checking that a build sends what
 // it should (paste the id the app shows in a debug screen) and for answering
@@ -427,10 +474,13 @@ const server = http.createServer(async (req, res) => {
   // is public anyway, shipped inside every app.
   if (url.pathname.startsWith('/v1/')) {
     res.setHeader('Access-Control-Allow-Origin', '*');
+    // A web app reads the revision from the body; the header is exposed
+    // for any that would rather read the ETag.
+    res.setHeader('Access-Control-Expose-Headers', 'ETag');
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Methods': 'GET, POST',
-        'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+        'Access-Control-Allow-Headers': 'Authorization, Content-Type, If-None-Match',
         'Access-Control-Max-Age': '86400',
       });
       return res.end();
@@ -528,6 +578,9 @@ migrate()
     // Screens the catalog keeps private, stored before it named them: every
     // prop of every event, once, while ingest already stores none.
     void sweepPrivateScreensAtBoot();
+    // Overrides the catalog no longer fits: logged, and orphans marked so a
+    // key that comes back does not bring its old override with it.
+    checkOverridesAtBoot().catch((err) => log.warn('config: boot check failed', { err: String(err?.message ?? err) }));
     setInterval(sweep, 6 * 60 * 60 * 1000).unref();
     setTimeout(sweep, 60_000).unref();
     // App Store campaign reports: Apple makes one a day, so every six hours is
