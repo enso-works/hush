@@ -420,8 +420,9 @@ any `identify()`, though a paid flag stored at an earlier launch counts)
 does not hold. Rules a device cannot read, from a newer server,
 are skipped.
 
-The dashboard's Remote config page (the Remote config link under the app's
-name on its page) lists the app's keys. It can override a key's
+The dashboard's Remote config page (Remote config in the sidebar lists every
+app's keys, overrides and anything not served; the link under an app's name
+on its page goes straight to that app) lists the app's keys. It can override a key's
 default, its rules or both, check a change as you type, preview what a
 device or one install would get, and revert to the catalog; every save and
 revert goes into the key's history, and a save made on a stale page is
