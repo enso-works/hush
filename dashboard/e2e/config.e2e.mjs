@@ -69,6 +69,24 @@ describe('the demo', () => {
     await close();
   });
 
+  test('the sidebar opens every app\'s remote config, and a row opens that app\'s keys', async () => {
+    const { page, problems, close } = await open(srv.base, '#/')
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Remote config' }).click()
+    const apps = panel(page, 'Apps')
+    await apps.getByRole('link', { name: 'Stillwater' }).waitFor()
+    assert.equal(await page.title(), 'Remote config · hush')
+    const cells = async (name) => (await apps.locator('tbody tr').filter({ hasText: name }).locator('td').allTextContents()).slice(1, 4)
+    await page.waitForFunction(() => !document.querySelector('tbody [data-slot="skeleton"], tbody .animate-pulse'))
+    assert.deepEqual(await cells('Stillwater'), ['4', '2', '0'])
+    assert.deepEqual(await cells('Tally'), ['3', '0', '1'])
+    assert.equal(await page.getByRole('link', { name: 'Remote config' }).first().getAttribute('aria-current'), 'page')
+    await apps.getByRole('link', { name: 'Stillwater' }).click()
+    await row(page, 'paywall_variant').waitFor()
+    assert.equal(await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Remote config' }).getAttribute('aria-current'), 'page')
+    assert.deepEqual(problems, [])
+    await close()
+  })
+
   test('tally: three keys, and an override the catalog lost, which the demo cannot delete', async () => {
     const { page, problems, close } = await open(srv.base, '#/app/tally/config');
     await row(page, 'paywall_variant').waitFor();

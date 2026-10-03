@@ -192,6 +192,97 @@ function KeysTable({ slug, keys }: { slug: string; keys: ConfigKeyView[] }) {
 }
 
 /** #/app/<slug>/config: every key of the app, the overrides the catalog lost, and a preview of them all. */
+/** One app's row on the all-apps page: its own request, so a slow app holds up only its row. */
+function AppConfigRow({ slug, name }: { slug: string; name: string }) {
+  const { data, error } = useApi<ConfigAnswer>(configPath(slug))
+  const overridden = data?.keys.filter((k) => k.override !== null).length ?? 0
+  const unserved = (data?.keys.filter((k) => k.problem).length ?? 0) + (data?.orphans.length ?? 0)
+  const cell = (n: number | undefined) => (data ? <span className="tabular-nums">{n}</span> : <Skeleton className="h-4 w-6" />)
+  return (
+    <tr
+      className="cursor-pointer border-b align-middle transition-colors last:border-0 hover:bg-muted/50"
+      onClick={(e) => {
+        if (!(e.target as HTMLElement).closest('a')) location.hash = href.config(slug)
+      }}
+    >
+      <td className="py-2.5 pr-3">
+        <a href={href.config(slug)} className="flex items-center gap-2.5 font-medium underline-offset-2 hover:underline">
+          <AppMark slug={slug} name={name} className="size-6 text-[11px]" />
+          {name}
+        </a>
+      </td>
+      {error ? (
+        <td colSpan={4} className="px-3 py-2.5 text-xs text-destructive">
+          {error}
+        </td>
+      ) : (
+        <>
+          <td className="px-3 py-2.5">{data && !data.keys.length ? <span className="text-muted-foreground">None</span> : cell(data?.keys.length)}</td>
+          <td className="px-3 py-2.5">{cell(overridden)}</td>
+          <td className="px-3 py-2.5">
+            {data && unserved > 0 ? (
+              <span className="inline-flex items-center gap-1.5 text-chart-4">
+                <TriangleAlert className="size-3.5" aria-hidden />
+                <span className="tabular-nums">{unserved}</span>
+              </span>
+            ) : (
+              cell(0)
+            )}
+          </td>
+          <td className="hidden py-2.5 pl-3 font-mono text-xs text-muted-foreground sm:table-cell">{data ? data.revision.slice(0, 8) : <Skeleton className="h-4 w-16" />}</td>
+        </>
+      )}
+    </tr>
+  )
+}
+
+/** #/config: every app's remote config at a glance, each row opening that app's keys. */
+export function ConfigApps() {
+  const { data, error, loading } = useApps()
+  const apps = data?.apps ?? []
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        icon={
+          <span className="grid size-10 place-items-center rounded-xl bg-accent text-accent-foreground">
+            <SlidersHorizontal className="size-5" aria-hidden />
+          </span>
+        }
+        title="Remote config"
+        sub="Values apps read at runtime: keys come from the catalog, defaults and rules can be overridden here"
+      />
+      {error && <ErrorNote message={error} />}
+      {!data && loading && <Loading />}
+      {data && (
+        <Panel title="Apps" sub="Open an app to see its keys, edit them and preview what a device gets">
+          {apps.length ? (
+            <div className="-mx-5 overflow-x-auto px-5">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs text-muted-foreground">
+                    <th className="py-2 pr-3 font-medium">App</th>
+                    <th className="px-3 py-2 font-medium">Keys</th>
+                    <th className="px-3 py-2 font-medium">Overridden</th>
+                    <th className="px-3 py-2 font-medium">Not served</th>
+                    <th className="hidden py-2 pl-3 font-medium sm:table-cell">Revision</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {apps.map((a) => (
+                    <AppConfigRow key={a.app} slug={a.app} name={a.name} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="py-6 text-center text-sm text-muted-foreground">No apps yet.</p>
+          )}
+        </Panel>
+      )}
+    </div>
+  )
+}
+
 export function ConfigList({ slug }: { slug: string }) {
   const { data, error, loading, reload } = useApi<ConfigAnswer>(configPath(slug))
   const name = useApps().data?.apps.find((a) => a.app === slug)?.name ?? slug
