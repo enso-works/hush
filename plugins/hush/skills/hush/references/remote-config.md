@@ -328,7 +328,7 @@ Set it once the value is usable (after `config.ready()`) and again from
 
 ## 6. The dashboard
 
-The app page links to its Remote config page.
+Remote config in the sidebar lists every app (keys, overridden, not served, revision); the app page links straight to its own Remote config page.
 
 - **The list.** Every key with its type, its value and rules as served, and
   whether each comes from the catalog or an override. Overrides the catalog
