@@ -44,6 +44,8 @@ jobs:
           cache-dependency-path: sdk/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      # useConfig() under real React and the React Compiler, as the apps build it.
+      - run: npm test
       - run: npm run build
       # What `npm install @bavrk/hush` gets: both builds load, no .ts paths in the types.
       - name: The package loads as ESM and CommonJS

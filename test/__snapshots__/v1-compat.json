@@ -433,5 +433,102 @@
       "duplicate": 0,
       "rejected": 0
     }
+  },
+  {
+    "label": "config: an app with config keys",
+    "status": 200,
+    "body": {
+      "conversion_values": [],
+      "config": {
+        "revision": "<revision>",
+        "keys": {
+          "new_home": {
+            "type": "bool",
+            "default": false,
+            "rules": [
+              {
+                "when": {
+                  "platform": [
+                    "ios"
+                  ],
+                  "version": ">=2.1.0"
+                },
+                "rollout": 20,
+                "value": true
+              }
+            ]
+          },
+          "session_presets": {
+            "type": "json",
+            "default": [
+              3,
+              5,
+              10
+            ],
+            "rules": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "label": "config: the revision the app holds",
+    "status": 304,
+    "body": ""
+  },
+  {
+    "label": "config: an older revision",
+    "status": 200,
+    "body": {
+      "conversion_values": [],
+      "config": {
+        "revision": "<revision>",
+        "keys": {
+          "new_home": {
+            "type": "bool",
+            "default": false,
+            "rules": [
+              {
+                "when": {
+                  "platform": [
+                    "ios"
+                  ],
+                  "version": ">=2.1.0"
+                },
+                "rollout": 20,
+                "value": true
+              }
+            ]
+          },
+          "session_presets": {
+            "type": "json",
+            "default": [
+              3,
+              5,
+              10
+            ],
+            "rules": []
+          }
+        }
+      }
+    }
+  },
+  {
+    "label": "config: an app without config keys",
+    "status": 200,
+    "body": {
+      "conversion_values": [],
+      "config": {
+        "revision": "<revision>",
+        "keys": {}
+      }
+    }
+  },
+  {
+    "label": "config: no key",
+    "status": 401,
+    "body": {
+      "error": "unauthorized"
+    }
   }
 ]

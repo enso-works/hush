@@ -8,6 +8,33 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
 ## 2026-10-02
 
+- **hush, review of remote config.** `useConfig()` returned the same object
+  every time, so in an app built with the React Compiler (every bavrk app)
+  a component that derived anything from a getter kept its first values:
+  it returns a new frozen copy after each change now, tested under real
+  React 19 and the compiler (`b5b7dd2`). The evaluator lost a key named
+  `__proto__` (`8140808`). An install id that could not be read turned
+  config off with the rest of `init()`; a stored config was shared by two
+  web apps on one origin; an in-app language switch kept the old language's
+  values until the next new revision. Config now starts without the install
+  id, a stored config names its server and key, and `identify({ language })`
+  works the values out at once (`91bd1c0`). The docs said values were
+  worked out on every fetch, showed a read-once pattern that keeps the
+  fallback on a screen mounted at launch, and called the config request one
+  "with no identifier": it carries the device's IP address and User-Agent
+  like any request, which hush does not keep and a TLS proxy's log may.
+  Fixed in the docs, with the 2.4.0 upgrade note's cost for an app that
+  never reads a value.
+- **hush, remote config.** Changing Braele's paywall copy, or turning a
+  feature on or off, took an app release each time, and a broken feature
+  stayed on until the next build was reviewed. hush now serves remote
+  config: values and targeting, declared in the catalog with a type, a
+  default and rules, overridden on the dashboard with a history, and
+  evaluated on the device (platform, version, channel, language, paid flag,
+  a rollout by install). The request carries no install id and the device
+  reports nothing back, so the App Privacy answers stay as they are. Server
+  with migration 009, SDK 2.4.0, the dashboard's Remote config page. Open:
+  Braele and app-template adopt it in their own changes.
 - **hush, review of the two fixes below.** Install retention made the 1y
   view flatter the app: an install first seen more than 180 days ago is
   still on record only if it kept sending, so the ones that stopped left

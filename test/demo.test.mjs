@@ -48,6 +48,31 @@ test('it writes nothing and accepts no app data', async () => {
   assert.equal((await client(srv.base, 'hush_stillwater_prod_x').post('/v1/tickets', { install: 'x', message: 'x' })).status, 403);
 });
 
+test('the showcase has remote config: keys, overrides, an orphan and history, readable and previewable, never writable', async () => {
+  const c = client(srv.base);
+  const still = (await c.get('/admin/apps/stillwater/config')).json;
+  assert.deepEqual(still.keys.map((k) => k.key), ['paywall_variant', 'review_prompt_after', 'session_lengths', 'streak_freeze']);
+  assert.deepEqual(still.keys[0].source, { default: 'catalog', rules: 'override' });
+  assert.deepEqual(still.keys[1].source, { default: 'override', rules: 'catalog' });
+  assert.ok(still.keys.every((k) => k.problem === null));
+  const tally = (await c.get('/admin/apps/tally/config')).json;
+  assert.equal(tally.keys.length, 3);
+  assert.deepEqual(tally.orphans.map((o) => o.key), ['old_onboarding']);
+  const history = (await c.get('/admin/apps/stillwater/config/history')).json;
+  assert.deepEqual(history.changes.map((h) => h.note), ['Android joins the copy test', 'Fewer prompts after the 1.4 review dip', 'Raise to 50%', 'Start the copy test at 20%']);
+  assert.equal((await c.get('/admin/apps/tally/config/history')).json.changes.length, 1);
+  const android = (await c.get('/admin/apps/stillwater/config/preview?platform=android')).json;
+  assert.deepEqual(android.keys.find((k) => k.key === 'paywall_variant').outcomes, [{ rule: 1, value: 'b', share: 20 }, { rule: -1, value: 'a', share: 80 }]);
+  const ios = (await c.get('/admin/apps/stillwater/config/preview?platform=ios&version=1.4.0')).json;
+  assert.deepEqual(ios.keys.find((k) => k.key === 'paywall_variant').outcomes.map((o) => o.share), [50, 50]);
+  const de = (await c.get('/admin/apps/stillwater/config/preview?language=de')).json;
+  assert.deepEqual(de.keys.find((k) => k.key === 'review_prompt_after').outcomes, [{ rule: 0, value: 5, share: 100 }]);
+  const base = still.keys[0].change;
+  assert.equal((await c.post('/admin/apps/stillwater/config/paywall_variant', { base, default: 'b' })).status, 403);
+  assert.equal((await c.delete('/admin/apps/stillwater/config/paywall_variant', { base })).status, 403);
+  assert.equal((await client(srv.base, 'hush_stillwater_prod_x').get('/v1/config')).status, 403);
+});
+
 test('reseeding is stable: the same numbers every time', async () => {
   const before = (await client(srv.base).get('/admin/apps?days=30')).json.apps.map((a) => [a.app, a.total_installs]);
   await srv.stop();

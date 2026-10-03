@@ -14,6 +14,7 @@ duplicate, rejected, willRetry }` after every send.
 6. [Attribution](#6-attribution)
 7. [Install and build errors](#7-install-and-build-errors)
 8. [The server](#8-the-server)
+9. [Remote config](#9-remote-config)
 
 ## 1. Nothing arrives
 
@@ -85,7 +86,7 @@ duplicate, rejected, willRetry }` after every send.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| No conversion values set | `attribution` not passed to `configure()`; the user opted out; Expo Go or Android (no-op); the milestones are cached for 12 hours; `/v1/config` returns an empty list. | Pass `hushExpo.attribution`; check `GET /v1/config`. |
+| No conversion values set | `attribution` not passed to `configure()`; the user opted out; Expo Go or Android (no-op); the milestones are cached until the next config fetch (12 hours with `remoteConfig: false` or before SDK 2.4.0); `/v1/config` returns an empty list. | Pass `hushExpo.attribution`; check `GET /v1/config`. |
 | `conversion value not set` in the log | Neither SKAdNetwork nor AdAttributionKit took the value. On the simulator SKAdNetwork refuses; the message appears unless AdAttributionKit (iOS 17.4 and later) accepts. | Test on a device. The SDK retries at the next matching milestone. |
 | A lower milestone is never reported | A higher one was reached first: values only rise. | Reorder the ladder ([attribution.md](attribution.md#4-designing-conversion-values)). |
 | No postbacks on the dashboard | No `app_store_id` in the catalog (postbacks are stored under no app); the `.well-known` routes are not public or point at the website; `attributionEndpoint` is not on the registrable domain; the build has no endpoint in `Info.plist`; or they are Apple's test postbacks, shown only under dev. | Check each; `curl -X POST -d '{}'` to the route must reach hush. |
@@ -116,3 +117,23 @@ duplicate, rejected, willRetry }` after every send.
 | A variable set in `examples/.env` has no effect | `PORT` is not passed through: the container listens on 3000. `TELEMETRY_ADMIN_TOKEN` is not either. Or the compose file in use lacks the variable in its `environment:` block. | Set `HUSH_PORT` for the host port, and `ADMIN_TOKEN` for the token. Add the missing variable to `environment:`. |
 | `/healthz` returns 503 | Postgres is down or unreachable. | Check `DATABASE_URL` and the database. |
 | `/v1` returns 403 `demo instance` | The server runs with `DEMO=1`. | Point apps at a server without it. |
+
+## 9. Remote config
+
+How values are chosen: [remote-config.md](remote-config.md#3-how-a-device-gets-its-value).
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A getter always returns its fallback | The key is not in the app's catalog entry (or misspelt in the app or the catalog); the getter is not the key's type (`string()` on a `bool`); `remoteConfig: false`; the SDK is off; or it was read before `init()` read storage. | `logLevel: 'error'` logs a key not in the server's config, one of another type (`config "x" is a bool, read as string: using the fallback`) and one with no usable value, once per key; `remoteConfig: false`, the SDK off and a read before `init()` log nothing. Check `GET /v1/config` with the write key. Read after `config.ready()`. |
+| Fallbacks on the first screen, the real value a moment later | Getters return fallbacks until `init()` has read storage. | Hold the splash screen until `config.ready()`. |
+| Every getter returns its fallback, nothing logged | The server has no migration 009: its `/v1/config` has no `config`, so `config.revision()` is null. | Update the server. The SDK keeps working meanwhile. |
+| A value does not change after a save on the dashboard | The device fetches at `init()` and in the foreground at most every `refreshMinutes` (15); coming back to the foreground fetches only once a fetch is due. A screen that read the value once keeps it. A component compiled by the React Compiler that reads `hush.config` instead of `useConfig()`'s object keeps its first value. A failed fetch keeps the cached answer. | Wait, reopen the app, or call `config.refresh()` from a debug screen. In components, read through `useConfig()`. |
+| A value stays in the old language after an in-app switch | Values are worked out again on a new revision, `identify()`, `forget()` or `configure()`, not when `remoteConfig.language` starts returning something else. | Call `hush.identify({ language })` from the switch. |
+| A rule never matches on a device | A condition on something the device does not know: no channel, `pro` before any `identify()`, a version that is not `M.m.p`. A `language` rule reads the phone's first locale unless the app passes `identify({ language })` or `remoteConfig.language`. Or the install's bucket is outside the rollout. | `config.snapshot()` shows the rule (-1: the default) and the bucket. Preview as on the dashboard, with the install id, shows what the server works out from the install's last batch. |
+| `config.revision()` does not move after a catalog edit | The catalog is read at boot, or only a description or a note changed (neither is served). | Restart the server. |
+| `/v1/config` answers 304 | The device already holds that revision: nothing in the answer changed, conversion values included. | Expected. |
+| An override is shown as not served | Its key left the catalog (orphan), its type changed, or its key came back after the override was orphaned. The server logs `config: override not served` at boot. | Save it again or revert it on the dashboard. |
+| A save on the dashboard says "changed since you opened it" | Someone else saved or reverted that key after the page loaded. | Reload and redo the change. |
+| A save is refused with a size message | The app's config would pass 64 KB as JSON. | Shorten values, or move large ones out of config. |
+| The server does not start after adding `config` | A catalog error; the log names the path and message. | Fix it ([server.md](server.md#6-validate-a-catalog)). |
+| A web build matches `platform: ["ios"]` rules | The web entry takes the platform from the user agent: an iPhone browser is `ios`. | `createWebHush({ platform: 'web' })` for a browser build that shares an app with the native one. |

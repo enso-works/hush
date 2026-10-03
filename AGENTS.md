@@ -9,11 +9,11 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 
 | Path | What it is |
 |---|---|
-| `src/` | The server: plain Node 22 ESM, no framework, one runtime dependency (`pg`). `server.mjs` routes, `ingest.mjs` events, `catalog.mjs` the catalog, `sweep.mjs` what the server deletes on its own (retention, private screens), `attribution.mjs` Apple postbacks, `cli.mjs` the admin CLI. |
+| `src/` | The server: plain Node 22 ESM, no framework, one runtime dependency (`pg`). `server.mjs` routes, `ingest.mjs` events, `catalog.mjs` the catalog, `sweep.mjs` what the server deletes on its own (retention, private screens), `attribution.mjs` Apple postbacks, `remote-config.mjs` remote config (`/v1/config`, overrides, history, preview), `config-schema.mjs` its validation, `evaluate.mjs` the config evaluator (a copy of the SDK's), `cli.mjs` the admin CLI. |
 | `src/dashboard/` | The built dashboard, committed so running hush needs no build step. Never edit by hand. |
 | `migrations/` | SQL, applied in file-name order at every boot, each in a transaction. |
 | `dashboard/` | The dashboard's source (React, Tailwind, shadcn, Magic UI, Vite). Builds into `src/dashboard/`. `e2e/` drives it in Chromium. |
-| `sdk/` | `@bavrk/hush`: `src/core.ts` (platform-free), `src/index.ts` (React Native and Expo), `src/web.ts` (browser). |
+| `sdk/` | `@bavrk/hush`: `src/core.ts` (platform-free), `src/index.ts` (React Native and Expo), `src/web.ts` (browser), `src/evaluate.js` (the remote config evaluator). |
 | `expo/` | `@bavrk/hush-expo`: the Swift module in `ios/`, the JS in `src/`, the config plugin `app.plugin.js`. |
 | `test/` | `node:test` suites. Server tests run the real server against real Postgres. `sdk.test.mjs` runs the SDK under Node with React Native mocked (`test/sdk/`). `expo.test.mjs` and `plugin.test.mjs` need no database. `__snapshots__/v1-compat.json` freezes `/v1`. |
 | `examples/` | `docker-compose.yml`, `.env.example`, `catalog.example.json`, an Expo setup file. |
@@ -80,6 +80,10 @@ claude plugin validate ./plugins/hush
 - **Never commit secrets**: `.env`, `examples/.env`, `ADMIN_TOKEN`, App Store
   Connect `.p8` keys, RevenueCat or Resend keys, npm tokens. Never print them.
   Write keys in docs and tests are placeholders such as `hush_myapp_prod_…`.
+- **The config evaluator has one source**, `sdk/src/evaluate.js`;
+  `src/evaluate.mjs` is a byte-identical copy (`test/config-eval.test.mjs`).
+  Edit the SDK's, copy it over, and add a fixture case in
+  `test/__fixtures__/config-eval.json`.
 - **Migrations**: add a new `migrations/NNN_name.sql`; never edit one that has
   shipped.
 - **Dashboard**: after changing `dashboard/`, rebuild and commit

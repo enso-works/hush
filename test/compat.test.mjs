@@ -40,7 +40,8 @@ function normalize(value) {
     JSON.stringify(value)
       .replace(/"\d{4}-\d{2}-\d{2}T[0-9:.]+(Z|[+-]\d{2}:\d{2})"/g, '"<time>"')
       .replace(/"(id)":"?\d+"?/g, '"$1":"<id>"')
-      .replace(/"thread":"[A-Za-z0-9_-]{43}"/g, '"thread":"<thread>"'),
+      .replace(/"thread":"[A-Za-z0-9_-]{43}"/g, '"thread":"<thread>"')
+      .replace(/"revision":"[0-9a-f]{16}"/g, '"revision":"<revision>"'),
   );
 }
 
@@ -116,6 +117,16 @@ test('the /v1 surface answers exactly as shipped apps expect', async () => {
   // support/<ticket id>.
   await step('events: a private screen, accepted and not stored', c.post('/v1/events', batch([ev(10, 'screen_viewed', { screen: 'support/42' }), ev(11, 'screen_viewed', { screen: 'home' })])));
   await step('events: nothing but private screens', c.post('/v1/events', batch([ev(12, 'screen_viewed', { screen: 'support' })])));
+
+  // Added with remote config (SDK 2.4.0): /v1/config gains `config`, the
+  // catalog's keys merged with the dashboard's overrides, and answers 304 to
+  // the revision the app holds. Shipped SDKs read conversion_values only and
+  // never send If-None-Match; every step above is unchanged.
+  const conf = await step('config: an app with config keys', c.get('/v1/config'));
+  await step('config: the revision the app holds', c.get('/v1/config', { 'If-None-Match': `"${conf.json.config.revision}"` }));
+  await step('config: an older revision', c.get('/v1/config', { 'If-None-Match': '"0000000000000000"' }));
+  await step('config: an app without config keys', client(srv.base, otherKey).get('/v1/config'));
+  await step('config: no key', client(srv.base).get('/v1/config'));
 
   if (!existsSync(SNAPSHOT) || process.env.UPDATE_SNAPSHOTS === '1') {
     writeFileSync(SNAPSHOT, `${JSON.stringify(steps, null, 2)}\n`);

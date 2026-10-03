@@ -7,6 +7,8 @@ const MODULES = {
   'expo-device': `export const osVersion = '18.6'; export const modelId = 'iPhone17,1'; export const modelName = 'iPhone';`,
   'expo-localization': `export const getLocales = () => [{ languageTag: 'en-US' }];`,
   'react-native': `export { AppState, Platform } from '${mocks}';`,
+  // Records what useConfig() subscribes with, and reads the snapshot as React would.
+  react: `export function useSyncExternalStore(subscribe, getSnapshot) { (globalThis.__hushReact ??= []).push({ subscribe, getSnapshot }); return getSnapshot(); }`,
   // @bavrk/hush-expo's native module: whatever the test puts on globalThis.__hushExpoNative.
   'expo-modules-core': `export const requireOptionalNativeModule = (name) => (name === 'HushExpo' ? (globalThis.__hushExpoNative ?? null) : null);`,
 };

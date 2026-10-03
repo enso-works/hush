@@ -17,9 +17,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Localization from 'expo-localization';
+import { useSyncExternalStore } from 'react';
 import { AppState, Platform } from 'react-native';
 
-import { createHush } from './core.ts';
+import { createHush, type HushRemoteConfig } from './core.ts';
 
 declare const __DEV__: boolean | undefined;
 
@@ -72,11 +73,41 @@ export const {
   replyToTicket,
   listTickets,
   telemetryAvailable,
+  config,
 } = client;
+
+// What useConfig() returns: a new frozen copy of `config` after every change,
+// the same one in between. A component compiled by the React Compiler caches
+// whatever it derives from config.json(...) or config.string(...) for as long
+// as `config` is the same object, so a change has to be a new object or the
+// component keeps its first values. Registered here, before any component's
+// listener, so a component re-rendering on a change already reads the new copy.
+let configView: HushRemoteConfig = Object.freeze({ ...config });
+config.onChange(() => {
+  configView = Object.freeze({ ...config });
+});
+const subscribeConfig = (onStoreChange: () => void) => config.onChange(() => onStoreChange());
+const configSnapshot = () => configView;
+
+/**
+ * Remote config in a component: re-renders when any value changes. Its
+ * methods are config's; the object itself is new after each change and the
+ * same in between, so a value derived from it (useMemo, or the React
+ * Compiler's own memoizing) follows changes.
+ *
+ *   const config = useConfig();
+ *   if (config.bool('new_home', false)) return <NewHome />;
+ */
+export function useConfig(): HushRemoteConfig {
+  return useSyncExternalStore(subscribeConfig, configSnapshot, configSnapshot);
+}
 
 export { SDK_VERSION, createHush } from './core.ts';
 export type {
   AttributionBridge,
+  ConfigRefreshResult,
+  ConfigSnapshotEntry,
+  ConfigType,
   ConversionValue,
   DeviceInfo,
   Entry,
@@ -84,9 +115,11 @@ export type {
   Hush,
   HushConfig,
   HushPlatform,
+  HushRemoteConfig,
   HushStorage,
   LifecycleState,
   Props,
+  RemoteConfigOptions,
   Ticket,
   TicketKind,
 } from './core.ts';

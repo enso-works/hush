@@ -21,7 +21,17 @@
 //         { "event": "workout_completed", "prop": "kind", "title": "Workouts by kind" },
 //         { "event": "onboarding_completed", "prop": "goal", "count": "installs" }
 //       ],
-//       "private_screens": ["support"]
+//       "private_screens": ["support"],
+//       "config": {
+//         "new_home": {
+//           "type": "bool", "default": false, "description": "The redesigned home screen.",
+//           "rules": [
+//             { "when": { "channel": ["testflight", "dev"] }, "value": true, "note": "Testers see it first" },
+//             { "when": { "platform": ["ios"], "version": ">=2.1.0" }, "rollout": 20, "value": true }
+//           ]
+//         },
+//         "session_presets": { "type": "json", "default": [3, 5, 10], "description": "Session lengths, in minutes." }
+//       }
 //     }
 //   }
 //
@@ -32,12 +42,18 @@
 // match props with `where`. `breakdowns` pin charts to the app page: one
 // event split by one prop, counted in events or (`count: "installs"`, for an
 // answer that can change later) in installs. `private_screens` are screens
-// the server never stores (isPrivateScreen below). All optional; an app
+// the server never stores (isPrivateScreen below). `config` declares the
+// app's remote config keys: a type, a default, a description for the
+// dashboard, and rules the device evaluates in order (config-schema.mjs has
+// the rules, remote-config.mjs what the server does with them; the
+// dashboard may override a key's default and rules, never declare a key).
+// All optional; an app
 // missing from the file still works, with only the common names known, no
 // highlight, and the default paywall funnel.
 import { readFileSync } from 'node:fs';
 
 import { COMMON } from './common.mjs';
+import { parseConfig } from './config-schema.mjs';
 import { cfg, log } from './config.mjs';
 import { DEMO_CATALOG } from './demo.mjs';
 import { DEFAULT_FUNNELS, parseFunnels, parseStep } from './funnels.mjs';
@@ -51,7 +67,7 @@ const NAME = /^[a-z][a-z0-9_]{1,63}$/;
 // The keys an app's entry is read for. Any other is ignored with a warning:
 // a misspelt one, or one from a later version (an older server ignored
 // private_screens without a word), would otherwise do nothing unseen.
-const KEYS = new Set(['events', 'highlight', 'funnels', 'breakdowns', 'app_store_id', 'conversion_values', 'private_screens']);
+const KEYS = new Set(['events', 'highlight', 'funnels', 'breakdowns', 'app_store_id', 'conversion_values', 'private_screens', 'config']);
 
 /** Parses and checks a catalog; throws with the offending path so a bad file stops the boot, not a request. */
 export function parseCatalog(raw) {
@@ -86,7 +102,8 @@ export function parseCatalog(raw) {
     }
     const conversionValues = parseConversionValues(spec.conversion_values, `catalog.${app}.conversion_values`);
     const privateScreens = parsePrivateScreens(spec.private_screens, `catalog.${app}.private_screens`);
-    out[app] = { events, highlight, funnels, breakdowns, appStoreId, conversionValues, privateScreens };
+    const config = parseConfig(spec.config, `catalog.${app}.config`);
+    out[app] = { events, highlight, funnels, breakdowns, appStoreId, conversionValues, privateScreens, config };
   }
   return out;
 }
@@ -183,6 +200,9 @@ export const appOfStoreId = (id) => Object.entries(catalog).find(([, v]) => v.ap
 
 /** The app's conversion-value milestones, in order; none by default. */
 export const conversionValuesOf = (app) => catalog[app]?.conversionValues ?? [];
+
+/** The app's remote config keys, normalized and sorted by key: { key: { type, default, description, rules } }; {} when none. */
+export const configOf = (app) => catalog[app]?.config ?? {};
 
 /** Every app whose catalog names private screens, with those names. */
 export const privateScreensByApp = () =>

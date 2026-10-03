@@ -1,6 +1,6 @@
 {
   "name": "@bavrk/hush",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "In-app feedback and anonymous usage tracking for React Native, Expo and the web, sent to your own hush server. No advertising ids, no IP addresses.",
   "license": "MIT",
   "author": "bavrk (https://bavrk.com)",
@@ -57,6 +57,7 @@
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
+    "test": "node --import ./test/register.mjs --test test/*.test.mjs",
     "build": "rm -rf dist && tsc -p tsconfig.build.json && tsc -p tsconfig.build.json --module commonjs --moduleResolution node10 --outDir dist/cjs --declaration false && echo '{\"type\":\"commonjs\"}' > dist/cjs/package.json && sed -i.bak 's#\\./core\\.ts#./core.js#g' dist/esm/*.d.ts && rm dist/esm/*.bak",
     "prepublishOnly": "npm run typecheck && npm run build"
   },
@@ -65,6 +66,7 @@
     "expo-constants": "*",
     "expo-device": "*",
     "expo-localization": "*",
+    "react": ">=18",
     "react-native": ">=0.73"
   },
   "peerDependenciesMeta": {
@@ -80,11 +82,19 @@
     "expo-localization": {
       "optional": true
     },
+    "react": {
+      "optional": true
+    },
     "react-native": {
       "optional": true
     }
   },
   "devDependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/plugin-transform-react-jsx": "7.29.7",
+    "babel-plugin-react-compiler": "1.0.0",
+    "react": "19.1.0",
+    "react-test-renderer": "19.1.0",
     "typescript": "~5.9.3"
   },
   "publishConfig": {

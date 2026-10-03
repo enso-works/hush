@@ -19,6 +19,24 @@ export const DEMO_APPS = [
   { slug: 'pace', appStoreId: '6700000103', name: 'Pace', installs: 230, start: 'run_started', highlight: 'run_finished', first: 'First run', events: ['onboarding_completed', 'run_started', 'run_finished', 'route_saved'] },
 ];
 
+// Remote config: three keys every demo app declares, and one more for
+// stillwater. The seed below overrides some of them on the "dashboard", so
+// the config pages show overrides, history and an orphan.
+const IOS_COPY_TEST = { when: { platform: ['ios'], version: '>=1.4.0' }, rollout: 50, value: 'b', note: 'Copy test from 1.4.0' };
+const REVIEW_RULE = { when: { language: ['de', 'nl'] }, rollout: 100, value: 5, note: 'Fewer prompts where reviews ran low' };
+const ANDROID_COPY_TEST = { when: { platform: ['android'] }, rollout: 20, value: 'b', note: 'Android joins at 20%' };
+const demoConfig = (slug) => ({
+  paywall_variant: { type: 'string', default: 'a', description: 'Which paywall copy to show.', rules: [IOS_COPY_TEST] },
+  review_prompt_after: { type: 'number', default: 3, description: 'Sessions before the app asks for a review.', rules: [REVIEW_RULE] },
+  streak_freeze: {
+    type: 'bool', default: false, description: 'Lets a streak survive one missed day.',
+    rules: [{ when: { pro: true }, value: true }, { when: { channel: ['testflight'] }, value: true, note: 'Beta testers try it first' }],
+  },
+  ...(slug === 'stillwater'
+    ? { session_lengths: { type: 'json', default: [5, 10, 20], description: 'Session lengths on the start screen, in minutes.' } }
+    : {}),
+});
+
 /** The catalog a demo runs with when no CATALOG_FILE is given. */
 export const DEMO_CATALOG = Object.fromEntries(
   DEMO_APPS.map((a) => [
@@ -47,6 +65,7 @@ export const DEMO_CATALOG = Object.fromEntries(
         { event: 'purchase_started', prop: 'product', title: 'Plans chosen' },
         { event: 'paywall_viewed', prop: 'variant', title: 'Paywall variants seen', count: 'installs' },
       ],
+      config: demoConfig(a.slug),
     },
   ]),
 );
@@ -197,9 +216,55 @@ export async function seedDemo() {
         await client.query('INSERT INTO ticket_replies (ticket_id, author, body, created_at) VALUES ($1, $2, $3, $4)', [row.id, author, body, new Date(created.getTime() + (k + 1) * 5 * 3600000).toISOString()]);
       }
     }
+    // TRUNCATE ... apps CASCADE above emptied both config tables.
+    await seedConfig(client, now);
   });
   await seedAttribution(r, now);
   log.info('demo seeded', { apps: DEMO_APPS.length, installs: installs.length, events: events.length, tickets: TICKETS.length });
+}
+
+/**
+ * A few weeks of dashboard edits to the demo apps' remote config, written as
+ * the server would have: each change's stored override and what was served
+ * before and after, notes kept. Literals, not remote-config.mjs: that
+ * imports catalog.mjs, which imports this file, and the cycle would fail
+ * whenever this file loads first. The rows go in time order, so ids ascend
+ * with time, and the overrides end as the last change per key left them.
+ */
+async function seedConfig(client, now) {
+  const H = 3600000;
+  const D = 24 * H;
+  const at = (ms) => new Date(now - ms).toISOString();
+  const rollout20 = { ...IOS_COPY_TEST, rollout: 20 };
+  const changes = [
+    // An override for a key the catalog has since dropped: an orphan.
+    ['tally', 'old_onboarding', 20 * D, null, { default: true }, { default: false, rules: [] }, { default: true, rules: [] }, 'Left from the old onboarding test'],
+    ['stillwater', 'paywall_variant', 9 * D, null, { rules: [rollout20] }, { default: 'a', rules: [IOS_COPY_TEST] }, { default: 'a', rules: [rollout20] }, 'Start the copy test at 20%'],
+    ['stillwater', 'paywall_variant', 5 * D, { rules: [rollout20] }, { rules: [IOS_COPY_TEST] }, { default: 'a', rules: [rollout20] }, { default: 'a', rules: [IOS_COPY_TEST] }, 'Raise to 50%'],
+    ['stillwater', 'review_prompt_after', 2 * D, null, { default: 4 }, { default: 3, rules: [REVIEW_RULE] }, { default: 4, rules: [REVIEW_RULE] }, 'Fewer prompts after the 1.4 review dip'],
+    ['stillwater', 'paywall_variant', 6 * H, { rules: [IOS_COPY_TEST] }, { rules: [IOS_COPY_TEST, ANDROID_COPY_TEST] }, { default: 'a', rules: [IOS_COPY_TEST] }, { default: 'a', rules: [IOS_COPY_TEST, ANDROID_COPY_TEST] }, 'Android joins the copy test'],
+  ];
+  const j = (v) => (v === null ? null : JSON.stringify(v));
+  for (const [app, key, ago, before, after, effBefore, effAfter, note] of changes) {
+    await client.query(
+      `INSERT INTO config_changes (app, key, at, action, override_before, override_after, effective_before, effective_after, note)
+       VALUES ($1, $2, $3, 'set', $4::jsonb, $5::jsonb, $6::jsonb, $7::jsonb, $8)`,
+      [app, key, at(ago), j(before), j(after), j(effBefore), j(effAfter), note],
+    );
+  }
+  // The last change per key; the orphan marked as a boot would have.
+  const overrides = [
+    ['stillwater', 'paywall_variant', null, [IOS_COPY_TEST, ANDROID_COPY_TEST], 'Android joins the copy test', 6 * H, null],
+    ['stillwater', 'review_prompt_after', 4, null, 'Fewer prompts after the 1.4 review dip', 2 * D, null],
+    ['tally', 'old_onboarding', true, null, 'Left from the old onboarding test', 20 * D, 10 * D],
+  ];
+  for (const [app, key, def, rules, note, ago, orphaned] of overrides) {
+    await client.query(
+      `INSERT INTO config_overrides (app, key, default_value, rules, note, updated_at, orphaned_at)
+       VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7)`,
+      [app, key, j(def), j(rules), note, at(ago), orphaned === null ? null : at(orphaned)],
+    );
+  }
 }
 
 /**

@@ -4,6 +4,7 @@
  * (npm install @bavrk/hush).
  */
 import * as hush from '@bavrk/hush';
+import type { HushRemoteConfig } from '@bavrk/hush';
 
 // --- once, at startup (e.g. the root layout)
 
@@ -22,6 +23,10 @@ hush.configure({
   // Optional: give the flush on backgrounding real runway, with whatever
   // background-task module the app already has.
   // runInBackground: (work) => withBackgroundTask(work),
+  // Remote config is on by default. Pass the language the app shows when it
+  // is not always the phone's first (the locale your i18n module resolved):
+  // remoteConfig: { language: () => i18n.locale },
+  // and on an in-app switch: hush.identify({ language: next }).
 });
 // Safe to call before or after anything else below (SDK 2.2.2 and later).
 export const hushReady = hush.init();
@@ -30,6 +35,28 @@ export const hushReady = hush.init();
 // once per install and store it, so an install never switches arms).
 export function onVariant(variant: 'a' | 'b') {
   hush.setGlobalProps({ paywall_variant: variant });
+}
+
+// --- remote config: values from the server's catalog, changed on its dashboard
+
+// Hold the splash screen until values are usable: from the cache at once, on
+// a first launch after the first fetch, and never longer than 3 s by default.
+// SplashScreen.preventAutoHideAsync() at module load, then:
+export const configReady = hush.config.ready(); // .then(() => SplashScreen.hideAsync())
+
+// Getters never throw: the fallback when the key is missing, of another type,
+// or not loaded yet. Outside React, read hush.config. In a component, pass
+// what useConfig() returns: it re-renders on a change and is a new object
+// after one, so the React Compiler's memoizing follows it; a compiled
+// component calling homeScreen() on hush.config would keep its first answer.
+//   const config = hush.useConfig();
+//   return homeScreen(config) === 'new' ? <NewHome /> : <ClassicHome />;
+export function homeScreen(config: HushRemoteConfig = hush.config): 'new' | 'classic' {
+  return config.bool('new_home', false) ? 'new' : 'classic';
+}
+export function sessionPresets(config: HushRemoteConfig = hush.config): number[] {
+  // Frozen: copy before sorting.
+  return [...config.json<number[]>('session_presets', [3, 5, 10])].sort((a, b) => a - b);
 }
 
 // --- the root layout, for links and notification taps

@@ -12,6 +12,17 @@ export const BASE = location.pathname.replace(/\/dashboard(\/.*)?$/, '').replace
 
 export class AuthError extends Error {}
 
+/** A non-2xx answer: its status and body, for callers that read more than `error` (a 400's path, a 409's current version). */
+export class ApiError extends Error {
+  status: number
+  data: Record<string, unknown>
+  constructor(status: number, data: Record<string, unknown>) {
+    super(typeof data.error === 'string' ? data.error : `HTTP ${status}`)
+    this.status = status
+    this.data = data
+  }
+}
+
 export const token = {
   get: () => sessionStorage.getItem(TOKEN_KEY),
   set: (t: string) => sessionStorage.setItem(TOKEN_KEY, t),
@@ -35,7 +46,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     throw new AuthError()
   }
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`)
+  if (!res.ok) throw new ApiError(res.status, data)
   return data as T
 }
 
@@ -181,3 +192,58 @@ export type RevenueProject = {
 }
 export type RevenueSeries = { chart: string; chartName: string; measure: string; name: string; unit: string; points: { day: string; value: number }[] }
 export type Revenue = { configured: boolean; apps: RevenueProject[]; series: RevenueSeries[] }
+
+// Remote config (/admin/apps/:app/config). Keys live in the catalog; the
+// dashboard overrides a key's default, its rules or both.
+export type ConfigType = 'bool' | 'number' | 'string' | 'json'
+export type ConfigWhen = { platform?: string[]; version?: string; channel?: string[]; language?: string[]; pro?: boolean }
+export type ConfigRule = { when: ConfigWhen; rollout: number; value: unknown; note?: string }
+/** A stored override: `default` only when the default is overridden, `rules` only when the rules are. */
+export type ConfigOverride = { default?: unknown; rules?: ConfigRule[]; note: string | null; updated_at: string }
+export type ConfigKeyView = {
+  key: string
+  type: ConfigType
+  description: string
+  catalog: { default: unknown; rules: ConfigRule[] }
+  override: ConfigOverride | null
+  /** What /v1/config serves for the key. */
+  effective: { default: unknown; rules: ConfigRule[] }
+  source: { default: 'catalog' | 'override'; rules: 'catalog' | 'override' }
+  /** Why a stored override is not served, or null. */
+  problem: string | null
+  /** False only when the stored override does not validate against the key's current type. */
+  fits: boolean
+  /** The latest change id for the key, 0 for none: what a write names as its base. */
+  change: number
+}
+export type ConfigLimits = { keys: number; rules: number; string_chars: number; json_bytes: number; total_bytes: number; note_chars: number }
+export type ConfigAnswer = {
+  app: string
+  revision: string
+  size_bytes: number
+  limits: ConfigLimits
+  keys: ConfigKeyView[]
+  /** Overrides for keys the catalog no longer has. Never served. */
+  orphans: { key: string; override: ConfigOverride; change: number }[]
+}
+type ConfigParts = { default?: unknown; rules?: ConfigRule[] }
+export type ConfigChange = {
+  id: number
+  key: string
+  at: string
+  action: 'set' | 'revert'
+  override_before: ConfigParts | null
+  override_after: ConfigParts | null
+  effective_before: { default: unknown; rules: ConfigRule[] } | null
+  effective_after: { default: unknown; rules: ConfigRule[] } | null
+  note: string | null
+}
+export type ConfigHistory = { changes: ConfigChange[]; more: boolean }
+export type ConfigOutcome = { rule: number; value?: unknown; share: number }
+export type ConfigPreview = {
+  install: string | null
+  context: { platform: string | null; version: string | null; channel: string | null; language: string | null; pro: boolean | null }
+  from_install: string[]
+  warnings: string[]
+  keys: { key: string; type: ConfigType; draft: boolean; outcomes: ConfigOutcome[]; value?: unknown; rule?: number; bucket?: number }[]
+}

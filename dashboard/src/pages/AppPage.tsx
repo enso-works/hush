@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { MessageSquare, TriangleAlert } from 'lucide-react'
+import { MessageSquare, SlidersHorizontal, TriangleAlert } from 'lucide-react'
 import { Area, AreaChart, CartesianGrid, Line, XAxis, YAxis } from 'recharts'
 
 import { BarList } from '@/components/BarList'
@@ -131,6 +131,10 @@ export function AppPage({ slug }: { slug: string }) {
               Last event {when(d.lastEvent)} ·{' '}
               <a className="inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline" href={href.feedback({ status: 'open' })}>
                 <MessageSquare className="size-3.5" aria-hidden /> {d.tickets} open
+              </a>{' '}
+              ·{' '}
+              <a className="inline-flex items-center gap-1 text-foreground underline-offset-2 hover:underline" href={href.config(slug)}>
+                <SlidersHorizontal className="size-3.5" aria-hidden /> Remote config
               </a>
             </>
           ) : (

@@ -133,7 +133,12 @@ highlight and the default Paywall funnel. A bare array is read as the app's
       { "value": 1, "coarse": "low", "event": "onboarding_completed", "label": "Onboarded" },
       { "value": 8, "coarse": "medium", "event": "workout_completed", "label": "First workout" },
       { "value": 63, "coarse": "high", "event": "purchase_result", "where": { "result": "purchased" }, "label": "Purchased", "lock": true }
-    ]
+    ],
+    "config": {
+      "new_home": { "type": "bool", "default": false, "description": "The redesigned home screen.",
+        "rules": [{ "when": { "platform": ["ios"], "version": ">=2.1.0" }, "rollout": 20, "value": true }] },
+      "review_prompt_after": { "type": "number", "default": 3, "description": "Sessions before the app asks for a review." }
+    }
   }
 }
 ```
@@ -147,6 +152,7 @@ highlight and the default Paywall funnel. A bare array is read as the app's
 | `private_screens` | Screen names, as the app passes them to `screen()`: non-empty strings, without a trailing `/`. The server never stores a `screen_viewed` that names one, or a screen under one (`support` covers `support/new` and `support/42`, not `supportive` or `Support`), in any prop: it is counted as accepted and discarded. Any other event is stored without a prop that names one. Views stored before the catalog named it are deleted at boot (every prop) and in the six-hourly sweep (the `screen` prop). Matched exactly, case included: list each spelling the app sends. For the feedback and inbox screens. |
 | `app_store_id` | The App Store id, digits (`^[1-9][0-9]{5,11}$`), string or number. Needed for App Store campaigns and to attach postbacks to the app. |
 | `conversion_values` | Up to 20 milestones `{ value, coarse?, event, where?, label?, lock? }`: `value` an integer 1 to 63, strictly increasing; `coarse` `low`, `medium` or `high` (default `low`), never lower than the one before; `event` and `where` as in a funnel step; only `lock: true` locks. See [attribution.md](attribution.md). |
+| `config` | Remote config keys (migration 009), an object keyed by key name (`^[a-z][a-z0-9_]{1,63}$`, up to 100). Each `{ type, default, description, rules? }`: `type` `bool`, `number`, `string` or `json`; `default` a value of the type, no coercion (`json` is an object or an array, up to 8 KB and 32 levels; a string up to 2000 characters); `description` 1 to 200 characters; up to 20 rules `{ when?, rollout?, value, note? }`, where `when` holds any of `platform` and `channel` (1 to 10 lowercase labels), `version` (a range such as `">=2.1.0 <3"`), `language` (1 to 50 codes like `de`) and `pro` (a boolean), `rollout` a whole number 0 to 100 (default 100), `note` up to 200 characters. Any other field is an error; up to 64 KB served per app. The full schema, its messages and how rules are evaluated: [remote-config.md](remote-config.md#2-the-catalog-config). |
 
 How to choose the contents: [tracking-plan.md](tracking-plan.md).
 
@@ -177,6 +183,8 @@ it without one). Check by eye what it does not:
   with Expo Router (`support`), route names with React Navigation
   (`Support`, `SupportThread`).
 - No `"funnels": []`.
+- Each `config` key is read in the app with the getter of its type, and a
+  `json` default has the shape the app's fallback has.
 
 ## 7. Funnels and breakdowns on the dashboard
 
@@ -212,9 +220,11 @@ Apps send `Authorization: Key <write key>`. The SDK does this.
 | `POST /v1/tickets/threads` | `{ threads: [key, …] }`, up to 50. The same answer as `GET /v1/tickets` for those tickets under this app. Marks replies read by the time of the newest reply shown, never the time of the request, which would match the install's own tickets. A POST so keys stay out of URLs and logs. |
 | `POST /v1/tickets/:id/reply` | `{ install, body }` or `{ thread, body }`. 201, 404 for a wrong install or key, 409 once closed. |
 | `POST /v1/forget` | `{ install }`: 200 `{ ok, deleted }`, the install's events, tickets and row under this app. Or `{ threads }` alone: 200 `{ ok, deleted: { tickets } }`. Both in one request is a 400. |
-| `GET /v1/config` | `{ conversion_values: [{ value, coarse, event, where, lock }] }` from the catalog. |
+| `GET /v1/config` | `{ conversion_values: [{ value, coarse, event, where, lock }], config: { revision, keys } }`. `keys`: every catalog config key, merged with its valid dashboard override, as `{ type, default, rules: [{ when, rollout, value }] }` (no descriptions or notes), sorted; `{}` for an app without any. `revision`: 16 hex characters over the whole answer. Every 200 has `ETag: "<revision>"`; `If-None-Match` with it gets a 304 and no body. `Cache-Control: no-store` on both. A server before migration 009 sends `conversion_values` only. |
 
-`/v1` answers CORS for any origin. An install id that belongs to another app
+`/v1` answers CORS for any origin, allows the `If-None-Match` header and
+exposes `ETag`. SDKs before 2.4.0 read `conversion_values` only and never
+send `If-None-Match`, so the `config` section is an addition they ignore. An install id that belongs to another app
 gets 403 on tickets and forget. **The `/v1` contract is frozen**: shipped apps
 cannot be redeployed, so a change there is a breaking change.
 
@@ -241,7 +251,32 @@ ticket and its replies), `/admin/revenue` (`?refresh=1`). Reads are GETs.
 Replies, status changes, deletes and forget are writes, and every write is
 `Content-Type: application/json`.
 
+Remote config, under the same guard (the demo answers the reads and refuses
+the writes):
+
+| Route | What it does |
+|---|---|
+| `GET /admin/apps/:app/config` | Every key with its catalog entry, its override, what is served (`effective`) and from where (`source`), `problem` when an override is not served, `fits`, and `change`, the id of the key's latest history row. Also the `revision`, `size_bytes`, the `limits`, and `orphans`: overrides whose key left the catalog. |
+| `POST /admin/apps/:app/config/:key` | `{ base, default?, rules?, note? }`: override the default, the rules or both (the rest comes from the catalog). `base` is the `change` the editor loaded; another latest change is a 409 with the current view. 400 with `path` and `message` for a check that fails, 404 for a key the catalog lacks. Bodies up to 160 KB. |
+| `DELETE /admin/apps/:app/config/:key` | `{ base, note? }`: revert to the catalog. `base` is required here too: another latest change is a 409. Works for orphans too. 404 when nothing is stored. |
+| `GET /admin/apps/:app/config/history` | `?key=&limit=&before=`: changes newest first (`limit` 1 to 50, default 20; `before` an id), with the override and what was served before and after, and `more`. |
+| `GET /admin/apps/:app/config/preview` | `?platform=&version=&channel=&language=&pro=` or `?install=<id>` (the install's row fills what is not given), `key=` for one key, `draft=` (JSON `{ default?, rules? }`) for an unsaved change. Per key, each outcome with its share of the 100 buckets; with an install, its value, rule and bucket. `warnings` for context that cannot be read. |
+
+Every save and revert is one history row; history is kept with the app. A
+server that finds an override its catalog no longer fits (key removed, type
+changed) keeps it, serves the catalog's entry, and logs
+`config: override not served` at boot. So does one whose key left the
+catalog while the server restarted and then came back: it stays unserved
+until it is saved again or reverted.
+
 CLI, `node src/cli.mjs <command>`: `apps:list`, `apps:add`, `keys:create`,
 `keys:list`, `keys:revoke`, `rc:projects`, `rc:link <app> <project_id>`,
 `rc:sync`, `rc:charts`, `rc:poll`, `asc:request <app>`, `asc:sync [app]`,
-`migrate`.
+`config:show <app>` (the `/v1/config` answer), `config:history <app> [key]`
+(the latest 50 changes, one per line), `migrate`. The config commands are
+read-only: changes go through the dashboard, which records the history.
+`config:show` builds its answer in the CLI, from the catalog file as it is
+on disk now and the stored overrides, so run it in the server's container
+(`docker compose exec hush node src/cli.mjs config:show <app>`). After a
+catalog edit it shows the new catalog while the running server still serves
+the old one, until the server restarts.

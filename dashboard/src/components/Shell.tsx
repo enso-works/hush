@@ -109,7 +109,7 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
                   <NavLink
                     key={a.app}
                     to={href.app(a.app)}
-                    active={route.page === 'app' && route.slug === a.app}
+                    active={(route.page === 'app' || route.page === 'config') && route.slug === a.app}
                     icon={<AppMark slug={a.app} name={a.name} className="size-5 text-[10px]" />}
                   >
                     {a.name}

@@ -86,8 +86,13 @@ What the SDK does:
 
 - At the first `init()` of a user who has not opted out, it registers the
   install with value 0 (coarse `low`), once.
-- It fetches `GET /v1/config` and caches the milestones for 12 hours. A changed
-  table reaches installed apps up to 12 hours later.
+- With remote config on (the default from SDK 2.4.0), the milestones come
+  with the config request: at every `init()`, and at each config refresh (in
+  the foreground, at most every `refreshMinutes`, 15 by default). A changed
+  table reaches an app at its next launch or refresh. With
+  `remoteConfig: false`, or SDK 2.2 and 2.3, it fetches `GET /v1/config` on
+  its own and caches the milestones for 12 hours, so a changed table
+  reaches installed apps up to 12 hours later.
 - For 35 days from registration, each queued event that matches a milestone
   (the event name, and every `where` prop equal as text) raises the value to the
   highest matching milestone above the current one. **It never lowers the

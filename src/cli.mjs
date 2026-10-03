@@ -9,6 +9,7 @@ import { hashKey, mintKey } from './keys.mjs';
 import { migrate } from './migrate.mjs';
 import { link, listProjects, poll, rcConfigured, syncProjects } from './revenuecat.mjs';
 import { ascConfigured, ensureRequest, syncAll, syncApp } from './appstore.mjs';
+import { appExists, configAnswer } from './remote-config.mjs';
 
 const [, , cmd, ...args] = process.argv;
 
@@ -97,6 +98,26 @@ const commands = {
     for (const r of app ? [await syncApp(app)] : await syncAll(apps)) {
       console.log(r.error ? `${r.app}\terror: ${r.error}` : `${r.app}\t${r.reports} reports, ${r.imported} new instances`);
     }
+  },
+
+  // What /v1/config answers the app's installs. Read-only: overrides are
+  // written on the dashboard, which records each change.
+  async 'config:show'(app) {
+    if (!app) throw new Error('usage: config:show <app>');
+    if (!(await appExists(app))) throw new Error(`unknown app ${app}`);
+    console.log(JSON.stringify((await configAnswer(app)).body, null, 2));
+  },
+
+  // The latest 50 config changes, without their values: one row may hold
+  // four of up to 64 KB each.
+  async 'config:history'(app, key) {
+    if (!app) throw new Error('usage: config:history <app> [key]');
+    const { rows } = await q(
+      `SELECT id, at, key, action, note FROM config_changes
+        WHERE app = $1 AND ($2::text IS NULL OR key = $2) ORDER BY id DESC LIMIT 50`,
+      [app, key ?? null],
+    );
+    for (const c of rows) console.log(`${c.id}\t${c.at.toISOString()}\t${c.key}\t${c.action}\t${c.note ?? ''}`);
   },
 
   async migrate() {

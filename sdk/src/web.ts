@@ -18,7 +18,12 @@ export type WebApp = {
   version?: string;
   /** The build number, if the app has one. */
   build?: string;
-  /** Overrides the platform read from the user agent: "ios" for a Capacitor build, say. */
+  /**
+   * Overrides the platform read from the user agent: "ios" for a Capacitor
+   * build, say. Remote config's platform rules read it too, so a browser build
+   * that shares an app with the native one passes "web": otherwise an iPhone
+   * browser is "ios" and matches rules meant for the native app.
+   */
   platform?: string;
   /** A development build: events default to the "dev" channel. */
   dev?: boolean;
@@ -112,4 +117,20 @@ export function createWebHush(app: WebApp = {}) {
 }
 
 export { SDK_VERSION } from './core.ts';
-export type { AttributionBridge, ConversionValue, DeviceInfo, Entry, FlushResult, Hush, HushConfig, Props, Ticket, TicketKind } from './core.ts';
+export type {
+  AttributionBridge,
+  ConfigRefreshResult,
+  ConfigSnapshotEntry,
+  ConfigType,
+  ConversionValue,
+  DeviceInfo,
+  Entry,
+  FlushResult,
+  Hush,
+  HushConfig,
+  HushRemoteConfig,
+  Props,
+  RemoteConfigOptions,
+  Ticket,
+  TicketKind,
+} from './core.ts';

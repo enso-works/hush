@@ -5,6 +5,7 @@ import { AppsProvider } from '@/lib/apps'
 import { useRoute } from '@/lib/route'
 import { useSession } from '@/lib/session'
 import { AppPage } from '@/pages/AppPage'
+import { ConfigKey, ConfigList } from '@/pages/Config'
 import { Feedback } from '@/pages/Feedback'
 import { Installs } from '@/pages/Installs'
 import { Login } from '@/pages/Login'
@@ -15,7 +16,7 @@ export function App() {
   const route = useRoute()
 
   useEffect(() => {
-    document.title = route.page === 'feedback' ? 'Feedback · hush' : 'hush'
+    document.title = route.page === 'feedback' ? 'Feedback · hush' : route.page === 'config' ? 'Remote config · hush' : 'hush'
   }, [route.page])
 
   if (!signedIn) return <Login />
@@ -24,6 +25,12 @@ export function App() {
       <Shell route={route}>
         {route.page === 'app' ? (
           <AppPage key={route.slug} slug={route.slug} />
+        ) : route.page === 'config' ? (
+          route.key ? (
+            <ConfigKey key={`${route.slug}/${route.key}`} slug={route.slug} keyName={route.key} />
+          ) : (
+            <ConfigList key={route.slug} slug={route.slug} />
+          )
         ) : route.page === 'installs' ? (
           <Installs id={route.id} />
         ) : route.page === 'feedback' ? (
