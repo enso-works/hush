@@ -96,6 +96,23 @@ the server or the native packages without touching any of these. Add the
 changes nothing a user sees). A merge that changes `docs/site/` deploys the
 site.
 
+## The iOS app
+
+`ios-app/` is the dashboard as an iOS app. `HushKit/` holds the `/admin`
+API's models and client and is tested on a Mac with `swift test`; its
+fixtures are the demo's own answers. `Hush/` is the SwiftUI app. The Xcode
+project is generated from `project.yml` with XcodeGen:
+
+```sh
+brew install xcodegen
+cd ios-app/HushKit && swift test && cd ..
+xcodegen && open Hush.xcodeproj
+```
+
+A change to an `/admin` answer the app reads updates `HushKit`'s models and
+fixtures in the same pull request. The `ios` workflow runs on changes under
+`ios-app/` only.
+
 ## Style
 
 The server: plain Node, no framework, one runtime dependency. Comments say
