@@ -1,0 +1,67 @@
+{
+  "_comment": "Locale-independent config. Copy this template dir to bavrk.com/<app>/ (scripts/new-site.sh does it), edit the values below + locales/en.json, translate the other locales/*.json, then `npm run dev`. 'en' must stay first (it is the site root and x-default). Leave appStoreId/appStoreUrl empty until the app is live: the install banner and JSON-LD installUrl are omitted while empty. featureIcons are lucide icon names (lucide.dev/icons), one per features.fN_h in the locale files; proFeature is the 1-based feature that gets the Pro badge (0 for none). proPrice/proCurrency, when set, add a Pro offer to the JSON-LD. kind is 'app' (a mobile app: iPhone hero, App Store or launch-email CTA, pricing) or 'saas' (software people run or sign up for: browser-frame hero, screenshot showcase, a docs page from src/content/docs.md, a stored/never trust section, the CTA to primaryUrl). sections, when set, overrides the kind's landing sections (steps, showcase, features, collected, pricing, faq, band). The saas-only keys: primaryUrl (the main button; a github.com URL gets the GitHub mark), githubUrl (source link, adds SoftwareSourceCode JSON-LD), license, demoUrl, browserUrl (the address shown in the frames), heroScreenDark, operatingSystem, showcase ([{light, dark, url, link}], strings in showcase.sN_h / sN_p).",
+  "kind": "saas",
+  "locales": [
+    "en"
+  ],
+  "appName": "hush",
+  "tagline": "Feedback and anonymous tracking for your apps",
+  "domain": "hush.bavrk.com",
+  "appCategory": "DeveloperApplication",
+  "appStoreId": "",
+  "appStoreUrl": "",
+  "brand": "#5B4BF0",
+  "brandForeground": "#FFFFFF",
+  "themeLight": "#F7F7F5",
+  "themeDark": "#0E0F12",
+  "ogImage": "/img/og.png",
+  "heroScreen": "/img/shots/app-light.png",
+  "heroScreenDark": "/img/shots/app-dark.png",
+  "featureIcons": [
+    "MessageCircle",
+    "EyeOff",
+    "ChartColumn",
+    "Coins",
+    "Server",
+    "FileCode"
+  ],
+  "proFeature": 0,
+  "fontsHref": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700&family=Inter:wght@400;500;600&display=swap",
+  "fontHeading": "Manrope",
+  "fontUi": "Inter",
+  "company": "Ensar Bavrk s.p.",
+  "supportEmail": "ensar.bavrk@gmail.com",
+  "contactEmail": "ensar.bavrk@gmail.com",
+  "jurisdiction": "Bosnia and Herzegovina",
+  "effectiveDate": "2026-09-29",
+  "year": "2026",
+  "proPrice": "",
+  "proCurrency": "USD",
+  "sections": [],
+  "primaryUrl": "https://github.com/enso-works/hush",
+  "githubUrl": "https://github.com/enso-works/hush",
+  "license": "MIT",
+  "demoUrl": "/demo/dashboard/",
+  "browserUrl": "hush.example.com/dashboard",
+  "operatingSystem": "Linux (Docker)",
+  "showcase": [
+    {
+      "light": "/img/shots/apps-light.png",
+      "dark": "/img/shots/apps-dark.png",
+      "url": "hush.example.com/dashboard",
+      "link": "/demo/dashboard/"
+    },
+    {
+      "light": "/img/shots/app-light.png",
+      "dark": "/img/shots/app-dark.png",
+      "url": "hush.example.com/dashboard/#/app/stillwater",
+      "link": "/demo/dashboard/#/app/stillwater"
+    },
+    {
+      "light": "/img/shots/ticket-light.png",
+      "dark": "/img/shots/ticket-dark.png",
+      "url": "hush.example.com/dashboard/#/feedback",
+      "link": "/demo/dashboard/#/feedback?status=all"
+    }
+  ]
+}
