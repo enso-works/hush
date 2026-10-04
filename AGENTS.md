@@ -21,6 +21,7 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 | `examples/` | `docker-compose.yml`, `.env.example`, `catalog.example.json`, an Expo setup file. |
 | `docs/dogfood.md` | Friction found while using hush in our own apps, newest first. |
 | `docs/img/` | The README's hero and dashboard images, in light and dark, taken from hush.bavrk.com by `dashboard/e2e/readme-shots.mjs`. |
+| `docs/site/` | The content of hush.bavrk.com: `docs.md` (its docs page), `en.json` (every string), `site.config.json` (features' icons, showcase), `shots/`. The site's code is in the private `enso-works/bavrk` repo under `hush/`, which copies these in at build; `test/site.test.mjs` checks them. |
 | `.claude-plugin/marketplace.json`, `plugins/hush/` | The Claude Code marketplace and plugin shipped to users: the `hush` skill (also installable with `npx skills add enso-works/hush`), the `installer` and `tracking-planner` agents, and `/hush:install`. |
 
 ## Commands
@@ -54,7 +55,7 @@ The packages and the dashboard, from the repository root:
 (cd capacitor && xcodebuild -scheme BavrkHushCapacitor -destination 'generic/platform=iOS Simulator' build)   # the Swift, against capacitor-swift-pm
 (cd dashboard && npm ci && npm run lint && npm run build)                  # writes src/dashboard/
 (cd dashboard && npx playwright install chromium && npm run e2e)           # needs the test Postgres
-(cd dashboard && npm run shots)                                          # the README's images, from the live site; needs pngquant
+(cd dashboard && npm run shots)                                          # the README's and the site's images, from the live demo; needs pngquant
 ```
 
 The dashboard in development: run a server with `DEMO=1 PORT=3055` against its
@@ -110,6 +111,17 @@ claude plugin validate ./plugins/hush
   change, set `metadata.sdk-version` in `SKILL.md` to the SDK version (a test
   checks it), and bump `version` in `plugins/hush/.claude-plugin/plugin.json`:
   installed users only get a new plugin version.
+- **Keep the README and the site in step.** A change users can see (a
+  feature, an option, an endpoint, a variable, a dashboard page) updates
+  `README.md` (or the package's README) and `docs/site/docs.md` in the same
+  change; a new feature also gets a card in `docs/site/en.json` with its icon
+  in `docs/site/site.config.json`. After a dashboard change is on the live
+  demo, run `npm run shots` and commit the images. A new package version
+  updates the "This page is for" line in `docs/site/docs.md`
+  (`test/site.test.mjs` checks it). The `docs` workflow fails a pull request
+  that changes code users see without touching any docs; the `no-docs` label
+  is for changes with nothing to say. A merge that changes `docs/site/`
+  deploys hush.bavrk.com.
 - **Style**: comments say why, not what. Docs are plain and concrete, in short
   sentences, without marketing adjectives.
 - Record friction from using hush in `docs/dogfood.md`.

@@ -73,6 +73,29 @@ they differ). Edit the SDK's, copy it over, and add a fixture case in
 Add a new `migrations/NNN_name.sql`; never edit one that has shipped. They
 are applied in order, by file name, each in a transaction, at every boot.
 
+## The README and the site
+
+What users read about hush is in this repository: the README and the
+packages' READMEs, and `docs/site/`, the content of
+[hush.bavrk.com](https://hush.bavrk.com) (its docs page, every string on it,
+its showcase and the screenshots; see [docs/site/README.md](docs/site/README.md)).
+A change users can see updates them in the same pull request:
+
+- a new or changed feature, option, endpoint or variable: the README, and
+  `docs/site/docs.md`; a new feature also gets a card in `docs/site/en.json`
+  (`features.fN_h`, `fN_p`) with its icon in `site.config.json`;
+- a change to the dashboard: the screenshots, once it is on the live demo
+  (`cd dashboard && npm run shots`, with `pngquant` installed), and a
+  showcase screen for a new page;
+- a new package version: the "This page is for" line in `docs/site/docs.md`
+  (`test/site.test.mjs` fails until it matches).
+
+The `docs` check fails a pull request that changes the dashboard, the SDK,
+the server or the native packages without touching any of these. Add the
+`no-docs` label when there is nothing to say (a refactor, a test, a fix that
+changes nothing a user sees). A merge that changes `docs/site/` deploys the
+site.
+
 ## Style
 
 The server: plain Node, no framework, one runtime dependency. Comments say
