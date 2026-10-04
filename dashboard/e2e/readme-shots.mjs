@@ -33,11 +33,14 @@ for (const theme of ['dark', 'light']) {
   const save = (name, opts = {}) => page.screenshot({ path: join(RAW, `${name}-${theme}.png`), ...opts });
 
   // The hero, from the badge to the note under it. Its buttons go: in a README
-  // an image is one link, so the README puts real links under it.
+  // an image is one link, so the README puts real links under it. Found by
+  // their link, not a class name: Tailwind scans this file too, and would add
+  // that class to the dashboard's CSS.
   await page.goto(SITE, { waitUntil: 'networkidle' });
   await page.addStyleTag({ content: STILL });
   await page.evaluate(() => {
-    document.querySelector('h1').parentElement.querySelector('.mt-9')?.remove();
+    const hero = document.querySelector('h1').parentElement;
+    [...hero.children].find((el) => el.querySelector('a[href*="/demo/"]'))?.remove();
     document.querySelector('header')?.remove();
   });
   await page.waitForTimeout(1000);
