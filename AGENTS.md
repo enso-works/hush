@@ -20,6 +20,7 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 | `test/` | `node:test` suites. Server tests run the real server against real Postgres. `sdk.test.mjs` runs the SDK under Node with React Native mocked (`test/sdk/`). `expo.test.mjs`, `capacitor.test.mjs` (Capacitor's bridge mocked) and `plugin.test.mjs` need no database. `__snapshots__/v1-compat.json` freezes `/v1`. |
 | `examples/` | `docker-compose.yml`, `.env.example`, `catalog.example.json`, an Expo setup file. |
 | `docs/dogfood.md` | Friction found while using hush in our own apps, newest first. |
+| `docs/img/` | The README's hero and dashboard images, in light and dark, taken from hush.bavrk.com by `dashboard/e2e/readme-shots.mjs`. |
 | `.claude-plugin/marketplace.json`, `plugins/hush/` | The Claude Code marketplace and plugin shipped to users: the `hush` skill (also installable with `npx skills add enso-works/hush`), the `installer` and `tracking-planner` agents, and `/hush:install`. |
 
 ## Commands
@@ -53,6 +54,7 @@ The packages and the dashboard, from the repository root:
 (cd capacitor && xcodebuild -scheme BavrkHushCapacitor -destination 'generic/platform=iOS Simulator' build)   # the Swift, against capacitor-swift-pm
 (cd dashboard && npm ci && npm run lint && npm run build)                  # writes src/dashboard/
 (cd dashboard && npx playwright install chromium && npm run e2e)           # needs the test Postgres
+(cd dashboard && npm run shots)                                          # the README's images, from the live site; needs pngquant
 ```
 
 The dashboard in development: run a server with `DEMO=1 PORT=3055` against its
