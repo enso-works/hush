@@ -16,10 +16,11 @@ Before delegating:
    the user for it. If the key typed has `_dev_` in it (`hush_<app>_dev_…`),
    it is the dev key: ask for the prod key. Also ask whether they have a dev
    write key, and whether they want feedback screens, RevenueCat `identify()`,
-   or iOS ad attribution with `@bavrk/hush-expo` (and if so, the domain for
-   `attributionEndpoint`). Never invent a URL or a key. If the user wants to go
-   ahead with only a dev key, tell the agent so: it leaves the prod key empty,
-   which keeps release builds off. If the user wants the wiring before the
+   or iOS ad attribution with `@bavrk/hush-expo` in an Expo app or
+   `@bavrk/hush-capacitor` in a Capacitor app (and if so, the domain iOS
+   sends postback copies to). Never invent a URL or a key. If the user wants
+   to go ahead with only a dev key, tell the agent so: it leaves the prod key
+   empty, which keeps release builds off. If the user wants the wiring before the
    server exists, tell the agent so: it writes `url: ''` and an empty key,
    which keeps the SDK off. The agent lists what is missing as still to do.
 2. Delegate to the hush:installer agent with the URL, the keys, and the

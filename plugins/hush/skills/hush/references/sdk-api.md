@@ -1,8 +1,8 @@
 # @bavrk/hush 2.4.0: API reference
 
-Checked against `sdk/src/core.ts`, `index.ts` and `web.ts` at 2.4.0, and
-`@bavrk/hush-expo` 0.1.3. Where 2.2.1 and older behave differently, the entry
-says so.
+Checked against `sdk/src/core.ts`, `index.ts` and `web.ts` at 2.4.0,
+`@bavrk/hush-expo` 0.1.3 and `@bavrk/hush-capacitor` 0.1.0. Where 2.2.1 and
+older behave differently, the entry says so.
 
 ## Contents
 
@@ -15,7 +15,7 @@ says so.
 7. [Limits the server enforces](#7-limits-the-server-enforces)
 8. [The web entry](#8-the-web-entry)
 9. [The core](#9-the-core)
-10. [@bavrk/hush-expo](#10-bavrkhush-expo)
+10. [@bavrk/hush-expo](#10-bavrkhush-expo) and [@bavrk/hush-capacitor](#bavrkhush-capacitor)
 11. [Types](#11-types)
 12. [Remote config](#12-remote-config)
 
@@ -27,6 +27,7 @@ says so.
 | `@bavrk/hush/web` | Web pages, PWAs, Capacitor. `createWebHush()` returns an instance. | nothing |
 | `@bavrk/hush/core` | Any other runtime. `createHush(platform)` returns an instance. | nothing |
 | `@bavrk/hush-expo` | iOS native companion for Expo: conversion values, distribution channel, background time. | `expo` >= 52 (its only peer from 0.1.3), a dev or EAS build, iOS deployment target 16.4 |
+| `@bavrk/hush-capacitor` | iOS native companion for Capacitor, with `@bavrk/hush/web`: the same three. | `@capacitor/core` >= 6, `npx cap sync ios` and a native build, iOS deployment target 15.0 |
 
 The package ships ESM and CommonJS builds. `/web` and `/core` resolve through
 package `exports`: TypeScript needs `moduleResolution` `bundler`, `node16` or
@@ -55,7 +56,7 @@ off`). 2.2.1 and older throw a TypeError on a non-string `url`.
 | `logLevel` | `'silent' \| 'error' \| 'debug'` | `'silent'` | `error` warns (`console.warn('[hush]', …)`) about mistakes: a missing url or key, bad event names, props that are not flat, more than 40 props, a bad channel, a failed native call, failed sends. `debug` also logs every send and state change. |
 | `onFlush` | `(r: FlushResult) => void` | none | Called after every send to `/v1/events`. Exceptions it throws are swallowed. |
 | `storagePrefix` | `string` | `'hush'` | Prefix for the stored keys `<p>.install.v1`, `.queue.v1`, `.first.v1`, `.once.v1`, `.optout.v1`, `.sessions.v1`, `.attribution.v1`, `.threads.v1`, `.config.v1`. Changing it gives every install a new id, a second `app_first_opened`, and loses opt-outs, once-keys, session counts, attribution state, the thread keys of tickets sent with an email (the app no longer lists those) and the config cache (`.config.v1`: getters return their fallbacks until the next fetch). |
-| `runInBackground` | `(work: () => Promise<void>) => Promise<void>` | runs `work` directly | Wraps the flush that runs when the app backgrounds. `hushExpo.runInBackground` asks iOS for background time. |
+| `runInBackground` | `(work: () => Promise<void>) => Promise<void>` | runs `work` directly | Wraps the flush that runs when the app backgrounds. `hushExpo.runInBackground` and `hushCapacitor.runInBackground` ask iOS for background time. |
 | `attribution` | `AttributionBridge` | none | `{ update(v: ConversionValue): Promise<void> \| void }`. Turns on Apple conversion values; see [attribution.md](attribution.md). |
 | `remoteConfig` | `boolean \| RemoteConfigOptions` | on | Remote config (2.4.0, section 12). `false`: no config request, no cache, every getter returns its fallback; with an `attribution` bridge, attribution still fetches `/v1/config` for its milestones on its own, as in 2.3 (at `init()` when its copy is over 12 hours old, never for an opted-out user). The config code stays in the bundle either way. `{ refreshMinutes }`: how often to fetch again at most, on returning to the foreground and while in it (default 15; a finite number is clamped to 1..1440). `{ language: () => string }`: the language the app shows, for language rules, read when values are worked out (missing, throwing or empty: the phone's first locale); a language given to `identify()` wins. It never leaves the device. |
 
@@ -252,6 +253,37 @@ const hush = createHush({
   `AdAttributionKit.AttributionCopyEndpoint` into `Info.plist`. Without the
   option the plugin does nothing.
 - Podspec: iOS 16.4, Swift 5.9, `AdAttributionKit` weak-linked.
+
+### @bavrk/hush-capacitor
+
+The same for a Capacitor app on `@bavrk/hush/web`. The native calls cross
+Capacitor's bridge, so `distribution()` and `channel()` return promises.
+
+| Export | What it does |
+|---|---|
+| `distribution(): Promise<'simulator' \| 'development' \| 'testflight' \| 'app_store' \| null>` | As hush-expo's; `null` off iOS (the web, Android), without the native plugin (`Capacitor.isPluginAvailable('HushCapacitor')`), or when the bridge call fails. Read from iOS once per launch. |
+| `channel(): Promise<string \| undefined>` | `testflight` or `app_store`; otherwise `undefined`, so pass a fallback. |
+| `attribution` | The SDK's `attribution` bridge, as hush-expo's: rejects only when neither framework takes the value. |
+| `runInBackground(work)` | As hush-expo's. A failed begin or end on the bridge never reaches the caller; an error from `work` does. |
+
+- Off iOS and without the native plugin (a web build onto a binary made
+  before it was added) every function is a quiet no-op.
+- `configure()` takes the awaited channel. Where the module cannot await,
+  call `configure()` with a fallback channel, then again with
+  `channel()`'s result before `init()`; the second call replaces the whole
+  configuration, so it passes every option again.
+- No config plugin: write `NSAdvertisingAttributionReportEndpoint` and
+  `AdAttributionKit` > `AttributionCopyEndpoint` in `ios/App/App/Info.plist`
+  by hand.
+- Native: Capacitor plugin `HushCapacitor` (class `HushCapacitorPlugin`),
+  iOS 15.0, Swift 5.9, by Swift Package Manager (`Package.swift`, product
+  `BavrkHushCapacitor`) or CocoaPods (`BavrkHushCapacitor.podspec`), as
+  `npx cap sync ios` names them. `AdAttributionKit` is weak-linked.
+  SKAdNetwork gets the fine value, coarse value and lock on iOS 16.1 and
+  later, the fine value alone on 15.4 to 16.0, and the fine value through
+  the deprecated `updateConversionValue` below 15.4.
+- Capacitor 6 and 7 apps target iOS 13 and 14: raise the deployment target
+  to 15.0, or `pod install` refuses the pod.
 
 ## 11. Types
 

@@ -1,8 +1,8 @@
 ---
 name: hush
-description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native and web apps. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, remote config (typed values with targeting and rollouts, declared in the catalog, overridden on the dashboard, evaluated on the device), the hush server and its catalog (events, highlight, funnels, breakdowns, private screens, config keys), and Apple ad attribution through @bavrk/hush-expo (SKAdNetwork and AdAttributionKit conversion values). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention, feature flags, remote config or campaign attribution without IP addresses, advertising ids or a consent banner.
+description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native, web and Capacitor apps. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, remote config (typed values with targeting and rollouts, declared in the catalog, overridden on the dashboard, evaluated on the device), the hush server and its catalog (events, highlight, funnels, breakdowns, private screens, config keys), and Apple ad attribution through @bavrk/hush-expo or @bavrk/hush-capacitor (SKAdNetwork and AdAttributionKit conversion values). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention, feature flags, remote config or campaign attribution without IP addresses, advertising ids or a consent banner.
 license: MIT
-compatibility: Expo apps on React Native 0.73 or later (Expo SDK 52 or later for @bavrk/hush-expo), bare React Native 0.73 or later with Expo modules, or a web, PWA or Capacitor app. Needs the URL of a running hush server and a write key minted on it.
+compatibility: Expo apps on React Native 0.73 or later (Expo SDK 52 or later for @bavrk/hush-expo), bare React Native 0.73 or later with Expo modules, or a web, PWA or Capacitor app (iOS 15 or later for @bavrk/hush-capacitor). Needs the URL of a running hush server and a write key minted on it.
 metadata:
   sdk: "@bavrk/hush"
   sdk-version: "2.4.0"
@@ -24,7 +24,8 @@ What it does:
   operator answers on the dashboard, and the user reads the reply in the app.
 - **Where installs come from.** Link tags, App Store campaign reports, and
   Apple's ad attribution (SKAdNetwork, AdAttributionKit) through
-  `@bavrk/hush-expo`.
+  `@bavrk/hush-expo` in Expo apps and `@bavrk/hush-capacitor` in Capacitor
+  apps.
 - **Remote config** (SDK 2.4.0). Typed values (a flag, a kill switch, a
   number, copy) declared in the catalog, overridden on the dashboard without
   a release, with rules by platform, version, channel, language and paid
@@ -55,6 +56,7 @@ What it is not:
 | Expo, plus iOS ad attribution, TestFlight detection and background time for the flush | also `npx expo install @bavrk/hush-expo`, then a dev or EAS build | `@bavrk/hush-expo` |
 | Bare React Native 0.73+ | `npx install-expo-modules@latest`, the Expo line above, `npx pod-install`, rebuild | `@bavrk/hush` |
 | Web page, PWA, Capacitor | `npm install @bavrk/hush` | `@bavrk/hush/web` |
+| Capacitor, plus iOS ad attribution, TestFlight detection and background time for the flush | also `npm i @bavrk/hush-capacitor && npx cap sync ios`, then a native build | `@bavrk/hush-capacitor` |
 | Anything else (Electron, a game runtime) | `npm install @bavrk/hush` | `@bavrk/hush/core` |
 
 Never import `@bavrk/hush` outside React Native: it imports `react-native` and
@@ -88,7 +90,8 @@ after the list.
    inlined at build time, so a local `.env` can ship the dev key in a release
    build, and its data then shows only under the dashboard's dev switch.
 6. **Never hardcode `channel`.** Use `hushExpo.channel()` on iOS where it is
-   installed, and `EXPO_PUBLIC_HUSH_CHANNEL` set per platform in `eas.json`
+   installed (in Capacitor, `await hushCapacitor.channel()`: a promise), and
+   `EXPO_PUBLIC_HUSH_CHANNEL` set per platform in `eas.json`
    (`build.<profile>.android.env`, `build.<profile>.ios.env`), not in a
    profile's top-level `env`, which reaches both platforms. Development builds
    default to `dev`.
@@ -232,6 +235,24 @@ Pass `version`, or the dashboard shows version `unknown`;
 5, shows how to define it with Vite. For Capacitor, pass
 `platform: Capacitor.getPlatform()`.
 
+With `@bavrk/hush-capacitor` installed in a Capacitor app (then
+`npx cap sync ios` and a native build), the same configure call takes its
+channel, bridge and background task. Its `channel()` crosses Capacitor's
+bridge, so it is a promise; where the module cannot await, call
+`configure()` with the fallback first and again with the result, before
+`init()` (each call replaces the whole configuration):
+
+```ts
+import * as hushCapacitor from '@bavrk/hush-capacitor';
+
+hush.configure({
+  // ...url, key, logLevel as before
+  channel: (await hushCapacitor.channel()) ?? import.meta.env.VITE_HUSH_CHANNEL,
+  attribution: hushCapacitor.attribution,
+  runInBackground: hushCapacitor.runInBackground,
+});
+```
+
 ## Events and props
 
 - **Event names** match `^[a-z][a-z0-9_]{1,63}$`: lowercase snake_case, 2 to
@@ -296,17 +317,17 @@ config end to end in [references/remote-config.md](references/remote-config.md).
 
 ## App Privacy answers
 
-What an app on hush and `@bavrk/hush-expo` can declare in App Store
-Connect's App Privacy section, with SDK 2.3.0 or later and a hush server
-with migration 008 (`private_screens`; an older server ignores the key).
-Every row is Tracking: No. A row applies when its "When" does; leave out
-the rows the app does not collect.
+What an app on hush and `@bavrk/hush-expo` or `@bavrk/hush-capacitor` can
+declare in App Store Connect's App Privacy section, with SDK 2.3.0 or later
+and a hush server with migration 008 (`private_screens`; an older server
+ignores the key). Every row is Tracking: No. A row applies when its "When"
+does; leave out the rows the app does not collect.
 
 | Data type | When | Linked to the user | Purposes |
 |---|---|---|---|
-| Usage Data: Product Interaction | Always: events, sessions, screens | No | Analytics; Developer's Advertising or Marketing when hush-expo reports conversion values |
+| Usage Data: Product Interaction | Always: events, sessions, screens | No | Analytics; Developer's Advertising or Marketing when hush-expo or hush-capacitor reports conversion values |
 | Usage Data: Other Usage Data | When the app sends an answer about its use as a prop, such as where the user heard of the app | No | Analytics |
-| Usage Data: Advertising Data | With hush-expo's ad attribution: hush stores Apple's postback copies | No | Developer's Advertising or Marketing; Analytics |
+| Usage Data: Advertising Data | With hush-expo's or hush-capacitor's ad attribution: hush stores Apple's postback copies | No | Developer's Advertising or Marketing; Analytics |
 | Purchases: Purchase History | When the app sends purchase events (`purchase_started`, `purchase_result`, `restore_result`) | No | Analytics; Developer's Advertising or Marketing when a conversion value marks a purchase |
 | Diagnostics: Other Diagnostic Data | Always: app version, build, OS, device model, language, channel, paid flag | No | Analytics |
 | Location: Coarse Location | When the server sets `COUNTRY_HEADER` | No | Analytics |

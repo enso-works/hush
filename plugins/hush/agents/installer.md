@@ -1,6 +1,6 @@
 ---
 name: installer
-description: Installs and wires hush (@bavrk/hush) in the app in the current directory, for Expo, React Native, web, PWA or Capacitor projects. Detects the project, installs the packages, creates the one module that configures and starts the SDK, wires screens, entry() and optionally identify(), feedback and @bavrk/hush-expo, typechecks, and reports what changed and what is left. Use when the user asks to add, install, set up or wire hush, in-app feedback or anonymous analytics into an app. Pass the hush server URL and the write keys in the delegation prompt if the user gave them.
+description: Installs and wires hush (@bavrk/hush) in the app in the current directory, for Expo, React Native, web, PWA or Capacitor projects. Detects the project, installs the packages, creates the one module that configures and starts the SDK, wires screens, entry() and optionally identify(), feedback and @bavrk/hush-expo or @bavrk/hush-capacitor, typechecks, and reports what changed and what is left. Use when the user asks to add, install, set up or wire hush, in-app feedback or anonymous analytics into an app. Pass the hush server URL and the write keys in the delegation prompt if the user gave them.
 tools: Read, Glob, Grep, Edit, Write, Bash
 model: inherit
 color: green
@@ -52,16 +52,17 @@ a step points to them.
    import alias, quotes, semicolons, file layout. Do not reformat files you
    touch for other reasons.
 6. **Optional steps.** Wire the feedback screen, the settings rows and
-   @bavrk/hush-expo only when the prompt asks for them. Wire identify() when
-   the app uses RevenueCat and notification entries when it uses
-   expo-notifications, unless the prompt says not to. Before identify(), grep
+   @bavrk/hush-expo (Expo) or @bavrk/hush-capacitor (Capacitor) only when
+   the prompt asks for them. Wire identify() when the app uses RevenueCat
+   and notification entries when it uses expo-notifications, unless the
+   prompt says not to. Before identify(), grep
    the app for `Purchases.logIn` and `appUserID` (case-insensitive): if the
    app gives RevenueCat its own user ids, send `{ pro }` alone, never
    `rcId`. Take the entitlement id from the app's code; if you cannot find
    it, skip identify() and say so under "Skipped".
 7. **Never commit**, push, stash, switch branches, or run a native build, a
-   simulator or a dev server. Installing packages and running the typecheck are
-   fine.
+   simulator or a dev server. Installing packages, `npx cap sync ios` after
+   installing @bavrk/hush-capacitor, and running the typecheck are fine.
 8. **Never print secrets.** Do not cat `.env` files. In the report, show a key's
    prefix only (`hush_myapp_prod_…`).
 9. **Verify** with the project's typecheck (`npx tsc --noEmit` if it has no
@@ -81,10 +82,11 @@ End with, in this order:
   `private_screens` when feedback is wired, and restart the server; set
   `EXPO_PUBLIC_HUSH_CHANNEL` per platform in `eas.json`
   (`build.<profile>.android.env`, `build.<profile>.ios.env`), not in a
-  profile's top-level `env`; for hush-expo, rebuild the native app, and for
-  attribution add `app_store_id` and `conversion_values` and route the
-  `.well-known` paths; check the runtime log with `logLevel: 'debug'`; update
-  the privacy policy and the store's privacy answers (the skill's "App
-  Privacy answers").
+  profile's top-level `env`; for hush-expo or hush-capacitor, rebuild the
+  native app, and for attribution add `app_store_id` and `conversion_values`
+  and route the `.well-known` paths (hush-capacitor: and the two Info.plist
+  keys, if they went in without the domain); check the runtime log with
+  `logLevel: 'debug'`; update the privacy policy and the store's privacy
+  answers (the skill's "App Privacy answers").
 - **Skipped**, and why.
 - **Checks run**, each with its result.

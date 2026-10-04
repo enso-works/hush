@@ -64,9 +64,10 @@ End to end:
 1. **Catalog.** Add `app_store_id` (required: postbacks are matched to an app
    only by it; without it they are stored under no app and never shown) and
    `conversion_values` (section 4). Restart the server.
-2. **Proxy.** On the registrable domain named in `attributionEndpoint` (iOS
-   keeps only the eTLD+1, so `https://www.example.com` posts to
-   `example.com`), route these publicly to hush:
+2. **Proxy.** On the registrable domain named in `attributionEndpoint`, or
+   in the two Info.plist keys without the config plugin (iOS keeps only the
+   eTLD+1, so `https://www.example.com` posts to `example.com`), route these
+   publicly to hush:
    - `POST /.well-known/skadnetwork/report-attribution/`
    - `POST /.well-known/appattribution/report-attribution/`
 
@@ -75,7 +76,12 @@ End to end:
 3. **App.** Install `@bavrk/hush-expo`, add its config plugin with
    `attributionEndpoint`, make sure the iOS deployment target is 16.4 or later,
    pass `attribution: hushExpo.attribution` to `configure()`, and make a new
-   native build ([install.md](install.md), step 11).
+   native build ([install.md](install.md), step 11). In a Capacitor app:
+   install `@bavrk/hush-capacitor` and run `npx cap sync ios`, write
+   `NSAdvertisingAttributionReportEndpoint` and `AdAttributionKit` >
+   `AttributionCopyEndpoint` in `Info.plist` by hand (no config plugin; the
+   same `https://` and host), pass `attribution: hushCapacitor.attribution`,
+   and make a new native build; iOS 15 or later.
 4. **Ad network.** Enter the same milestone table there (Meta: Events Manager,
    the app's SKAdNetwork settings), so it reads the values the way hush does.
 5. **Dashboard.** The Attribution panel counts verified postbacks only, by
