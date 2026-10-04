@@ -24,12 +24,15 @@ invented apps.
 ## Wire the SDK
 
 The SDK is [`@bavrk/hush`](https://www.npmjs.com/package/@bavrk/hush) on npm,
-for Expo, React Native and the web (below). An AI coding agent can do this
-part for you: see [With an AI coding agent](#with-an-ai-coding-agent). This
-page is for `@bavrk/hush` 2.3.0 and `@bavrk/hush-expo` 0.1.3; where older
-versions behave differently, it says so. 2.3.0 keeps a ticket sent with an
-email apart from the install, and needs a server with migration 007 for it:
-update the server before the app ([Feedback](#feedback)).
+for Expo, React Native, the web and Capacitor (below). An AI coding agent can
+do this part for you: see [With an AI coding agent](#with-an-ai-coding-agent).
+This page is for `@bavrk/hush` 2.4.0, `@bavrk/hush-expo` 0.1.3 and
+`@bavrk/hush-capacitor` 0.1.0; where older versions behave differently, it
+says so. 2.3.0 keeps a ticket sent with an email apart from the install, and
+needs a server with migration 007 for it: update the server before the app
+([Feedback](#feedback)). 2.4.0 adds [remote config](#remote-config), which
+needs migration 009; against an older server every getter returns its
+fallback.
 
 ```sh
 npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
@@ -215,12 +218,13 @@ dashboard never shows an install on a ticket with an email.
 |---|---|
 | `url` | the hush server. Missing or not a string turns the SDK off (2.2.1 and older throw), so give an environment variable a fallback. |
 | `key` | a write key; empty or missing turns the SDK off |
-| `storagePrefix` | storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id and forgets the user's opt-out and the keys of tickets sent with an email. |
-| `runInBackground` | wraps the flush when the app goes to the background, e.g. in a native background task |
+| `storagePrefix` | storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id and forgets the user's opt-out, the keys of tickets sent with an email and the config cache. |
+| `runInBackground` | wraps the flush when the app goes to the background, in a native background task: `hushExpo.runInBackground` or `hushCapacitor.runInBackground` |
 | `channel` | the build's source: `app_store`, `testflight`, `play`... Pass it per build profile; the dashboard filters by it, so TestFlight stays out of store numbers. `dev` in `__DEV__` builds by default. |
 | `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name, a nested prop or a missing `url`) or `debug` (every send) |
 | `onFlush` | called after every send with `{ status, accepted, duplicate, rejected, willRetry }` |
-| `attribution` | a native bridge for Apple's ad attribution, from `@bavrk/hush-expo` (below) |
+| `attribution` | a native bridge for Apple's ad attribution, from `@bavrk/hush-expo` or `@bavrk/hush-capacitor` (below) |
+| `remoteConfig` | [Remote config](#remote-config), on by default. `false` never fetches it, and every getter returns its fallback. `{ refreshMinutes }` (default 15), `{ language: () => locale }` for the language the app shows. |
 
 ### On the web, and in Capacitor
 
@@ -247,7 +251,10 @@ if (/[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link', { url: loc
 TypeScript, set `moduleResolution` to `bundler`, `node16` or `nodenext` so the
 `/web` types resolve. Never import the default `@bavrk/hush` in a browser:
 that is the React Native entry. In Capacitor, pass
-`platform: Capacitor.getPlatform()` to `createWebHush()`.
+`platform: Capacitor.getPlatform()` to `createWebHush()`, and add
+[`@bavrk/hush-capacitor`](#the-native-side-in-capacitor-bavrkhush-capacitor)
+for the iOS side. The server answers CORS on `/v1` for any origin, Capacitor's
+`capacitor://localhost` included.
 
 ### The native side: @bavrk/hush-expo
 
@@ -304,6 +311,60 @@ by default. On Expo SDK 52 to 55, run `npx expo install expo-build-properties`
 and add `["expo-build-properties", { "ios": { "deploymentTarget": "16.4" } }]`
 to those plugins, or `pod install` fails.
 
+### The native side in Capacitor: @bavrk/hush-capacitor
+
+The same as hush-expo, for `@bavrk/hush/web` in a Capacitor app on iOS:
+Apple's ad attribution, the TestFlight or App Store channel, and background
+time for the last send.
+
+```sh
+npm i @bavrk/hush @bavrk/hush-capacitor && npx cap sync ios
+```
+
+`npx cap sync ios` adds the plugin to the native project, with Swift Package
+Manager (Capacitor 8's default) or CocoaPods. Run it again after updating the
+package.
+
+```ts
+import { Capacitor } from '@capacitor/core';
+import { createWebHush } from '@bavrk/hush/web';
+import * as hushCapacitor from '@bavrk/hush-capacitor';
+
+export const hush = createWebHush({ version: '1.2.0', build: '42', platform: Capacitor.getPlatform() });
+hush.configure({
+  url: 'https://hush.example.com',
+  key: 'hush_myapp_prod_…',
+  channel: (await hushCapacitor.channel()) ?? import.meta.env.VITE_HUSH_CHANNEL,
+  attribution: hushCapacitor.attribution,
+  runInBackground: hushCapacitor.runInBackground,
+});
+hush.init();
+```
+
+The calls cross Capacitor's bridge, so `channel()` returns a promise, unlike
+hush-expo's. An app that cannot await before `configure()` can call it twice:
+once at startup with a fallback channel, then again with the one iOS reports,
+before `init()`. Each call replaces the whole configuration, so the second
+passes every option again.
+
+There is no config plugin: add the two keys that name where iOS sends copies
+of the attribution postbacks to `ios/App/App/Info.plist` by hand.
+
+```xml
+<key>NSAdvertisingAttributionReportEndpoint</key>
+<string>https://example.com</string>
+<key>AdAttributionKit</key>
+<dict>
+  <key>AttributionCopyEndpoint</key>
+  <string>https://example.com</string>
+</dict>
+```
+
+Both are `https://` and a host only. It needs iOS 15, Capacitor 8's default;
+on Capacitor 6 and 7 raise the deployment target to 15.0. On Android and the
+web every function is a quiet no-op, and so is a web build running on a
+binary made before the plugin was added: make a new native build.
+
 For a debug screen, `await hush.getInstallationId()` gives the id to paste
 into the dashboard's Installs page, which shows that install's events as they
 arrive.
@@ -317,7 +378,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `DATABASE_URL` | Postgres. Migrations run at every boot, before listening. |
 | `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `openssl rand -hex 32`. |
 | `APPS` | Register apps at boot: `myapp=My App,other=Other`. |
-| `CATALOG_FILE` | Each app's known events, highlight metric, funnels, pinned charts, private screens and conversion values, as JSON. |
+| `CATALOG_FILE` | Each app's known events, highlight metric, funnels, pinned charts, private screens, conversion values and remote config keys, as JSON. |
 | `CLIENT_IP_HEADER` | Header a trusted proxy sets with the caller's address (`cf-connecting-ip`, `x-forwarded-for`), for rate limits. Unset: the socket address. Behind a proxy, set it: otherwise every caller has the proxy's address and shares its limits, and an app takes five tickets with an email a day from all its users together. The server warns once when a request comes from a private address and it is unset. |
 | `COUNTRY_HEADER` | Header a trusted proxy sets with a two-letter country. Unset: no country. |
 | `RESEND_API_KEY`, `MAIL_FROM` | Email through Resend: feedback alerts, and replies to users who left an address. |
@@ -357,8 +418,9 @@ built on the dashboard without editing the catalog. Beside them, a weekly
 cohort table shows how many of each week's new installs are still around.
 
 `breakdowns` pin charts to the app's page (one event by one prop),
-`private_screens` are screens the server never stores, and `app_store_id` and
-`conversion_values` are for where installs come from:
+`private_screens` are screens the server never stores, `app_store_id` and
+`conversion_values` are for where installs come from, and `config` declares
+the app's [remote config](#remote-config) keys:
 
 ```json
 "breakdowns": [{ "event": "workout_completed", "prop": "kind", "title": "Workouts by kind" }],
@@ -367,7 +429,10 @@ cohort table shows how many of each week's new installs are still around.
 "conversion_values": [
   { "value": 1, "coarse": "low", "event": "onboarding_completed", "label": "Onboarded" },
   { "value": 63, "coarse": "high", "event": "purchase_result", "where": { "result": "purchased" }, "label": "Purchased", "lock": true }
-]
+],
+"config": {
+  "review_prompt_after": { "type": "number", "default": 3, "description": "Sessions before the app asks for a review." }
+}
 ```
 
 `private_screens` take the names the app gives `screen()`. A `screen_viewed`
@@ -405,8 +470,9 @@ anything under five users and adds noise, as it should.
 
 **Ad attribution.** For an install ad, Apple tells the ad network which
 campaign won, with a conversion value the app sets. Your catalog's
-`conversion_values` are those milestones: `@bavrk/hush-expo` registers the
-install and raises the value as they happen. The app's Info.plist asks iOS
+`conversion_values` are those milestones: `@bavrk/hush-expo` or
+`@bavrk/hush-capacitor` registers the install and raises the value as they
+happen. The app's Info.plist asks iOS
 to send hush a copy of each postback; hush verifies Apple's signature, keeps
 Apple's test postbacks under dev, and never counts one that does not verify.
 hush matches a postback to an app by the catalog's `app_store_id` alone, so
@@ -415,6 +481,86 @@ editing it. Enter the same milestone table in the ad network (Meta: Events
 Manager, the app, SKAdNetwork) so it reads the values the way you do. The
 Attribution panel shows installs per ad network and campaign, how far they got, and the
 App Store campaigns beside them.
+
+## Remote config
+
+Values the app reads at runtime and you change without a release: a feature
+flag, a kill switch, a number, copy per language. Values and targeting only:
+no experiments, no exposure events, no variant statistics. It needs a server
+with migration 009 and SDK 2.4.0.
+
+Each key is declared in the app's catalog entry, in git, with a type
+(`bool`, `number`, `string` or `json`), a default, a description and
+optional rules:
+
+```json
+"config": {
+  "new_home": {
+    "type": "bool",
+    "default": false,
+    "description": "The redesigned home screen.",
+    "rules": [
+      { "when": { "channel": ["testflight", "dev"] }, "value": true, "note": "Testers see it first" },
+      { "when": { "platform": ["ios"], "version": ">=2.1.0" }, "rollout": 20, "value": true }
+    ]
+  },
+  "paywall_copy": {
+    "type": "string",
+    "default": "Start your free week",
+    "description": "The paywall headline.",
+    "rules": [{ "when": { "language": ["de"] }, "value": "Eine Woche gratis" }]
+  }
+}
+```
+
+A key's name follows the event-name rule. A rule's `when` may ask for a
+platform list, an app version range (`>=2.1.0 <3`), a build channel list, a
+language list and the paid flag (`pro`), and every condition it has must
+hold. A `rollout` from 0 to 100 puts that share of installs in, by a bucket
+worked out from the install id and the key, so an install stays in or out,
+and raising 10 to 20 keeps the first 10 in. The first rule that matches
+decides, otherwise the default. The server reads the catalog at boot: restart
+it after adding or changing a key.
+
+The dashboard's Remote config page lists every app's keys. It can override a
+key's default, its rules or both, check a change as you type, preview what a
+device or one install would get, and revert to the catalog. Every save and
+revert goes into the key's history, and a save made on a stale page is
+refused. It cannot create, rename or delete keys, or change a type: that is
+the catalog's job. An override the catalog no longer fits is kept, not
+served, and shown there to fix or delete.
+
+In the app:
+
+```ts
+SplashScreen.preventAutoHideAsync();                       // at module load
+hush.config.ready().then(() => SplashScreen.hideAsync());  // usable: from the cache, or the first fetch
+
+hush.config.bool('new_home', false);                       // the fallback until a value is loaded
+hush.config.string('paywall_copy', 'Start your free week');
+
+const config = hush.useConfig();                           // in a component: re-renders on any change
+hush.identify({ language: 'de' });                         // an in-app language switch: values follow at once
+```
+
+The SDK asks for `/v1/config` at `init()`, then on returning to the
+foreground and while in it, at most every 15 minutes, sending the revision
+it holds (304 when nothing changed). The answer is cached on the device, so
+the next launch starts from it and a failed fetch keeps it.
+
+Remote config sends nothing new: the request carries the app's write key and
+a revision, and no install id, device details or events. Every install gets
+the same answer; targeting and rollouts are worked out on the device, and
+the device never reports which value it got. Like any request it arrives
+with the device's IP address and User-Agent; hush keeps neither, but a TLS
+proxy in front of it may log both. A user who opted out still gets config:
+an app that promises nothing leaves the device after an opt-out says so in
+its privacy policy, or sets `remoteConfig: false`.
+
+Limits, for the catalog and overrides alike: 100 keys per app, 20 rules per
+key, strings up to 2000 characters, a `json` value up to 8 KB, everything
+served for an app up to 64 KB. One config serves the app's prod and dev keys;
+target a dev build with a `channel: ["dev"]` rule.
 
 ## Deploy it
 
@@ -450,6 +596,8 @@ with an email). One instance is plenty for small apps.
 - **Never an IP address.** Rate limits count a salted hash held in memory.
 - **No advertising or device identifiers**, so nothing for App Tracking
   Transparency to ask about; from a link, only its campaign tags.
+- **Nothing for remote config**: its request carries the write key and a
+  revision, and the device never reports which value it got.
 
 Raw events are deleted after `RETENTION_DAYS` (180), and an install that has
 sent nothing for `INSTALL_RETENTION_DAYS` (`RETENTION_DAYS` unless set) loses
@@ -465,7 +613,7 @@ did, not who did it.
 
 ### App Privacy answers
 
-What an app on hush and `@bavrk/hush-expo` can declare in App Store Connect's
+What an app on hush and `@bavrk/hush-expo` or `@bavrk/hush-capacitor` can declare in App Store Connect's
 App Privacy section, for builds on SDK 2.3.0 or later against a server with
 migration 008 (`private_screens`; an older server ignores the key). Every row
 is Tracking: No. A row applies when its "When" does; an app that collects none
@@ -473,9 +621,9 @@ of it leaves the row out.
 
 | Data type | When | Linked to the user | Purposes |
 |---|---|---|---|
-| Usage Data: Product Interaction | Always: events, sessions, screens | No | Analytics; Developer's Advertising or Marketing when hush-expo reports conversion values |
+| Usage Data: Product Interaction | Always: events, sessions, screens | No | Analytics; Developer's Advertising or Marketing when hush-expo or hush-capacitor reports conversion values |
 | Usage Data: Other Usage Data | When the app sends an answer about its use as a prop, such as where the user heard of the app | No | Analytics |
-| Usage Data: Advertising Data | With hush-expo's ad attribution: hush stores Apple's postback copies | No | Developer's Advertising or Marketing; Analytics |
+| Usage Data: Advertising Data | With hush-expo's or hush-capacitor's ad attribution: hush stores Apple's postback copies | No | Developer's Advertising or Marketing; Analytics |
 | Purchases: Purchase History | When the app sends purchase events (`purchase_started`, `purchase_result`, `restore_result`) | No | Analytics; Developer's Advertising or Marketing when a conversion value marks a purchase |
 | Diagnostics: Other Diagnostic Data | Always: app version, build, OS, device model, language, channel, paid flag | No | Analytics |
 | Location: Coarse Location | When the server sets `COUNTRY_HEADER` | No | Analytics |
@@ -488,7 +636,7 @@ hush stores nothing that joins the two, and the dashboard offers no way to.
 An app without an email field can answer that Customer Support is not linked
 either. Other SDKs in the app (RevenueCat, a crash reporter) answer for
 themselves, in the same rows: RevenueCat adds App Functionality to Purchase
-History.
+History. Remote config adds no row and changes none: it collects nothing.
 
 What no id can hide: a ticket's time and its build details (version, build,
 OS, device model, paid flag) are not ids, but the install's row and events
@@ -500,7 +648,8 @@ under a name other screens share), list them in the catalog's
 `private_screens`, and put nothing about a ticket in an event. The server
 then stores no view of them from any build, which matters for app versions
 that named a screen by its URL with the ticket id in it, and deletes the
-views stored before; backups taken before then keep them until they expire. Builds on 2.2.x or older keep a ticket with an email linked to the
+views stored before; backups taken before then keep them until they expire.
+Builds on 2.2.x or older keep a ticket with an email linked to the
 install until the server unlinks it, so these answers hold in full only for
 builds on 2.3.0 or later.
 
@@ -517,17 +666,21 @@ Apps send `Authorization: Key <write key>`. The SDK does this for you.
 | `POST /v1/tickets/threads` | `{ threads: [key, …] }` (up to 50) → the same, for the tickets those keys open. Replies are marked read up to the newest one shown. |
 | `POST /v1/tickets/:id/reply` | `{ install, body }` or `{ thread, body }` → `201`; `404` for a wrong install or key, `409` once closed, `429` after 20 replies a day. |
 | `POST /v1/forget` | `{ install }` → `200 { ok, deleted }`: that install's events, feedback and row, under the calling app. `{ threads }` on its own → `200 { ok, deleted: { tickets } }`; both in one request is a `400`. |
-| `GET /v1/config` | The app's conversion values, for the SDK. |
+| `GET /v1/config` | `{ conversion_values, config: { revision, keys } }`: the catalog's conversion values, and its remote config keys merged with the dashboard's overrides. Every 200 has `ETag: "<revision>"`; `If-None-Match` with it gets a 304 with no body. |
 | `POST /.well-known/skadnetwork/report-attribution/` | A copy of Apple's SKAdNetwork postback. No key: Apple's signature is the proof. |
 | `POST /.well-known/appattribution/report-attribution/` | The same, for AdAttributionKit. |
 | `GET /healthz` | `{ ok, db }` |
+
+`/v1` answers CORS for any origin, so web and Capacitor apps can send.
 
 The operator side takes `Authorization: Bearer <ADMIN_TOKEN>` and is what the
 dashboard reads: `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`), its
 `/breakdown`, `/props`, `/funnels`, `/funnel`, `/cohorts`, `/campaigns` and
 `/attribution`, `/admin/installs/:id` with `/forget`,
-`/admin/tickets`, `/admin/tickets/:id` with `/reply`, `/status` and `DELETE`, and
-`/admin/revenue`.
+`/admin/tickets`, `/admin/tickets/:id` with `/reply`, `/status` and `DELETE`,
+`/admin/revenue`, and for remote config `/admin/apps/:app/config`, its
+`/config/history` and `/config/preview`, and `POST` (override) and `DELETE`
+(revert) on `/config/:key`.
 
 The command line, inside the container:
 
@@ -536,6 +689,7 @@ node src/cli.mjs apps:list | apps:add <slug> <name>
 node src/cli.mjs keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id>
 node src/cli.mjs rc:projects | rc:sync | rc:link <app> <project> | rc:poll
 node src/cli.mjs asc:request <app> | asc:sync [app]
+node src/cli.mjs config:show <app> | config:history <app> [key]
 ```
 
 ## The demo

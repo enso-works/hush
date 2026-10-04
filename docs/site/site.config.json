@@ -1,5 +1,5 @@
 {
-  "_comment": "Locale-independent config. Copy this template dir to bavrk.com/<app>/ (scripts/new-site.sh does it), edit the values below + locales/en.json, translate the other locales/*.json, then `npm run dev`. 'en' must stay first (it is the site root and x-default). Leave appStoreId/appStoreUrl empty until the app is live: the install banner and JSON-LD installUrl are omitted while empty. featureIcons are lucide icon names (lucide.dev/icons), one per features.fN_h in the locale files; proFeature is the 1-based feature that gets the Pro badge (0 for none). proPrice/proCurrency, when set, add a Pro offer to the JSON-LD. kind is 'app' (a mobile app: iPhone hero, App Store or launch-email CTA, pricing) or 'saas' (software people run or sign up for: browser-frame hero, screenshot showcase, a docs page from src/content/docs.md, a stored/never trust section, the CTA to primaryUrl). sections, when set, overrides the kind's landing sections (steps, showcase, features, collected, pricing, faq, band). The saas-only keys: primaryUrl (the main button; a github.com URL gets the GitHub mark), githubUrl (source link, adds SoftwareSourceCode JSON-LD), license, demoUrl, browserUrl (the address shown in the frames), heroScreenDark, operatingSystem, showcase ([{light, dark, url, link}], strings in showcase.sN_h / sN_p).",
+  "_comment": "Locale-independent config. Copy this template dir to bavrk.com/<app>/ (scripts/new-site.sh does it), edit the values below + locales/en.json, translate the other locales/*.json, then `npm run dev`. 'en' must stay first (it is the site root and x-default). Leave appStoreId/appStoreUrl empty until the app is live: the install banner and JSON-LD installUrl are omitted while empty. featureIcons are lucide icon names (lucide.dev/icons), one per features.fN_h in the locale files; proFeature is the 1-based feature that gets the Pro badge (0 for none). proPrice/proCurrency, when set, add a Pro offer to the JSON-LD. kind is 'app' (a mobile app: iPhone hero, App Store or launch-email CTA, pricing) or 'saas' (software people run or sign up for: browser-frame hero, screenshot showcase, a docs page from src/content/docs.md, a stored/never trust section, the CTA to primaryUrl). sections, when set, overrides the kind's landing sections (steps, showcase, features, collected, pricing, faq, band). The saas-only keys: primaryUrl (the main button; a github.com URL gets the GitHub mark), githubUrl (source link, adds SoftwareSourceCode JSON-LD), license, demoUrl, browserUrl (the address shown in the frames), heroScreenDark, operatingSystem, showcase ([{light, dark, url, link}], strings in showcase.sN_h / sN_p), docsSource (where the docs page's \"Improve this page\" link goes; default the repo's README.md).",
   "kind": "saas",
   "locales": [
     "en"
@@ -21,9 +21,11 @@
     "MessageCircle",
     "EyeOff",
     "ChartColumn",
+    "SlidersHorizontal",
     "Coins",
     "Server",
-    "FileCode"
+    "FileCode",
+    "Bot"
   ],
   "proFeature": 0,
   "fontsHref": "https://fonts.googleapis.com/css2?family=Manrope:wght@600;700&family=Inter:wght@400;500;600&display=swap",
@@ -40,14 +42,15 @@
   "sections": [],
   "primaryUrl": "https://github.com/enso-works/hush",
   "githubUrl": "https://github.com/enso-works/hush",
+  "docsSource": "https://github.com/enso-works/hush/blob/main/docs/site/docs.md",
   "license": "MIT",
   "demoUrl": "/demo/dashboard/",
   "browserUrl": "hush.example.com/dashboard",
   "operatingSystem": "Linux (Docker)",
   "showcase": [
     {
-      "light": "/img/shots/apps-light.png",
-      "dark": "/img/shots/apps-dark.png",
+      "light": "/img/shots/overview-light.png",
+      "dark": "/img/shots/overview-dark.png",
       "url": "hush.example.com/dashboard",
       "link": "/demo/dashboard/"
     },
@@ -58,10 +61,16 @@
       "link": "/demo/dashboard/#/app/stillwater"
     },
     {
-      "light": "/img/shots/ticket-light.png",
-      "dark": "/img/shots/ticket-dark.png",
+      "light": "/img/shots/feedback-light.png",
+      "dark": "/img/shots/feedback-dark.png",
       "url": "hush.example.com/dashboard/#/feedback",
       "link": "/demo/dashboard/#/feedback?status=all"
+    },
+    {
+      "light": "/img/shots/config-light.png",
+      "dark": "/img/shots/config-dark.png",
+      "url": "hush.example.com/dashboard/#/app/stillwater/config",
+      "link": "/demo/dashboard/#/app/stillwater/config"
     }
   ]
 }

@@ -2,11 +2,11 @@
   "meta": {
     "index": {
       "title": "hush: feedback and anonymous tracking for your apps",
-      "description": "Self-hosted in-app feedback and anonymous usage tracking for mobile and web apps. One container, Postgres, a dashboard and an SDK on npm (@bavrk/hush). No IP addresses, no consent banner. MIT."
+      "description": "Self-hosted in-app feedback, anonymous usage tracking and remote config for mobile and web apps. One container, Postgres, a dashboard and an SDK on npm (@bavrk/hush). No IP addresses, no consent banner. MIT."
     },
     "docs": {
       "title": "hush docs: run it, wire the SDK, read the dashboard",
-      "description": "How to run hush, add the SDK to an Expo, React Native, web or Capacitor app, configure it, and use the API. Everything in one page."
+      "description": "How to run hush, add the SDK to an Expo, React Native, web or Capacitor app, configure it, change values with remote config, and use the API. Everything in one page."
     },
     "privacy": {
       "title": "Privacy: hush.bavrk.com",
@@ -57,25 +57,29 @@
     "s1_h": "Run it",
     "s1_p": "Run docker compose with the example in the repo: one container and a Postgres beside it, on your own server.",
     "s2_h": "Wire the SDK",
-    "s2_p": "Install @bavrk/hush from npm in your Expo, React Native or web app, give it the server's URL and a write key, and call init().",
+    "s2_p": "Install @bavrk/hush from npm in your Expo, React Native, web or Capacitor app, give it the server's URL and a write key, and call init().",
     "s3_h": "Read and answer",
-    "s3_p": "The dashboard shows installs, sessions, retention and your own events, and the feedback inbox where you reply."
+    "s3_p": "The dashboard shows installs, sessions, retention and your own events, the feedback inbox where you reply, and the remote config you change without a release."
   },
   "features": {
     "eyebrow": "What you get",
-    "h2": "The two things a small app needs to hear",
+    "h2": "Feedback, usage and remote config on one server",
     "f1_h": "Feedback, as a conversation",
     "f1_p": "Users write from inside the app: a problem, an idea, or kind words. You answer on the dashboard (and by email, if they left one); they read it in the app and can reply.",
     "f2_h": "Anonymous by design",
     "f2_p": "A random install id is the only identifier. No IP address is stored anywhere, and nothing personal is collected, so there is no consent banner.",
     "f3_h": "The numbers that matter",
     "f3_p": "Installs, sessions, retention and cohorts, ordered funnels with the time between steps, your own events broken down by any prop, and where installs came from: campaign links, App Store campaigns and Apple's ad attribution.",
-    "f4_h": "Revenue next to usage",
-    "f4_p": "Optionally, RevenueCat's own figures on the same page, pulled by your server with a read-only key.",
-    "f5_h": "Yours to run",
-    "f5_p": "One container and Postgres on your own server. Your users' data never passes through anyone else.",
-    "f6_h": "An SDK that stays out of the way",
-    "f6_p": "@bavrk/hush on npm, for Expo, React Native and the web. Queues offline, sends in batches, and survives being killed. If the server is down, the app behaves exactly as without it.",
+    "f4_h": "Remote config",
+    "f4_p": "Flags, kill switches, numbers and copy the app reads at runtime, declared in the catalog and changed on the dashboard without a release. Targeting and rollouts are worked out on the device, which reports nothing back.",
+    "f5_h": "Revenue next to usage",
+    "f5_p": "Optionally, RevenueCat's own figures on the same page, pulled by your server with a read-only key.",
+    "f6_h": "Yours to run",
+    "f6_p": "One container and Postgres on your own server. Your users' data never passes through anyone else.",
+    "f7_h": "An SDK that stays out of the way",
+    "f7_p": "@bavrk/hush on npm, for Expo, React Native, the web and Capacitor, with optional native iOS packages for Expo and Capacitor apps. Queues offline, sends in batches, and survives being killed. If the server is down, the app behaves exactly as without it.",
+    "f8_h": "Wired by your coding agent",
+    "f8_p": "A Claude Code plugin, and a skill for Cursor, Codex and other agents, add hush to your app, plan its events and funnels, and answer questions about it, following the rules on the docs page.",
     "proTag": "Pro"
   },
   "collected": {
@@ -104,6 +108,8 @@
     "s2_p": "The period against the one before, active installs per day, funnel, retention, versions, countries and events.",
     "s3_h": "Feedback",
     "s3_p": "Every thread with the device details that matter, and your replies.",
+    "s4_h": "Remote config",
+    "s4_p": "Each key's default, rules and overrides, a preview of what a device would get, and every change in its history.",
     "cta": "Open the live demo"
   },
   "faq": {
@@ -117,7 +123,7 @@
   },
   "docs": {
     "h1": "Docs",
-    "lead": "Everything in one page: run it, wire the SDK, configure it, and the API. The repo's README.md, sdk/README.md and expo/README.md cover the same ground.",
+    "lead": "Everything in one page: run it, wire the SDK, configure it, remote config, and the API. The repo's README.md, sdk/README.md, expo/README.md and capacitor/README.md cover the same ground.",
     "toc": "On this page",
     "source": "Improve this page on GitHub"
   },
@@ -132,7 +138,7 @@
     "s3_h": "3. The demo",
     "s3_p": "The live demo shows invented apps and data. It is read-only, stores nothing you do in it, and accepts no data from apps.",
     "s4_h": "4. hush, the software",
-    "s4_p": "When you run hush for your own app, you are the one collecting data and you decide what your privacy policy says. By design hush stores a random install id, the app version, OS, device model, the device's language, the events your app sends, feedback messages, an email address only if a user typed one, and a country only if you enable it. It never stores IP addresses. We never see any of it: your server, your data.",
+    "s4_p": "When you run hush for your own app, you are the one collecting data and you decide what your privacy policy says. By design hush stores a random install id, the app version, OS, device model, the device's language, the events your app sends, feedback messages, an email address only if a user typed one, and a country only if you enable it. It never stores IP addresses. Remote config collects nothing: the app asks for it with its key and the revision it holds. We never see any of it: your server, your data.",
     "s5_h": "5. Contact",
     "s5_p": "Questions about privacy? Email {{cfg.supportEmail}}."
   },
@@ -162,7 +168,7 @@
     "faq3_q": "Is there a hosted version?",
     "faq3_a": "No, on purpose. Your users' data stays on your server; we never see it. The live demo shows exactly what you get.",
     "faq4_q": "Which platforms does the SDK support?",
-    "faq4_a": "Expo and React Native, web pages, PWAs and Capacitor, all from the npm package @bavrk/hush. Its core runs on any JavaScript platform that gives it storage and app lifecycle. The API is plain HTTP and JSON, so any client can talk to it; the README documents every endpoint.",
+    "faq4_a": "Expo and React Native, web pages, PWAs and Capacitor, all from the npm package @bavrk/hush; @bavrk/hush-expo and @bavrk/hush-capacitor add the native iOS side. Its core runs on any JavaScript platform that gives it storage and app lifecycle. The API is plain HTTP and JSON, so any client can talk to it; the README documents every endpoint.",
     "faq5_q": "What does it cost to run?",
     "faq5_a": "A container using under 100 MB of memory and a small Postgres database: the smallest VPS or a corner of a server you already have."
   },
