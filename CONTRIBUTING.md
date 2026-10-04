@@ -94,3 +94,12 @@ Bump `expo/package.json`, commit, then `git tag expo-v<version> && git push
 origin expo-v<version>`; `.github/workflows/publish-expo.yml` publishes it
 with the same `NPM_TOKEN`. Its Swift is only compiled by an app: build one
 (Braele is the reference) for the simulator before tagging.
+
+## Releasing @bavrk/hush-capacitor
+
+Bump `capacitor/package.json`, commit, then `git tag capacitor-v<version> &&
+git push origin capacitor-v<version>`; `.github/workflows/publish-capacitor.yml`
+typechecks, builds and publishes it with the same `NPM_TOKEN`. Its Swift
+builds on its own against capacitor-swift-pm:
+`cd capacitor && xcodebuild -scheme BavrkHushCapacitor -destination 'generic/platform=iOS Simulator' build`.
+Build an app that uses it (`npx cap sync ios`, then Xcode) before tagging.
