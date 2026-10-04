@@ -73,4 +73,13 @@ extension ClientTests {
             try await Stub.client(Connection(baseURL: URL(string: "https://hush.example.com")!, token: "wrong"), refuse).check()
         }
     }
+
+    @Test func checkSaysWhenTheAddressIsNotHush() async throws {
+        let client = Stub.client { _ in (404, Data("<html>Not Found</html>".utf8)) }
+        await #expect {
+            try await client.check()
+        } throws: { error in
+            if case HushError.unreadable = error { true } else { false }
+        }
+    }
 }

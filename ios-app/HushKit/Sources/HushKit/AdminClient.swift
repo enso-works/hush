@@ -182,7 +182,7 @@ extension AdminClient {
     /// app saves them: asks `/admin/session` without the token, then reads
     /// `/admin/apps` the way the app will. Throws what went wrong:
     /// `.unauthorized` when the server wants a token and none (or a wrong one)
-    /// was given.
+    /// was given, `.unreadable` when the address is not a hush server.
     public func check() async throws -> Access {
         let access: Access
         do {
@@ -190,6 +190,9 @@ extension AdminClient {
         } catch HushError.unauthorized {
             guard let token = connection.token, !token.isEmpty else { throw HushError.unauthorized }
             access = .token
+        } catch HushError.notFound {
+            // Every hush server answers /admin/session; a 404 is some other site.
+            throw HushError.unreadable("no /admin/session at this address")
         }
         _ = try await apps(days: 1)
         return access
