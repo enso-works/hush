@@ -1,107 +1,178 @@
 import HushKit
 import SwiftUI
 
-/// Every app on one server, as the dashboard's overview shows them.
+/// Every app on one server, as the web dashboard's overview shows them.
 struct OverviewView: View {
     let server: Server
+
     @Environment(AppModel.self) private var model
-    @State private var apps: [AppSummary] = []
+    @AppStorage("days") private var days = 30
+    @AppStorage("env") private var env = Env.prod
+    @State private var answer: AppsAnswer?
     @State private var error: HushError?
-    @State private var loading = true
+
+    private struct Query: Equatable { let server: Server; let days: Int; let env: Env }
 
     var body: some View {
-        List {
-            if let error {
-                Section { ErrorRow(error: error) }
+        ScrollView {
+            VStack(spacing: 16) {
+                Picker("Period", selection: $days) {
+                    ForEach(Prefs.periods, id: \.self) { Text(Prefs.periodLabel($0)).tag($0) }
+                }
+                .pickerStyle(.segmented)
+
+                if let error { ErrorNote(error: error) }
+
+                if let answer {
+                    if answer.apps.isEmpty {
+                        ContentUnavailableView("No apps yet", systemImage: "square.grid.2x2",
+                                               description: Text("Register one on the server with `apps:add`, then create a write key with `keys:create`."))
+                    } else {
+                        Totals(answer: answer, days: days)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 16)], spacing: 16) {
+                            ForEach(answer.apps) { app in
+                                NavigationLink(value: app) { AppCard(app: app, days: days) }
+                                    .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                } else if error == nil {
+                    ProgressView().padding(.top, 80)
+                }
             }
-            ForEach(apps) { app in
-                AppRow(app: app)
-            }
+            .padding(16)
         }
-        .overlay {
-            if loading && apps.isEmpty { ProgressView() }
-            else if !loading && apps.isEmpty && error == nil {
-                ContentUnavailableView("No apps yet", systemImage: "square.grid.2x2", description: Text("Register one on the server with `apps:add`."))
-            }
-        }
+        .background(Color(.systemGroupedBackground))
         .navigationTitle(server.name)
-        .task(id: server) {
-            apps = []
-            await load()
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Data", selection: $env) {
+                        Text("Release builds (prod)").tag(Env.prod)
+                        Text("Development (dev)").tag(Env.dev)
+                    }
+                    if model.servers.count > 1 {
+                        Section("Server") {
+                            ForEach(model.servers) { s in
+                                Button {
+                                    model.select(s)
+                                } label: {
+                                    if s.id == server.id { Label(s.name, systemImage: "checkmark") } else { Text(s.name) }
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    Label(env == .prod ? "Prod" : "Dev", systemImage: "line.3.horizontal.decrease.circle")
+                }
+            }
         }
+        .navigationDestination(for: AppSummary.self) { app in
+            AppView(server: server, slug: app.app, name: app.name, kept: answer?.installRetentionDays)
+        }
+        .task(id: Query(server: server, days: days, env: env)) { await load() }
         .refreshable { await load() }
+        .onChange(of: server) { answer = nil }
     }
 
     private func load() async {
-        loading = true
-        defer { loading = false }
         do {
-            apps = try await model.client(for: server).apps().apps
+            answer = try await model.client(for: server).apps(days: days, env: env)
             error = nil
-        } catch let e as HushError {
-            error = e
+        } catch is CancellationError {
         } catch {
-            self.error = .unreachable(error.localizedDescription)
+            self.error = HushError(error)
         }
     }
 }
 
-private struct AppRow: View {
-    let app: AppSummary
+/// The four totals above the cards.
+private struct Totals: View {
+    let answer: AppsAnswer
+    let days: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(app.name).font(.headline)
+        // Installs quiet for longer than the retention window are deleted, so
+        // the total is the installs seen in it, and new installs count inside it.
+        let kept = answer.installRetentionDays
+        let sum = { (key: KeyPath<AppSummary, Int>) in answer.apps.reduce(0) { $0 + $1[keyPath: key] } }
+        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
+            GridRow {
+                Stat(label: kept.map { "Installs seen in \($0) days" } ?? "Installs, all time", value: sum(\.totalInstalls).formatted())
+                Stat(label: "New in \(min(days, kept ?? days)) days", value: sum(\.newInstalls).formatted())
+            }
+            GridRow {
+                Stat(label: "Active in the last day", value: sum(\.dau).formatted())
+                Stat(label: "Open feedback", value: sum(\.openTickets).formatted())
+            }
+        }
+    }
+}
+
+private struct AppCard: View {
+    let app: AppSummary
+    let days: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                AppMark(slug: app.app, name: app.name)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.name).font(.headline).lineLimit(1)
+                    Text("Last event \(when(app.lastEvent))").font(.caption).foregroundStyle(.secondary)
+                }
                 Spacer()
                 if app.openTickets > 0 {
                     Label("\(app.openTickets)", systemImage: "bubble.left")
                         .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.tint.opacity(0.12), in: .capsule)
                         .foregroundStyle(.tint)
                 }
             }
-            HStack(spacing: 16) {
-                Metric(label: "DAU", value: app.dau)
-                Metric(label: "WAU", value: app.wau)
-                Metric(label: "MAU", value: app.mau)
-                Metric(label: "New", value: app.newInstalls)
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text("Active installs per day")
+                    Spacer()
+                    Text(Prefs.periodLabel(days)).monospacedDigit()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                if let trend = app.trend, trend.contains(where: { $0 > 0 }) {
+                    Sparkline(values: trend).frame(height: 56)
+                } else {
+                    Text("No activity")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+                }
+            }
+            Divider()
+            HStack {
+                ForEach([("Installs", app.totalInstalls), ("DAU", app.dau), ("WAU", app.wau), ("MAU", app.mau)], id: \.0) { label, value in
+                    VStack(spacing: 2) {
+                        Text(label).font(.caption2).foregroundStyle(.secondary)
+                        Text(value, format: .number).font(.subheadline.weight(.semibold).monospacedDigit())
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            HStack {
+                Text(footer).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }
         }
-        .padding(.vertical, 4)
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+        .contentShape(.rect(cornerRadius: 18))
     }
-}
 
-private struct Metric: View {
-    let label: String
-    let value: Int
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-            Text(value, format: .number).font(.subheadline.monospacedDigit())
-        }
-    }
-}
-
-struct ErrorRow: View {
-    let error: HushError
-
-    var body: some View {
-        Label(error.message, systemImage: "exclamationmark.triangle")
-            .foregroundStyle(.red)
-    }
-}
-
-extension HushError {
-    /// What the app says about it.
-    var message: String {
-        switch self {
-        case .unauthorized: "The server refused the token."
-        case .readOnly: "The demo is read-only."
-        case .notFound: "Not found: it may have been deleted."
-        case .server(let status, let message): "The server answered \(status): \(message)"
-        case .unreachable(let reason): "Could not reach the server. \(reason)"
-        case .unreadable: "The answer was not what a hush server sends. Is this the right address?"
-        }
+    private var footer: String {
+        var parts = ["\(app.sessions.formatted()) sessions", "\(app.newInstalls.formatted()) new"]
+        if let ads = app.adInstalls, ads > 0 { parts.append("\(ads.formatted()) from ads") }
+        return parts.joined(separator: " · ")
     }
 }

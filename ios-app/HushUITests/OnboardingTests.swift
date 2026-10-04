@@ -10,6 +10,28 @@ final class OnboardingTests: XCTestCase {
         return app
     }
 
+    /// With SCREENSHOTS_DIR set (TEST_RUNNER_SCREENSHOTS_DIR on the xcodebuild line), saves what the screen shows there.
+    private func snap(_ app: XCUIApplication, _ name: String) {
+        guard let dir = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"] else { return }
+        try? app.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir).appending(component: "\(name).png"))
+    }
+
+    func testTheOverviewAndAnAppsPage() {
+        let app = launch()
+        app.buttons["Try the demo"].tap()
+        let card = app.buttons.containing(.staticText, identifier: "Stillwater").firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Open feedback"].exists)
+        snap(app, "overview")
+        card.tap()
+        XCTAssertTrue(app.staticTexts["Active installs"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Activity"].exists)
+        snap(app, "app")
+        app.swipeUp()
+        XCTAssertTrue(app.staticTexts["Retention"].waitForExistence(timeout: 5))
+        snap(app, "app-retention")
+    }
+
     func testTheDemoFromTheWelcomeScreen() {
         let app = launch()
         app.buttons["Try the demo"].tap()
