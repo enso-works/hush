@@ -6,6 +6,17 @@ anything else, and later the evidence for what a hosted hush has to be.
 
 Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
+## 2026-10-04
+
+- **Rallo (tennis game, Capacitor, iOS 15).** `@bavrk/hush/web` could not
+  tell TestFlight from the App Store, set a conversion value or ask for
+  background time: hush-expo is Expo-only and needs iOS 16.4. Fixed:
+  `@bavrk/hush-capacitor` 0.1.0 (`e03aff5`), iOS 15. Its `channel()` is a
+  promise, as it crosses Capacitor's bridge, so an app that cannot await
+  calls `configure()` twice before `init()`. Its Swift package and pod are
+  named `BavrkHushCapacitor`, the name `npx cap sync` derives from the npm
+  name; any other name and sync wires a package that does not exist.
+
 ## 2026-10-02
 
 - **hush, review of remote config.** `useConfig()` returned the same object

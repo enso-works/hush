@@ -1,8 +1,10 @@
 # @bavrk/hush (Expo, React Native, web)
 
 Server, dashboard and docs: [github.com/enso-works/hush](https://github.com/enso-works/hush)
-· [hush.bavrk.com/docs](https://hush.bavrk.com/docs). Native iOS companion:
-[`@bavrk/hush-expo`](https://www.npmjs.com/package/@bavrk/hush-expo).
+· [hush.bavrk.com/docs](https://hush.bavrk.com/docs). Native iOS companions:
+[`@bavrk/hush-expo`](https://www.npmjs.com/package/@bavrk/hush-expo) for Expo,
+[`@bavrk/hush-capacitor`](https://www.npmjs.com/package/@bavrk/hush-capacitor)
+for Capacitor.
 
 The SDK for [hush](https://hush.bavrk.com): in-app feedback, anonymous
 usage tracking and remote config, with your own hush server. It queues events on the device,
@@ -494,11 +496,11 @@ other prop.
 | `url` | the hush server; missing or not a string turns the SDK off (2.2.1 and older throw), so give env vars a fallback |
 | `key` | a write key; empty or missing turns the SDK off |
 | `storagePrefix` | Storage key prefix (AsyncStorage, or localStorage on the web), default `hush`. Changing it gives every install a new id: an app moving from a copied SDK passes the prefix it used before. It also forgets the user's opt-out, once-events, session count, the ad-attribution state, the keys of tickets sent with an email, and the config cache (`.config.v1`: fallbacks until the next fetch). |
-| `runInBackground` | wraps the flush that runs when the app goes to the background, e.g. in a native background task, so the request is not cut off by suspension |
+| `runInBackground` | wraps the flush that runs when the app goes to the background, e.g. in a native background task, so the request is not cut off by suspension: `hushExpo.runInBackground` or `hushCapacitor.runInBackground` |
 | `channel` | where this build came from: `app_store`, `testflight`, `play`, `internal`... (snake_case, 24 chars). The dashboard filters by it, so TestFlight and dev-client builds on a prod key stop counting as store users. Pass it per EAS build profile, e.g. `process.env.EXPO_PUBLIC_HUSH_CHANNEL`. Default `dev` in `__DEV__` builds, otherwise not sent. |
 | `logLevel` | `silent` (default), `error` (mistakes such as an invalid event name or a missing url), `debug` (every send) |
 | `onFlush` | called after every send with its result |
-| `attribution` | a bridge `{ update({ fine, coarse, lock }) }` that sets Apple's conversion value, e.g. `hushExpo.attribution` from `@bavrk/hush-expo`; see [Ad attribution](#ad-attribution-ios) below |
+| `attribution` | a bridge `{ update({ fine, coarse, lock }) }` that sets Apple's conversion value, e.g. `hushExpo.attribution` from `@bavrk/hush-expo` or `hushCapacitor.attribution` from `@bavrk/hush-capacitor`; see [Ad attribution](#ad-attribution-ios) below |
 | `remoteConfig` | [Remote config](#remote-config): on by default. `false` never fetches it, and every getter returns its fallback. `{ refreshMinutes }`: how often to fetch again at most, on returning to the foreground and while in it (default 15, 1 to 1440). `{ language: () => locale }`: the language the app shows, for language rules (default: the phone's first locale) |
 
 ## The web, and web apps shipped as native ones
@@ -531,6 +533,28 @@ if (/[?&](utm_|ref=)/i.test(location.search)) hush.entry('link', { url: location
 
 The hush server answers CORS on `/v1` for any origin (including Capacitor's
 `capacitor://localhost`); a server older than that needs a proxy that does.
+
+A Capacitor app on iOS adds
+[`@bavrk/hush-capacitor`](https://www.npmjs.com/package/@bavrk/hush-capacitor)
+for what a web view cannot do: Apple's ad attribution, the TestFlight or App
+Store channel, and background time for the last send. Its `channel()` is a
+promise, as it crosses Capacitor's bridge:
+
+```ts
+import * as hushCapacitor from '@bavrk/hush-capacitor'; // npm i @bavrk/hush-capacitor && npx cap sync ios
+
+hush.configure({
+  url,
+  key,
+  channel: (await hushCapacitor.channel()) ?? import.meta.env.VITE_HUSH_CHANNEL,
+  attribution: hushCapacitor.attribution,
+  runInBackground: hushCapacitor.runInBackground,
+});
+hush.init();
+```
+
+Where the app cannot await first, `configure()` may be called again with the
+channel before `init()`; see [its guide](https://github.com/enso-works/hush/tree/main/capacitor#readme).
 
 ## Other platforms: the core
 
@@ -570,6 +594,9 @@ hush.configure({
   channel: hushExpo.channel() ?? process.env.EXPO_PUBLIC_HUSH_CHANNEL, // Android and internal builds from the EAS profile
 });
 ```
+
+In a Capacitor app, the same through `@bavrk/hush-capacitor`, whose
+`channel()` is a promise ([above](#the-web-and-web-apps-shipped-as-native-ones)).
 
 Link tags (`utm_source`, `utm_medium`, `utm_campaign`, `utm_term`,
 `utm_content`, `ref`) from a link passed to `entry('link', { url })` join the

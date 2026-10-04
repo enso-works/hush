@@ -145,7 +145,8 @@ completion rate:
 ## 9. Conversion values
 
 Only for iOS apps that run ads on networks using SKAdNetwork or
-AdAttributionKit, with `@bavrk/hush-expo` installed and the App Store id known.
+AdAttributionKit, with `@bavrk/hush-expo` or `@bavrk/hush-capacitor` installed
+and the App Store id known.
 
 - Build the ladder from events already in the plan, highest value for the most
   valuable milestone (the purchase), coarse `low` to `high` never going down,

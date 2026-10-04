@@ -16,7 +16,7 @@ ask. The rules in [../SKILL.md](../SKILL.md) apply throughout.
 8. [How sessions begin: entry()](#8-how-sessions-begin-entry)
 9. [identify() with RevenueCat (optional)](#9-identify-with-revenuecat-optional)
 10. [Feedback and privacy settings (optional)](#10-feedback-and-privacy-settings-optional)
-11. [@bavrk/hush-expo (optional)](#11-bavrkhush-expo-optional)
+11. [@bavrk/hush-expo (optional)](#11-bavrkhush-expo-optional), and [@bavrk/hush-capacitor](#capacitor-bavrkhush-capacitor) for Capacitor
 12. [The prod key in release builds](#12-the-prod-key-in-release-builds)
 13. [Verify](#13-verify)
 14. [Report](#14-report)
@@ -57,6 +57,9 @@ Note also:
   lockfile: npm, unless `packageManager` in `package.json` names another.
 - **Expo SDK**, from the `expo` version (`~56.0.0` is SDK 56). hush-expo needs
   it (step 11).
+- **Capacitor**, from the `@capacitor/core` version, and whether
+  `ios/App/CapApp-SPM` (Swift Package Manager) or `ios/App/Podfile`
+  (CocoaPods) exists. hush-capacitor needs iOS 15 (step 11).
 - **Import alias**, from `tsconfig.json` `paths` (`@/*`), so the new module is
   imported the way the project imports its own files.
 - **TypeScript `moduleResolution`** on the web: `@bavrk/hush/web` resolves
@@ -222,7 +225,9 @@ if (browser && /[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link',
   `vite build`. In `tsc && vite build`, a variable written before `tsc`
   reaches `tsc` only.
 - Capacitor: pass `platform: Capacitor.getPlatform()` to `createWebHush()`, and
-  a channel per build (`testflight`, `app_store`, `play`).
+  a channel per build (`testflight`, `app_store`, `play`). On iOS,
+  `@bavrk/hush-capacitor` tells TestFlight from the App Store instead
+  (step 11).
 - Next.js uses `NEXT_PUBLIC_` variables and `process.env.NODE_ENV` instead of
   `import.meta.env`.
 - For another runtime, `createHush()` from `@bavrk/hush/core` takes a storage,
@@ -441,7 +446,9 @@ Settings rows:
 
 Add it for iOS ad attribution, TestFlight versus App Store channels, or
 background time for the last flush. It is Expo-only and needs a dev or EAS
-build; in Expo Go, on Android and on the web every function is a no-op.
+build; in Expo Go, on Android and on the web every function is a no-op. A
+Capacitor app uses [@bavrk/hush-capacitor](#capacitor-bavrkhush-capacitor)
+instead.
 
 1. `npx expo install @bavrk/hush-expo`. Its only peer is `expo`.
    (0.1.2 also listed `expo-modules-core`, and `npx expo-doctor` reported it
@@ -485,6 +492,54 @@ Bare React Native: the native module autolinks, but the config plugin does not
 run. Set `NSAdvertisingAttributionReportEndpoint` and
 `AdAttributionKit` > `AttributionCopyEndpoint` in `Info.plist` by hand.
 
+### Capacitor: @bavrk/hush-capacitor
+
+The same three for a Capacitor app on `@bavrk/hush/web`. On Android and the
+web every function is a no-op.
+
+1. `npm i @bavrk/hush-capacitor && npx cap sync ios` (or the project's
+   package manager). Sync adds it to `ios/App/CapApp-SPM/Package.swift`, or
+   to the Podfile as `pod 'BavrkHushCapacitor'`.
+2. **iOS deployment target 15.0.** Capacitor 8 has it. Capacitor 6 and 7
+   default to 13.0 and 14.0, and `pod install` refuses the pod: set
+   `platform :ios, '15.0'` in `ios/App/Podfile` and
+   `IPHONEOS_DEPLOYMENT_TARGET = 15.0` in the Xcode project, and say so in
+   the report.
+3. **Info.plist, only for attribution.** There is no config plugin. Ask the
+   user for the domain (do not guess it) and add to `ios/App/App/Info.plist`:
+
+   ```xml
+   <key>NSAdvertisingAttributionReportEndpoint</key>
+   <string>https://example.com</string>
+   <key>AdAttributionKit</key>
+   <dict>
+     <key>AttributionCopyEndpoint</key>
+     <string>https://example.com</string>
+   </dict>
+   ```
+
+   `https://` and a host, nothing after it. Merge with an `AdAttributionKit`
+   dictionary that is already there.
+4. **Pass it to the SDK** in the hush module. `channel()` is a promise:
+
+   ```ts
+   import * as hushCapacitor from '@bavrk/hush-capacitor';
+
+   hush.configure({
+     // ...url, key, logLevel as before
+     channel: (await hushCapacitor.channel()) ?? import.meta.env.VITE_HUSH_CHANNEL,
+     attribution: hushCapacitor.attribution,
+     runInBackground: hushCapacitor.runInBackground,
+   });
+   ```
+
+   Top-level `await` needs an ES2022 build target. Without it, configure
+   with the fallback channel at once, and in `hushCapacitor.channel().then()`
+   call `configure()` again with every option and the result, then `init()`.
+   Export a promise that resolves after that `init()` as `hushReady`.
+5. **Rebuild.** A web build onto a binary made before the plugin was added
+   gets the no-op.
+
 ## 12. The prod key in release builds
 
 - Release builds use the prod key from code. Only development builds read an
@@ -503,19 +558,22 @@ run. Set `NSAdvertisingAttributionReportEndpoint` and
 
 1. **Typecheck**: the project's `typecheck` script, or `npx tsc --noEmit`. Run
    the linter if the project has one. Fix what the change broke.
-2. **Expo config**: `npx expo config --type prebuild` evaluates the config
+2. **Capacitor**: `npx cap sync ios` lists `@bavrk/hush-capacitor` among the
+   Capacitor plugins for iOS, and `ios/App/App/capacitor.config.json` has
+   `HushCapacitorPlugin` in `packageClassList`.
+3. **Expo config**: `npx expo config --type prebuild` evaluates the config
    plugins without writing native files, and fails on a bad
    `attributionEndpoint`. To see the keys the plugin writes, without prebuild:
    `npx expo config --type introspect --json`, and read
    `ios.infoPlist.NSAdvertisingAttributionReportEndpoint` and
    `ios.infoPlist.AdAttributionKit`. `npx expo install --check` reports
    mismatched versions.
-3. **Runtime** (the user runs it, unless they asked you to): set
+4. **Runtime** (the user runs it, unless they asked you to): set
    `logLevel: 'debug'` in development, start the app, and look for
    `[hush] ready: install <uuid>, sdk 2.4.0, channel dev` and
    `[hush] sent N: { status: 200, …, rejected: 0 }`. Put `logLevel` back to
    `'error'` afterwards.
-4. **Dashboard**: switch to dev, open Installs, and paste the id from
+5. **Dashboard**: switch to dev, open Installs, and paste the id from
    `getInstallationId()`. No event received after the catalog edit and restart
    should be listed as unknown. Events stored before it keep their unknown
    flag until they age out of the selected period.
@@ -535,9 +593,11 @@ End with:
     from before `ticket_replied` became a built-in name, include it if
     replies are wired), and the feedback and inbox screens to its
     `private_screens` when feedback is wired, and restart the server;
-  - with hush-expo: rebuild the native app, and for attribution add
-    `app_store_id` and `conversion_values` to the catalog and route the
-    `.well-known` paths ([attribution.md](attribution.md));
+  - with hush-expo or hush-capacitor: rebuild the native app, and for
+    attribution add `app_store_id` and `conversion_values` to the catalog
+    and route the `.well-known` paths ([attribution.md](attribution.md));
+    with hush-capacitor, also the two Info.plist keys if they went in
+    without the domain;
   - set `EXPO_PUBLIC_HUSH_CHANNEL` per platform in `eas.json`
     (`build.<profile>.android.env`, `build.<profile>.ios.env`), not in a
     profile's top-level `env`;

@@ -1,8 +1,9 @@
 # hush: notes for agents working on this repository
 
 hush is in-app feedback and anonymous usage tracking: a Node server with
-Postgres and a dashboard, an SDK on npm (`@bavrk/hush`), and a native iOS
-companion (`@bavrk/hush-expo`). This file is for work on hush itself. Agents
+Postgres and a dashboard, an SDK on npm (`@bavrk/hush`), and native iOS
+companions for Expo (`@bavrk/hush-expo`) and Capacitor
+(`@bavrk/hush-capacitor`). This file is for work on hush itself. Agents
 that add hush to an app use the plugin in `plugins/hush/` instead.
 
 ## Layout
@@ -15,7 +16,8 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 | `dashboard/` | The dashboard's source (React, Tailwind, shadcn, Magic UI, Vite). Builds into `src/dashboard/`. `e2e/` drives it in Chromium. |
 | `sdk/` | `@bavrk/hush`: `src/core.ts` (platform-free), `src/index.ts` (React Native and Expo), `src/web.ts` (browser), `src/evaluate.js` (the remote config evaluator). |
 | `expo/` | `@bavrk/hush-expo`: the Swift module in `ios/`, the JS in `src/`, the config plugin `app.plugin.js`. |
-| `test/` | `node:test` suites. Server tests run the real server against real Postgres. `sdk.test.mjs` runs the SDK under Node with React Native mocked (`test/sdk/`). `expo.test.mjs` and `plugin.test.mjs` need no database. `__snapshots__/v1-compat.json` freezes `/v1`. |
+| `capacitor/` | `@bavrk/hush-capacitor`: the same for Capacitor, iOS 15. The Swift plugin in `ios/Sources/HushCapacitorPlugin/`, `Package.swift` and `BavrkHushCapacitor.podspec` (both named as `npx cap sync` derives from the package name), the JS in `src/`. No config plugin. |
+| `test/` | `node:test` suites. Server tests run the real server against real Postgres. `sdk.test.mjs` runs the SDK under Node with React Native mocked (`test/sdk/`). `expo.test.mjs`, `capacitor.test.mjs` (Capacitor's bridge mocked) and `plugin.test.mjs` need no database. `__snapshots__/v1-compat.json` freezes `/v1`. |
 | `examples/` | `docker-compose.yml`, `.env.example`, `catalog.example.json`, an Expo setup file. |
 | `docs/dogfood.md` | Friction found while using hush in our own apps, newest first. |
 | `.claude-plugin/marketplace.json`, `plugins/hush/` | The Claude Code marketplace and plugin shipped to users: the `hush` skill (also installable with `npx skills add enso-works/hush`), the `installer` and `tracking-planner` agents, and `/hush:install`. |
@@ -39,7 +41,7 @@ node --test test/events.test.mjs           # one file
 Without a database:
 
 ```bash
-node --test test/sdk.test.mjs test/expo.test.mjs test/plugin.test.mjs
+node --test test/sdk.test.mjs test/expo.test.mjs test/capacitor.test.mjs test/plugin.test.mjs
 ```
 
 The packages and the dashboard, from the repository root:
@@ -47,6 +49,8 @@ The packages and the dashboard, from the repository root:
 ```bash
 (cd sdk && npm ci && npm run typecheck && npm run build)
 (cd expo && npm install && npm run typecheck && npm run build)
+(cd capacitor && npm ci && npm run typecheck && npm run build)
+(cd capacitor && xcodebuild -scheme BavrkHushCapacitor -destination 'generic/platform=iOS Simulator' build)   # the Swift, against capacitor-swift-pm
 (cd dashboard && npm ci && npm run lint && npm run build)                  # writes src/dashboard/
 (cd dashboard && npx playwright install chromium && npm run e2e)           # needs the test Postgres
 ```
@@ -95,12 +99,15 @@ claude plugin validate ./plugins/hush
   provenance. Semver: anything an app must change for is a major.
 - **Releasing hush-expo**: bump `expo/package.json`, build an app that uses it
   for the simulator, commit, then tag `expo-v<version>` and push the tag.
+- **Releasing hush-capacitor**: bump `capacitor/package.json`, build the
+  Swift (the `xcodebuild` line above) and an app that uses it, commit, then
+  tag `capacitor-v<version>` and push the tag.
 - **Keep the plugin in step.** `plugins/hush/skills/hush/SKILL.md` and its
-  `references/` describe the SDK, hush-expo, the server and the catalog as they
-  are. When any of those change, update them in the same change, set
-  `metadata.sdk-version` in `SKILL.md` to the SDK version (a test checks it),
-  and bump `version` in `plugins/hush/.claude-plugin/plugin.json`: installed
-  users only get a new plugin version.
+  `references/` describe the SDK, hush-expo, hush-capacitor, the server and
+  the catalog as they are. When any of those change, update them in the same
+  change, set `metadata.sdk-version` in `SKILL.md` to the SDK version (a test
+  checks it), and bump `version` in `plugins/hush/.claude-plugin/plugin.json`:
+  installed users only get a new plugin version.
 - **Style**: comments say why, not what. Docs are plain and concrete, in short
   sentences, without marketing adjectives.
 - Record friction from using hush in `docs/dogfood.md`.

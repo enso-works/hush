@@ -37,8 +37,8 @@ duplicate, rejected, willRetry }` after every send.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Prod dashboard empty; the data is under the dev switch | A release build shipped the dev key: `EXPO_PUBLIC_*` or `VITE_*` inlined a local `.env`. | Prod key in code for release; env only in development. Check the bundle: `grep -a -o -E 'hush_[a-z0-9-]+_(prod\|dev)_' <bundle> \| sort \| uniq -c` must show only `_prod_`. Data cannot be moved between prod and dev. |
-| TestFlight or dev builds count as store users | `channel` hardcoded to `app_store`, or a dev build on the prod key. | `hushExpo.channel() ?? process.env.EXPO_PUBLIC_HUSH_CHANNEL`. Filter the dashboard by channel. |
-| Channel `unknown` | No channel sent: no hush-expo, Android without `EXPO_PUBLIC_HUSH_CHANNEL`, an iOS ad hoc or internal build, or an app on an SDK older than 2.0. | Set the env var per platform in `eas.json` (`build.<profile>.android.env`, `build.<profile>.ios.env`). |
+| TestFlight or dev builds count as store users | `channel` hardcoded to `app_store`, or a dev build on the prod key. | `hushExpo.channel() ?? process.env.EXPO_PUBLIC_HUSH_CHANNEL`; in Capacitor, `(await hushCapacitor.channel()) ?? fallback`. Filter the dashboard by channel. |
+| Channel `unknown` | No channel sent: no hush-expo or hush-capacitor, Android without `EXPO_PUBLIC_HUSH_CHANNEL`, an iOS ad hoc or internal build, or an app on an SDK older than 2.0. | Set the env var per platform in `eas.json` (`build.<profile>.android.env`, `build.<profile>.ios.env`). |
 | Channel logged as "not a short snake_case label" | The value does not match `^[a-z][a-z0-9_]{0,23}$`. | Use `app_store`, `testflight`, `play`, `internal`. |
 | Every user became a new install after an update | `storagePrefix` changed, or the app moved off a copied SDK without passing its old prefix. | Restore the old prefix. Installs counted in between stay counted. |
 | Version shows `unknown` or empty | Web: `version` not passed to `createWebHush()`. Bare React Native: `expo.version` and build numbers missing from `app.json`. | Pass the version; keep `app.json` in step with the native project. |
@@ -86,7 +86,7 @@ duplicate, rejected, willRetry }` after every send.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| No conversion values set | `attribution` not passed to `configure()`; the user opted out; Expo Go or Android (no-op); the milestones are cached until the next config fetch (12 hours with `remoteConfig: false` or before SDK 2.4.0); `/v1/config` returns an empty list. | Pass `hushExpo.attribution`; check `GET /v1/config`. |
+| No conversion values set | `attribution` not passed to `configure()`; the user opted out; Expo Go, Android or the web (no-op); the milestones are cached until the next config fetch (12 hours with `remoteConfig: false` or before SDK 2.4.0); `/v1/config` returns an empty list. | Pass `hushExpo.attribution` or `hushCapacitor.attribution`; check `GET /v1/config`. |
 | `conversion value not set` in the log | Neither SKAdNetwork nor AdAttributionKit took the value. On the simulator SKAdNetwork refuses; the message appears unless AdAttributionKit (iOS 17.4 and later) accepts. | Test on a device. The SDK retries at the next matching milestone. |
 | A lower milestone is never reported | A higher one was reached first: values only rise. | Reorder the ladder ([attribution.md](attribution.md#4-designing-conversion-values)). |
 | No postbacks on the dashboard | No `app_store_id` in the catalog (postbacks are stored under no app); the `.well-known` routes are not public or point at the website; `attributionEndpoint` is not on the registrable domain; the build has no endpoint in `Info.plist`; or they are Apple's test postbacks, shown only under dev. | Check each; `curl -X POST -d '{}'` to the route must reach hush. |
@@ -104,6 +104,8 @@ duplicate, rejected, willRetry }` after every send.
 | Prebuild fails: `attributionEndpoint is https://<domain>, nothing after it` | A path, port or trailing slash in the option. | `https://example.com` exactly. |
 | `npx expo-doctor`: missing peer dependency `expo-modules-core`, required by `@bavrk/hush-expo` | hush-expo 0.1.2 or older lists `expo-modules-core` as a peer. It ships inside `expo`. | Upgrade to `@bavrk/hush-expo` 0.1.3 or later. Do not install `expo-modules-core` directly: doctor then fails because it is installed directly. |
 | hush-expo does nothing | Expo Go, Android, web, or a JS update onto a binary built before it was added. | Make a new dev or EAS build. |
+| `pod install`: `BavrkHushCapacitor` requires a higher minimum deployment target | A Capacitor 6 or 7 app targets iOS 13 or 14; hush-capacitor needs 15.0. | `platform :ios, '15.0'` in the Podfile and `IPHONEOS_DEPLOYMENT_TARGET = 15.0` in the Xcode project, then `npx cap sync ios`. |
+| hush-capacitor does nothing: `distribution()` is null on an iPhone | `npx cap sync ios` not run after installing it, or a web build onto a binary built before it was added. | `npx cap sync ios`, then a new native build. `capacitor.config.json` in `ios/App/App` must list `HushCapacitorPlugin`. |
 | Bare React Native: crash on import of `expo-constants` | No Expo modules in the project. | `npx install-expo-modules@latest`, `npx pod-install`, rebuild. |
 
 ## 8. The server
