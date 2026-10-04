@@ -1,0 +1,27 @@
+name: site
+
+# hush.bavrk.com is built in enso-works/bavrk from docs/site/ here. A change
+# to it on main asks bavrk to deploy, with a token that can dispatch there:
+# BAVRK_DISPATCH_TOKEN, a fine-grained token on enso-works/bavrk with
+# Contents read and write. Without it, run bavrk's "Deploy hush landing" by
+# hand.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/site/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask bavrk to deploy hush.bavrk.com
+        env:
+          GH_TOKEN: ${{ secrets.BAVRK_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::BAVRK_DISPATCH_TOKEN is not set: run bavrk's Deploy hush landing workflow by hand."
+            exit 0
+          fi
+          gh api repos/enso-works/bavrk/dispatches -f event_type=hush-site
