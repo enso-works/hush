@@ -1,5 +1,19 @@
 # hush
 
+<p align="center">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/hero-dark.png">
+  <img alt="Hear from your users. Without watching them. In-app feedback and anonymous usage tracking for mobile and web apps." src="docs/img/hero-light.png">
+</picture>
+</p>
+
+<p align="center">
+  <a href="https://hush.bavrk.com/demo/dashboard/"><b>Live demo</b></a> ·
+  <a href="https://hush.bavrk.com">Site and docs</a> ·
+  <a href="#run-the-server">Run the server</a> ·
+  <a href="sdk/README.md">SDK guide</a>
+</p>
+
 [![npm: @bavrk/hush](https://img.shields.io/npm/v/@bavrk/hush?label=%40bavrk%2Fhush)](https://www.npmjs.com/package/@bavrk/hush)
 [![npm: @bavrk/hush-expo](https://img.shields.io/npm/v/@bavrk/hush-expo?label=%40bavrk%2Fhush-expo)](https://www.npmjs.com/package/@bavrk/hush-expo)
 [![npm: @bavrk/hush-capacitor](https://img.shields.io/npm/v/@bavrk/hush-capacitor?label=%40bavrk%2Fhush-capacitor)](https://www.npmjs.com/package/@bavrk/hush-capacitor)
@@ -32,6 +46,50 @@ and this page say. MIT.
 
 Site and docs: [hush.bavrk.com](https://hush.bavrk.com). See the dashboard on
 invented data: [live demo](https://hush.bavrk.com/demo/dashboard/).
+
+## The dashboard
+
+Every app at a glance: installs, daily, weekly and monthly actives, open
+feedback.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/overview-dark.png">
+  <img alt="Overview: three apps with their active installs per day" src="docs/img/overview-light.png">
+</picture>
+
+One app: activity, your own events, funnels, retention and weekly cohorts,
+by channel and period.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/app-dark.png">
+  <img alt="An app's page: stats, activity chart, funnel, retention and cohorts" src="docs/img/app-light.png">
+</picture>
+
+Feedback threads from inside the apps, answered here.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/feedback-dark.png">
+  <img alt="Feedback: the list of threads and one open thread" src="docs/img/feedback-light.png">
+</picture>
+
+One install's events as they arrive, and its feedback. Forgetting an install
+starts here.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/installs-dark.png">
+  <img alt="An install: its details, latest events and feedback" src="docs/img/installs-light.png">
+</picture>
+
+Remote config: the catalog's keys, with overrides and rules changed without a
+release.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/config-dark.png">
+  <img alt="Remote config: an app's keys, defaults, rules and overrides" src="docs/img/config-light.png">
+</picture>
+
+The images come from the live demo; `npm run shots` in `dashboard/` takes
+them again.
 
 ## Packages
 
