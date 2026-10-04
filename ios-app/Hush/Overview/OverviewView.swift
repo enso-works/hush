@@ -3,7 +3,8 @@ import SwiftUI
 
 /// Every app on one server, as the dashboard's overview shows them.
 struct OverviewView: View {
-    let client: AdminClient
+    let server: Server
+    @Environment(AppModel.self) private var model
     @State private var apps: [AppSummary] = []
     @State private var error: HushError?
     @State private var loading = true
@@ -23,8 +24,11 @@ struct OverviewView: View {
                 ContentUnavailableView("No apps yet", systemImage: "square.grid.2x2", description: Text("Register one on the server with `apps:add`."))
             }
         }
-        .navigationTitle("Overview")
-        .task { await load() }
+        .navigationTitle(server.name)
+        .task(id: server) {
+            apps = []
+            await load()
+        }
         .refreshable { await load() }
     }
 
@@ -32,7 +36,7 @@ struct OverviewView: View {
         loading = true
         defer { loading = false }
         do {
-            apps = try await client.apps().apps
+            apps = try await model.client(for: server).apps().apps
             error = nil
         } catch let e as HushError {
             error = e

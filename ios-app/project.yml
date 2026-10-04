@@ -38,8 +38,22 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_USER_SCRIPT_SANDBOXING: YES
         ENABLE_PREVIEWS: YES
+  HushUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [HushUITests]
+    dependencies:
+      - target: Hush
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bavrk.hush.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Hush
 schemes:
   Hush:
     build:
       targets:
         Hush: all
+    test:
+      targets:
+        - HushUITests
