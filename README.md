@@ -2,13 +2,15 @@
 
 [![npm: @bavrk/hush](https://img.shields.io/npm/v/@bavrk/hush?label=%40bavrk%2Fhush)](https://www.npmjs.com/package/@bavrk/hush)
 [![npm: @bavrk/hush-expo](https://img.shields.io/npm/v/@bavrk/hush-expo?label=%40bavrk%2Fhush-expo)](https://www.npmjs.com/package/@bavrk/hush-expo)
+[![npm: @bavrk/hush-capacitor](https://img.shields.io/npm/v/@bavrk/hush-capacitor?label=%40bavrk%2Fhush-capacitor)](https://www.npmjs.com/package/@bavrk/hush-capacitor)
 [![test](https://github.com/enso-works/hush/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/enso-works/hush/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 In-app feedback and anonymous usage tracking for mobile and web apps: one small
 Node container, Postgres, a dashboard, and an SDK on npm (`@bavrk/hush`) for
-Expo, React Native, the web and Capacitor, with an optional native iOS
-companion (`@bavrk/hush-expo`).
+Expo, React Native, the web and Capacitor, with optional native iOS
+companions for Expo (`@bavrk/hush-expo`) and Capacitor
+(`@bavrk/hush-capacitor`).
 
 Built for our own apps ([bavrk](https://bavrk.com): Braele and friends), where
 it runs in production. It is public so you can read it, fork it or run it
@@ -37,6 +39,7 @@ invented data: [live demo](https://hush.bavrk.com/demo/dashboard/).
 |---|---|
 | [`@bavrk/hush`](https://www.npmjs.com/package/@bavrk/hush) | The SDK. `@bavrk/hush` for Expo and React Native, `@bavrk/hush/web` for web pages, PWAs and Capacitor, `@bavrk/hush/core` for any other JavaScript runtime. [Guide](sdk/README.md) |
 | [`@bavrk/hush-expo`](https://www.npmjs.com/package/@bavrk/hush-expo) | Optional, iOS, Expo development builds: Apple ad attribution, the TestFlight or App Store channel, background time for the last send. A no-op on Android, the web and in Expo Go. [Guide](expo/README.md) |
+| [`@bavrk/hush-capacitor`](https://www.npmjs.com/package/@bavrk/hush-capacitor) | Optional, iOS, Capacitor apps: the same as `@bavrk/hush-expo`, for `@bavrk/hush/web` in a Capacitor app. A no-op on Android and the web. [Guide](capacitor/README.md) |
 | server (this repo, not on npm) | One Node 22 container with the dashboard, plus Postgres. [Run it](#run-the-server) with `docker compose` from `examples/`. |
 
 ## Install the SDK
@@ -55,13 +58,17 @@ npm install @bavrk/hush
 
 # Optional, iOS: ad attribution and the TestFlight channel; needs a development build
 npx expo install @bavrk/hush-expo
+
+# Optional, iOS, Capacitor: the same, for @bavrk/hush/web; then a new native build
+npm i @bavrk/hush @bavrk/hush-capacitor && npx cap sync ios
 ```
 
 `@bavrk/hush-expo` needs an iOS deployment target of 16.4: the default on Expo
 SDK 56, set with `expo-build-properties` on 52-55 ([guide](expo/README.md)).
 In bare React Native it needs Expo SDK 52 or later (React Native 0.76+): set
 `platform :ios, '16.4'` in the Podfile, and write its two Info.plist keys by
-hand.
+hand. `@bavrk/hush-capacitor` needs iOS 15, Capacitor 8's default, and its
+two Info.plist keys written by hand ([guide](capacitor/README.md)).
 
 Then, once, as the app starts:
 
@@ -91,7 +98,9 @@ async function onSendFeedback(message: string) {
 One production build goes to TestFlight and then to the App Store, so an EAS
 profile cannot tell those two apart. On iOS,
 `hushExpo.channel() ?? process.env.EXPO_PUBLIC_HUSH_CHANNEL` from
-`@bavrk/hush-expo` does, and keeps TestFlight out of the store numbers.
+`@bavrk/hush-expo` does, and keeps TestFlight out of the store numbers; in a
+Capacitor app, `(await hushCapacitor.channel()) ?? fallback` from
+`@bavrk/hush-capacitor`.
 
 `entry('link', { url })` says how a session began; call it as soon as the
 app has the link, before or after `init()` resolves. (SDK 2.2.1 and older
@@ -241,15 +250,16 @@ an install's page never lists one.
 
 ### App Privacy answers
 
-What an app on hush and `@bavrk/hush-expo` can declare in App Store
-Connect's App Privacy section. Every row is Tracking: No. A row applies when
-its "When" does; an app that collects none of it leaves the row out.
+What an app on hush and `@bavrk/hush-expo` or `@bavrk/hush-capacitor` can
+declare in App Store Connect's App Privacy section. Every row is Tracking:
+No. A row applies when its "When" does; an app that collects none of it
+leaves the row out.
 
 | Data type | When | Linked to the user | Purposes |
 |---|---|---|---|
-| Usage Data: Product Interaction | Always: events, sessions, screens | No | Analytics; Developer's Advertising or Marketing when hush-expo reports conversion values |
+| Usage Data: Product Interaction | Always: events, sessions, screens | No | Analytics; Developer's Advertising or Marketing when hush-expo or hush-capacitor reports conversion values |
 | Usage Data: Other Usage Data | When the app sends an answer about its use as a prop, such as where the user heard of the app | No | Analytics |
-| Usage Data: Advertising Data | With hush-expo's ad attribution: hush stores Apple's postback copies | No | Developer's Advertising or Marketing; Analytics |
+| Usage Data: Advertising Data | With hush-expo's or hush-capacitor's ad attribution: hush stores Apple's postback copies | No | Developer's Advertising or Marketing; Analytics |
 | Purchases: Purchase History | When the app sends purchase events (`purchase_started`, `purchase_result`, `restore_result`) | No | Analytics; Developer's Advertising or Marketing when a conversion value marks a purchase |
 | Diagnostics: Other Diagnostic Data | Always: app version, build, OS, device model, language, channel, paid flag | No | Analytics |
 | Location: Coarse Location | When the server sets `COUNTRY_HEADER` | No | Analytics |
@@ -362,7 +372,8 @@ reads an advertising id, or needs an App Tracking Transparency prompt.
   `asc:sync` by hand). Apple hides anything under five users and adds noise.
 - **Ad attribution (SKAdNetwork, AdAttributionKit).** Apple tells the ad
   network which campaign won an install, with a conversion value the app
-  sets through [`@bavrk/hush-expo`](expo/README.md) as the catalog's
+  sets through [`@bavrk/hush-expo`](expo/README.md) or
+  [`@bavrk/hush-capacitor`](capacitor/README.md) as the catalog's
   `conversion_values` happen. iOS sends hush a copy of each postback: serve
   `/.well-known/skadnetwork/report-attribution/` and
   `/.well-known/appattribution/report-attribution/` on the registrable domain
