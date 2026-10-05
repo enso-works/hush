@@ -1,4 +1,8 @@
-# hush
+<p align="center">
+  <img src="docs/img/logo.svg" width="96" height="96" alt="">
+</p>
+
+<h1 align="center">hush</h1>
 
 <p align="center">
 <picture>

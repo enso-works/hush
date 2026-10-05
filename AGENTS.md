@@ -24,7 +24,7 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 | `test/` | `node:test` suites. Server tests run the real server against real Postgres. `sdk.test.mjs` runs the SDK under Node with React Native mocked (`test/sdk/`). `expo.test.mjs`, `capacitor.test.mjs` (Capacitor's bridge mocked) and `plugin.test.mjs` need no database. `__snapshots__/v1-compat.json` freezes `/v1`. |
 | `examples/` | `docker-compose.yml`, `.env.example`, `catalog.example.json`, an Expo setup file. |
 | `docs/dogfood.md` | Friction found while using hush in our own apps, newest first. |
-| `docs/img/` | The README's hero and dashboard images, in light and dark, taken from hush.bavrk.com by `dashboard/e2e/readme-shots.mjs`. |
+| `docs/img/` | The README's images: `logo.svg` (a copy of `dashboard/public/favicon.svg`), and the hero and dashboard images, in light and dark, taken from hush.bavrk.com by `dashboard/e2e/readme-shots.mjs`. |
 | `docs/site/` | The content of hush.bavrk.com: `docs.md` (its docs page), `en.json` (every string), `site.config.json` (features' icons, showcase), `shots/`. The site's code is in the private `enso-works/bavrk` repo under `hush/`, which copies these in at build; `test/site.test.mjs` checks them. |
 | `.claude-plugin/marketplace.json`, `plugins/hush/` | The Claude Code marketplace and plugin shipped to users: the `hush` skill (also installable with `npx skills add enso-works/hush`), the `installer` and `tracking-planner` agents, and `/hush:install`. |
 
