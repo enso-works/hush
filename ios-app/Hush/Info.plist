@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged with the generated Info.plist: only what build settings cannot say. -->
+<plist version="1.0">
+<dict>
+  <!-- hush://pair?url=…&code=…, from the dashboard's QR code: the camera opens the app with it. -->
+  <key>CFBundleURLTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleURLName</key>
+      <string>com.bavrk.hush.pair</string>
+      <key>CFBundleURLSchemes</key>
+      <array>
+        <string>hush</string>
+      </array>
+    </dict>
+  </array>
+  <!-- The app's own hush (Config/App.xcconfig): empty key, nothing sent. -->
+  <key>HushURL</key>
+  <string>$(HUSH_URL)</string>
+  <key>HushKey</key>
+  <string>$(HUSH_KEY)</string>
+  <!-- Plain http only to local addresses (an IP, a .local name): a server on
+       the Mac or the LAN while it is being set up. Everything else needs https. -->
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key>
+    <true/>
+  </dict>
+</dict>
+</plist>

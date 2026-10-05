@@ -20,6 +20,7 @@ import { adminConfig, appExists, checkOverridesAtBoot, configAnswer, history, ma
 import { clientKey, dailyLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
+import { createPairing, deviceAuthorized, listDevices, pair, revokeDevice } from './devices.mjs';
 import { migrate } from './migrate.mjs';
 import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
@@ -43,6 +44,9 @@ const v1Limit = rateLimiter(120);
 const ingestLimit = rateLimiter(60);
 const ticketLimit = rateLimiter(10);
 const forgetLimit = rateLimiter(10);
+// /admin/pair is the one admin route without the token; a code is 128 random
+// bits, so this only keeps a flood of guesses off the database.
+const pairLimit = rateLimiter(10);
 // A ticket sent with an email has no install to count five a day by, so the
 // same five count by caller address and app, in memory like the limits above.
 const unlinkedTicketLimit = dailyLimiter(MAX_PER_DAY);
@@ -444,6 +448,31 @@ r.post('/admin/tickets/:id/status', async (req, res, { params }) => {
   return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'not found' });
 });
 
+// Phones signed in with a token of their own (src/devices.mjs). Someone
+// signed in makes a pairing code for the dashboard's QR code; the app trades
+// it at /admin/pair, which asks for nothing else (see the request handler).
+r.post('/admin/pairing', async (_req, res) => json(res, 201, await createPairing()));
+
+r.post('/admin/pair', async (req, res) => {
+  const body = await readJson(req, MAX_BODY);
+  const code = str(body?.code, 64);
+  if (!code) return json(res, 400, { error: 'code required' });
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 80) : '';
+  const out = await pair(code, name || 'iPhone');
+  if (!out) return json(res, 404, { error: 'unknown or expired code' });
+  log.info('device paired', { device: out.device.id });
+  return json(res, 201, out);
+});
+
+r.get('/admin/devices', async (_req, res) => json(res, 200, { devices: await listDevices() }));
+
+r.delete('/admin/devices/:id', async (_req, res, { params }) => {
+  if (!/^[1-9][0-9]{0,17}$/.test(params.id)) return json(res, 404, { error: 'not found' });
+  const ok = await revokeDevice(params.id);
+  if (ok) log.info('device revoked', { device: params.id });
+  return ok ? json(res, 200, { ok: true }) : json(res, 404, { error: 'not found' });
+});
+
 // One ticket and its replies, for a "please delete my message" that arrives
 // by email: a ticket with an email is not linked to an install, so forgetting
 // an install does not reach it.
@@ -507,8 +536,14 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname.startsWith('/admin/') && req.method !== 'GET') return json(res, 403, { error: 'read-only demo' });
       if (url.pathname.startsWith('/admin/')) return await route.handler(req, res, { url, params: route.params });
     }
+    if (url.pathname === '/admin/pair') {
+      // The pairing code in the body is the credential, from a phone, not a page.
+      if (!pairLimit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
+      if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return json(res, 415, { error: 'JSON only' });
+      return await route.handler(req, res, { url, params: route.params });
+    }
     if (url.pathname.startsWith('/admin/')) {
-      if (!adminAuthorized(req.headers)) return json(res, 401, { error: 'unauthorized' });
+      if (!adminAuthorized(req.headers) && !(await deviceAuthorized(req.headers))) return json(res, 401, { error: 'unauthorized' });
       // A proxy may sign the dashboard in by adding the token itself (ops on a
       // private network does), and then the browser's requests carry it
       // whatever page sent them. So a write must be one no other site can

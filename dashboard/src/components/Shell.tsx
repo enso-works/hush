@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ExternalLink, Fingerprint, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, SlidersHorizontal, Sun } from 'lucide-react'
+import { ExternalLink, Fingerprint, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, SlidersHorizontal, Smartphone, Sun } from 'lucide-react'
 
 import { AppMark, Logo } from '@/components/Logo'
 import { useApps } from '@/lib/apps'
@@ -91,6 +91,9 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
         icon={<SlidersHorizontal className="size-4" />}
       >
         Remote config
+      </NavLink>
+      <NavLink to={href.phones()} active={route.page === 'phones'} icon={<Smartphone className="size-4" />}>
+        Phones
       </NavLink>
     </>
   )

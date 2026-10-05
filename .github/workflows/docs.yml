@@ -24,8 +24,8 @@ jobs:
         run: |
           changed=$(git diff --name-only "$BASE"..."$HEAD")
           # src/dashboard/ is the build, so it is not counted twice.
-          code=$(grep -E '^(dashboard/src/|sdk/src/|src/[^/]+\.mjs$|expo/(src|ios)/|expo/app\.plugin\.js$|capacitor/(src|ios)/|migrations/)' <<<"$changed" || true)
-          docs=$(grep -E '^(README\.md|(sdk|expo|capacitor)/README\.md|docs/)' <<<"$changed" || true)
+          code=$(grep -E '^(dashboard/src/|sdk/src/|src/[^/]+\.mjs$|expo/(src|ios)/|expo/app\.plugin\.js$|capacitor/(src|ios)/|migrations/|ios-app/(Hush|HushKit/Sources)/|swift/Sources/|Package\.swift$)' <<<"$changed" || true)
+          docs=$(grep -E '^(README\.md|(sdk|expo|capacitor|ios-app|swift)/README\.md|docs/)' <<<"$changed" || true)
           if [ -z "$code" ] || [ -n "$docs" ]; then
             echo "Docs in step."
           elif [ "$NO_DOCS" = "true" ]; then

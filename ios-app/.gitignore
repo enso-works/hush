@@ -1,0 +1,7 @@
+# SwiftPM's build, and the Xcode project XcodeGen writes from project.yml.
+.build/
+.swiftpm/
+*.xcodeproj/
+DerivedData/
+xcuserdata/
+build/

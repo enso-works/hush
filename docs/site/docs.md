@@ -32,7 +32,8 @@ says so. 2.3.0 keeps a ticket sent with an email apart from the install, and
 needs a server with migration 007 for it: update the server before the app
 ([Feedback](#feedback)). 2.4.0 adds [remote config](#remote-config), which
 needs migration 009; against an older server every getter returns its
-fallback.
+fallback. A native Swift app uses the Swift package instead (`Hush` 0.1.0):
+see [Native Swift apps](#native-swift-apps).
 
 ```sh
 npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
@@ -369,6 +370,38 @@ For a debug screen, `await hush.getInstallationId()` gives the id to paste
 into the dashboard's Installs page, which shows that install's events as they
 arrive.
 
+### Native Swift apps
+
+`Hush`, a Swift package in the same repository, is the SDK for native iOS
+apps (iOS 15 and later): the same events, sessions and feedback, so the
+dashboard reads them alike. It has no remote config or ad attribution yet.
+
+```swift
+// Package.swift, or File > Add Package Dependencies in Xcode
+.package(url: "https://github.com/enso-works/hush", from: "0.1.0")
+```
+
+```swift
+import Hush
+
+Hush.configure(url: "https://hush.example.com", key: "hush_myapp_prod_…")
+Hush.start()                                       // at launch
+
+Hush.screen("Settings")
+Hush.track("workout_completed", ["minutes": 20, "completed": true])
+Hush.track("onboarding_completed", once: true)
+Hush.identify(pro: true)
+.onOpenURL { url in Hush.entry(.link, url: url) }  // its campaign tags join the session
+```
+
+Feedback is `await Hush.createTicket(kind:message:email:subject:)`,
+`await Hush.listTickets()` and `await Hush.replyToTicket(_:body:)`, with the
+same rules as above: a ticket with an email is kept apart from the install by
+a thread key. `Hush.optOut()` and `await Hush.forget()` are the user's
+choices. The channel is `dev` in a debug build, and `testflight` or
+`app_store` as iOS reports it otherwise. Batches carry `sdk: swift-0.1.0`.
+The [Swift guide](https://github.com/enso-works/hush/blob/main/swift/README.md) has the rest.
+
 ## Configure it
 
 Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
@@ -673,14 +706,24 @@ Apps send `Authorization: Key <write key>`. The SDK does this for you.
 
 `/v1` answers CORS for any origin, so web and Capacitor apps can send.
 
-The operator side takes `Authorization: Bearer <ADMIN_TOKEN>` and is what the
-dashboard reads: `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`), its
+The operator side takes `Authorization: Bearer <ADMIN_TOKEN>`, or a phone's
+own token, and is what the dashboard reads: `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`), its
 `/breakdown`, `/props`, `/funnels`, `/funnel`, `/cohorts`, `/campaigns` and
 `/attribution`, `/admin/installs/:id` with `/forget`,
 `/admin/tickets`, `/admin/tickets/:id` with `/reply`, `/status` and `DELETE`,
 `/admin/revenue`, and for remote config `/admin/apps/:app/config`, its
 `/config/history` and `/config/preview`, and `POST` (override) and `DELETE`
 (revert) on `/config/:key`.
+
+**Phones.** The dashboard's Phones page shows a QR code that signs the hush
+iOS app in with a token of its own, so the admin token never has to be typed
+into a phone. `POST /admin/pairing` makes the code in it: single use, ten
+minutes. The app trades it at `POST /admin/pair` (`{ code, name }` → `{ token,
+device }`), the one admin path without a token, 10 tries a minute per
+address. `GET /admin/devices` lists the phones, and `DELETE
+/admin/devices/:id` revokes one at once. Only hashes are stored (migration
+010). `/admin/pair` stays private with the rest of `/admin/*`: the phone
+reaches it the way it reaches the dashboard.
 
 The command line, inside the container:
 

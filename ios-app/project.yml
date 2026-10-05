@@ -1,0 +1,82 @@
+# The Xcode project, for XcodeGen: `xcodegen` here writes Hush.xcodeproj,
+# which is not committed. Sources are folders, so a new file needs no change
+# here, only `xcodegen` again.
+name: Hush
+options:
+  bundleIdPrefix: com.bavrk
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+packages:
+  HushKit:
+    path: HushKit
+  # The Swift SDK, from the repository root: the app reports its own usage and feedback with it.
+  HushSDK:
+    path: ..
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  # Not "Hush": the SDK's target is, and the two would build into the same place.
+  HushDashboard:
+    type: application
+    platform: iOS
+    sources:
+      - path: Hush
+        excludes: [Info.plist]
+    dependencies:
+      - package: HushKit
+      - package: HushSDK
+        product: Hush
+    configFiles:
+      Debug: Config/App.xcconfig
+      Release: Config/App.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bavrk.hush
+        # The URL scheme; everything else in the Info.plist comes from these settings.
+        INFOPLIST_FILE: Hush/Info.plist
+        INFOPLIST_KEY_NSCameraUsageDescription: "To scan the QR code on your hush dashboard's Phones page. Nothing is recorded or kept."
+        PRODUCT_NAME: Hush
+        # The SDK's module is Hush: the app's is named apart.
+        PRODUCT_MODULE_NAME: HushDashboard
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: hush
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        # HTTPS only, which is exempt: no export compliance question per build.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        ENABLE_PREVIEWS: YES
+        # An app: everything on the main actor unless it says otherwise, and
+        # async functions stay on their caller's actor (Swift 6.2's model).
+        # HushKit, a library, stays nonisolated.
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+  HushUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [HushUITests]
+    dependencies:
+      - target: HushDashboard
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bavrk.hush.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: HushDashboard
+schemes:
+  Hush:
+    build:
+      targets:
+        HushDashboard: all
+    test:
+      targets:
+        - HushUITests

@@ -251,6 +251,13 @@ ticket and its replies), `/admin/revenue` (`?refresh=1`). Reads are GETs.
 Replies, status changes, deletes and forget are writes, and every write is
 `Content-Type: application/json`.
 
+Phones (migration 010): `POST /admin/pairing` makes a single-use,
+ten-minute pairing code for the dashboard's Phones page QR code;
+`POST /admin/pair` `{ code, name }` trades it for a device token (the one
+admin path without a token, 10 tries a minute per address); `GET
+/admin/devices` lists them and `DELETE /admin/devices/:id` revokes one.
+A device token is accepted on every `/admin` path, as `Bearer`, until revoked.
+
 Remote config, under the same guard (the demo answers the reads and refuses
 the writes):
 
