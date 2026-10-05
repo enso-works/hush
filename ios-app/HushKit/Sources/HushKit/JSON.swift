@@ -19,13 +19,12 @@ enum HushJSON {
 
     static let encoder = JSONEncoder()
 
+    // Value types, so one each serves every decode on any thread.
+    private static let withFraction = Date.ISO8601FormatStyle(includingFractionalSeconds: true)
+    private static let withoutFraction = Date.ISO8601FormatStyle()
+
     static func parseDate(_ s: String) -> Date? {
-        // ISO8601DateFormatter is thread-safe, but not Sendable; one per call is cheap enough here.
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
+        (try? withFraction.parse(s)) ?? (try? withoutFraction.parse(s))
     }
 }
 
