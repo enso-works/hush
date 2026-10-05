@@ -11,8 +11,13 @@ struct HushApp: App {
             let file = FileManager.default.temporaryDirectory.appending(component: "servers-\(UUID().uuidString).json")
             return ServerStore(file: file, secrets: MemorySecretStore())
         }
-        return (try? ServerStore.standard())
-            ?? ServerStore(file: FileManager.default.temporaryDirectory.appending(component: "servers.json"), secrets: KeychainStore())
+        do {
+            return try ServerStore.standard()
+        } catch {
+            // No Application Support: the list lives for this launch only, the tokens in the Keychain still.
+            log.fault("No Application Support directory: \(error, privacy: .public)")
+            return ServerStore(file: FileManager.default.temporaryDirectory.appending(component: "servers.json"), secrets: KeychainStore())
+        }
     }
 
     var body: some Scene {
