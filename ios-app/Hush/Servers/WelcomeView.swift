@@ -11,9 +11,11 @@ struct WelcomeView: View {
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
-            Image(systemName: "bubble.left.and.text.bubble.right")
-                .font(.system(size: 56))
-                .foregroundStyle(.tint)
+            // The hush mark, as on the dashboard, the site and the app icon.
+            Image("Logo")
+                .resizable()
+                .frame(width: 88, height: 88)
+                .accessibilityHidden(true)
             VStack(spacing: 8) {
                 Text("hush").font(.largeTitle.bold())
                 Text("Read and answer your users' feedback, and see how your apps are used, from your own hush server.")
