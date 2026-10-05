@@ -1,0 +1,37 @@
+name: docs
+
+# A pull request that changes what users see (the dashboard, the SDK, the
+# server, the native packages) also changes what the README and the site say
+# about it, or carries the no-docs label to say there is nothing to say.
+# hush.bavrk.com is built from docs/site/ in another repository, so nothing
+# else would notice it falling behind.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  in-step:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: The docs change with the code
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          NO_DOCS: ${{ contains(github.event.pull_request.labels.*.name, 'no-docs') }}
+        run: |
+          changed=$(git diff --name-only "$BASE"..."$HEAD")
+          # src/dashboard/ is the build, so it is not counted twice.
+          code=$(grep -E '^(dashboard/src/|sdk/src/|src/[^/]+\.mjs$|expo/(src|ios)/|expo/app\.plugin\.js$|capacitor/(src|ios)/|migrations/)' <<<"$changed" || true)
+          docs=$(grep -E '^(README\.md|(sdk|expo|capacitor)/README\.md|docs/)' <<<"$changed" || true)
+          if [ -z "$code" ] || [ -n "$docs" ]; then
+            echo "Docs in step."
+          elif [ "$NO_DOCS" = "true" ]; then
+            echo "::notice::no-docs label: code changed without the README or docs/site/."
+          else
+            echo "$code"
+            echo "::error::This changes what users see (above) and neither the README nor docs/site/. Update them (and npm run shots in dashboard/ for a UI change), or add the no-docs label when there is nothing to say."
+            exit 1
+          fi
