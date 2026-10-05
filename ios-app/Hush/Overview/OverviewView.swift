@@ -16,63 +16,39 @@ struct OverviewView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                Picker("Period", selection: $days) {
-                    ForEach(Prefs.periods, id: \.self) { Text(Prefs.periodLabel($0)).tag($0) }
-                }
-                .pickerStyle(.segmented)
-
+                PeriodPicker(days: $days)
                 if let error { ErrorNote(error: error) }
-
-                if let answer {
-                    if answer.apps.isEmpty {
-                        ContentUnavailableView("No apps yet", systemImage: "square.grid.2x2",
-                                               description: Text("Register one on the server with `apps:add`, then create a write key with `keys:create`."))
-                    } else {
-                        Totals(answer: answer, days: days)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 16)], spacing: 16) {
-                            ForEach(answer.apps) { app in
-                                NavigationLink(value: app) { AppCard(app: app, days: days) }
-                                    .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                } else if error == nil {
-                    ProgressView().padding(.top, 80)
-                }
+                content
             }
             .padding(16)
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle(server.name)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Data", selection: $env) {
-                        Text("Release builds (prod)").tag(Env.prod)
-                        Text("Development (dev)").tag(Env.dev)
-                    }
-                    if model.servers.count > 1 {
-                        Section("Server") {
-                            ForEach(model.servers) { s in
-                                Button {
-                                    model.select(s)
-                                } label: {
-                                    if s.id == server.id { Label(s.name, systemImage: "checkmark") } else { Text(s.name) }
-                                }
-                            }
-                        }
-                    }
-                } label: {
-                    Label(env == .prod ? "Prod" : "Dev", systemImage: "line.3.horizontal.decrease.circle")
-                }
-            }
+            ToolbarItem(placement: .topBarTrailing) { DataMenu(server: server, env: $env) }
         }
         .navigationDestination(for: AppSummary.self) { app in
             AppView(server: server, slug: app.app, name: app.name, kept: answer?.installRetentionDays)
         }
+        .sensoryFeedback(.selection, trigger: days)
+        .sensoryFeedback(.selection, trigger: env)
         .task(id: Query(server: server, days: days, env: env)) { await load() }
         .refreshable { await load() }
         .onChange(of: server) { answer = nil }
+    }
+
+    @ViewBuilder private var content: some View {
+        if let answer {
+            if answer.apps.isEmpty {
+                ContentUnavailableView("No apps yet", systemImage: "square.grid.2x2",
+                                       description: Text("Register one on the server with `apps:add`, then create a write key with `keys:create`."))
+            } else {
+                Totals(answer: answer, days: days)
+                AppGrid(apps: answer.apps, days: days)
+            }
+        } else if error == nil {
+            ProgressView().padding(.top, 80)
+        }
     }
 
     private func load() async {
@@ -82,6 +58,50 @@ struct OverviewView: View {
         } catch is CancellationError {
         } catch {
             self.error = HushError(error)
+        }
+    }
+}
+
+/// The app cards, as many columns as fit.
+private struct AppGrid: View {
+    let apps: [AppSummary]
+    let days: Int
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 16)], spacing: 16) {
+            ForEach(apps) { app in
+                NavigationLink(value: app) { AppCard(app: app, days: days) }
+                    .buttonStyle(Pressable())
+            }
+        }
+    }
+}
+
+/// Which builds' data to show, and which server, when there are several.
+private struct DataMenu: View {
+    let server: Server
+    @Binding var env: Env
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Menu {
+            Picker("Data", selection: $env) {
+                Text("Release builds (prod)").tag(Env.prod)
+                Text("Development (dev)").tag(Env.dev)
+            }
+            if model.servers.count > 1 {
+                Section("Server") {
+                    ForEach(model.servers) { s in
+                        Button {
+                            model.select(s)
+                        } label: {
+                            if s.id == server.id { Label(s.name, systemImage: "checkmark") } else { Text(s.name) }
+                        }
+                    }
+                }
+            }
+        } label: {
+            Label(env == .prod ? "Prod" : "Dev", systemImage: "line.3.horizontal.decrease.circle")
         }
     }
 }

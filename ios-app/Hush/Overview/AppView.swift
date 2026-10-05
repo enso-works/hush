@@ -24,10 +24,7 @@ struct AppView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                Picker("Period", selection: $days) {
-                    ForEach(Prefs.periods, id: \.self) { Text(Prefs.periodLabel($0)).tag($0) }
-                }
-                .pickerStyle(.segmented)
+                PeriodPicker(days: $days)
 
                 if let error { ErrorNote(error: error) }
 
@@ -77,6 +74,8 @@ struct AppView: View {
                 }
             }
         }
+        .sensoryFeedback(.selection, trigger: days)
+        .sensoryFeedback(.selection, trigger: channel)
         .task(id: Query(days: days, env: env, channel: channel)) { await load() }
         .refreshable { await load() }
     }

@@ -42,3 +42,15 @@ func flag(_ country: String) -> String? {
     guard country.count == 2, country.allSatisfy(\.isLetter) else { return nil }
     return String(country.uppercased().unicodeScalars.compactMap { UnicodeScalar(127_397 + $0.value) }.map(Character.init))
 }
+
+/// 7d, 30d, 90d, 1y: the period every screen counts over.
+struct PeriodPicker: View {
+    @Binding var days: Int
+
+    var body: some View {
+        Picker("Period", selection: $days) {
+            ForEach(Prefs.periods, id: \.self) { Text(Prefs.periodLabel($0)).tag($0) }
+        }
+        .pickerStyle(.segmented)
+    }
+}
