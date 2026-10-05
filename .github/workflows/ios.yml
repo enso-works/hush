@@ -1,17 +1,21 @@
 name: ios
 
 # The iOS app (ios-app/): HushKit's tests, then the app built for the
-# simulator. Its own workflow, on its own paths: macOS minutes cost ten
+# simulator. It builds the Swift SDK from the root too, so that runs it. Its own workflow, on its own paths: macOS minutes cost ten
 # times Linux ones, and nothing else in the repository touches the app.
 on:
   push:
     branches: [main]
     paths:
       - "ios-app/**"
+      - "Package.swift"
+      - "swift/**"
       - ".github/workflows/ios.yml"
   pull_request:
     paths:
       - "ios-app/**"
+      - "Package.swift"
+      - "swift/**"
       - ".github/workflows/ios.yml"
 
 jobs:

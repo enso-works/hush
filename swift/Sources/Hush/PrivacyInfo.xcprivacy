@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  What the app collects, beside what the hush SDK's own manifest declares
-  (anonymous usage and diagnostics, not linked, no tracking): the feedback a
-  user writes to the hush team, and an email only when they type one. Both
-  are declared linked, since a message with an email is about that person.
-  No tracking. UserDefaults holds the dashboard's period and prod/dev choice,
-  read only by the app itself (CA92.1). The user's own servers, their tokens
-  and anything read from them never leave the device except to those servers.
+  What the hush SDK collects for the app that uses it, and the API Apple asks
+  a reason for. Usage and diagnostics are not linked to the user and track no
+  one: the only identifier is a random install id the SDK makes. Feedback, and
+  an email when the user types one, belong to the app's own answers: an app
+  that takes feedback declares Customer Support (and Email Address, linked, if
+  it asks for one), as the hush README's App Privacy answers say.
+  UserDefaults holds the SDK's own state (install id, queue, choices), read
+  back only by the app that wrote it (CA92.1).
 -->
 <plist version="1.0">
 <dict>
@@ -19,26 +20,26 @@
   <array>
     <dict>
       <key>NSPrivacyCollectedDataType</key>
-      <string>NSPrivacyCollectedDataTypeCustomerSupport</string>
+      <string>NSPrivacyCollectedDataTypeProductInteraction</string>
       <key>NSPrivacyCollectedDataTypeLinked</key>
-      <true/>
+      <false/>
       <key>NSPrivacyCollectedDataTypeTracking</key>
       <false/>
       <key>NSPrivacyCollectedDataTypePurposes</key>
       <array>
-        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
       </array>
     </dict>
     <dict>
       <key>NSPrivacyCollectedDataType</key>
-      <string>NSPrivacyCollectedDataTypeEmailAddress</string>
+      <string>NSPrivacyCollectedDataTypeOtherDiagnosticData</string>
       <key>NSPrivacyCollectedDataTypeLinked</key>
-      <true/>
+      <false/>
       <key>NSPrivacyCollectedDataTypeTracking</key>
       <false/>
       <key>NSPrivacyCollectedDataTypePurposes</key>
       <array>
-        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
       </array>
     </dict>
   </array>

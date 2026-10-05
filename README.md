@@ -102,6 +102,7 @@ them again.
 | [`@bavrk/hush`](https://www.npmjs.com/package/@bavrk/hush) | The SDK. `@bavrk/hush` for Expo and React Native, `@bavrk/hush/web` for web pages, PWAs and Capacitor, `@bavrk/hush/core` for any other JavaScript runtime. [Guide](sdk/README.md) |
 | [`@bavrk/hush-expo`](https://www.npmjs.com/package/@bavrk/hush-expo) | Optional, iOS, Expo development builds: Apple ad attribution, the TestFlight or App Store channel, background time for the last send. A no-op on Android, the web and in Expo Go. [Guide](expo/README.md) |
 | [`@bavrk/hush-capacitor`](https://www.npmjs.com/package/@bavrk/hush-capacitor) | Optional, iOS, Capacitor apps: the same as `@bavrk/hush-expo`, for `@bavrk/hush/web` in a Capacitor app. A no-op on Android and the web. [Guide](capacitor/README.md) |
+| [`Hush`](swift/README.md) (Swift package) | The SDK for native Swift apps on iOS 15 and later: the same events, sessions and feedback, through Swift Package Manager from this repository. No remote config or ad attribution yet. [Guide](swift/README.md) |
 | server (this repo, not on npm) | One Node 22 container with the dashboard, plus Postgres. [Run it](#run-the-server) with `docker compose` from `examples/`. |
 
 ## Install the SDK
@@ -124,6 +125,11 @@ npx expo install @bavrk/hush-expo
 # Optional, iOS, Capacitor: the same, for @bavrk/hush/web; then a new native build
 npm i @bavrk/hush @bavrk/hush-capacitor && npx cap sync ios
 ```
+
+A native Swift app adds the Swift package instead:
+`.package(url: "https://github.com/enso-works/hush", from: "0.1.0")`, then
+`import Hush`, `Hush.configure(url:key:)` and `Hush.start()`
+([guide](swift/README.md)).
 
 `@bavrk/hush-expo` needs an iOS deployment target of 16.4: the default on Expo
 SDK 56, set with `expo-build-properties` on 52-55 ([guide](expo/README.md)).

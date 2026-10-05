@@ -1,0 +1,9 @@
+// The app's own hush: where it sends its anonymous usage and its feedback.
+// The address is public; the key comes from Local.xcconfig (not committed:
+// the dev key, for runs from Xcode) or from scripts/testflight.sh (the prod
+// key). Without one, the app sends nothing.
+// "//" starts a comment in an xcconfig, hence $() in the address.
+HUSH_URL = https:/$()/telemetry.bavrk.com
+HUSH_KEY =
+
+#include? "Local.xcconfig"

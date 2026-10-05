@@ -21,6 +21,14 @@ OUT=build
 DESTINATION=upload
 [ "$1" = "--no-upload" ] && DESTINATION=export
 
+# The app's own hush (Config/App.xcconfig): the prod write key, from HUSH_KEY,
+# or the file kept outside the repository. Without it the build sends nothing.
+HUSH_ENV="$HOME/.config/hush/hush-ios.env"
+if [ -z "$HUSH_KEY" ] && [ -f "$HUSH_ENV" ]; then
+  HUSH_KEY=$(sed -nE 's/^HUSH_KEY_PROD="(.*)"$/\1/p' "$HUSH_ENV")
+fi
+[ -n "$HUSH_KEY" ] || echo "No HUSH_KEY: this build will not report its own usage or take feedback." >&2
+
 AUTH=""
 if [ -n "$ASC_KEY_ID" ] && [ -n "$ASC_ISSUER_ID" ]; then
   KEY="$HOME/.appstoreconnect/private_keys/AuthKey_$ASC_KEY_ID.p8"
@@ -33,7 +41,7 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 xcodebuild -quiet -project Hush.xcodeproj -scheme Hush -configuration Release \
   -destination generic/platform=iOS -archivePath "$OUT/Hush.xcarchive" -allowProvisioningUpdates $AUTH \
-  DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION="$BUILD" archive
+  DEVELOPMENT_TEAM="$TEAM" CODE_SIGN_STYLE=Automatic CURRENT_PROJECT_VERSION="$BUILD" HUSH_KEY="$HUSH_KEY" archive
 
 cat > "$OUT/export.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

@@ -36,7 +36,7 @@ final class OnboardingTests: XCTestCase {
     func testRemovingAServerAsksFirst() {
         let app = launch()
         app.buttons["Try the demo"].tap()
-        app.tabBars.buttons["Servers"].tap()
+        app.tabBars.buttons["Settings"].tap()
         let row = app.buttons.containing(.staticText, identifier: "Demo").firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.swipeLeft()
@@ -74,7 +74,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Open feedback"].waitForExistence(timeout: 15))
 
         // Removing the server signs this phone out on the server too.
-        app.tabBars.buttons["Servers"].tap()
+        app.tabBars.buttons["Settings"].tap()
         let row = app.buttons.containing(.staticText, identifier: "127.0.0.1").firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.swipeLeft()
@@ -89,6 +89,27 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Connect to hush"].waitForExistence(timeout: 10))
         app.buttons["Connect"].tap()
         XCTAssertTrue(app.staticTexts["This code has been used or has expired. Show a new one on the dashboard."].waitForExistence(timeout: 10))
+    }
+
+    /// Feedback through the Swift SDK, against a local hush: the build's
+    /// HUSH_URL and HUSH_KEY point at it, and FEEDBACK_SERVER (TEST_RUNNER_…)
+    /// says so. Skipped otherwise, so no test ever writes to a real inbox.
+    func testFeedbackRoundTrip() throws {
+        guard ProcessInfo.processInfo.environment["FEEDBACK_SERVER"] != nil else { throw XCTSkip("FEEDBACK_SERVER not set") }
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-with-telemetry"]
+        app.launch()
+        app.buttons["Try the demo"].tap()
+        app.tabBars.buttons["Settings"].tap()
+        app.buttons["Feedback to the hush team"].tap()
+        let message = app.textFields["Message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        message.tap()
+        message.typeText("Sent by the feedback UI test")
+        app.buttons["Send"].tap()
+        let row = app.staticTexts["Sent by the feedback UI test"]
+        XCTAssertTrue(row.waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Sent, waiting for an answer"].exists)
     }
 
     func testTheDemoFromTheWelcomeScreen() {
@@ -110,7 +131,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Tally"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.navigationBars["hush.bavrk.com"].exists)
 
-        app.tabBars.buttons["Servers"].tap()
+        app.tabBars.buttons["Settings"].tap()
         XCTAssertTrue(app.staticTexts["https://hush.bavrk.com/demo"].exists)
     }
 

@@ -6,7 +6,7 @@
     },
     "docs": {
       "title": "hush docs: run it, wire the SDK, read the dashboard",
-      "description": "How to run hush, add the SDK to an Expo, React Native, web or Capacitor app, configure it, change values with remote config, and use the API. Everything in one page."
+      "description": "How to run hush, add the SDK to an Expo, React Native, web, Capacitor or native Swift app, configure it, change values with remote config, and use the API. Everything in one page."
     },
     "privacy": {
       "title": "Privacy: hush.bavrk.com",
@@ -77,7 +77,7 @@
     "f6_h": "Yours to run",
     "f6_p": "One container and Postgres on your own server. Your users' data never passes through anyone else.",
     "f7_h": "An SDK that stays out of the way",
-    "f7_p": "@bavrk/hush on npm, for Expo, React Native, the web and Capacitor, with optional native iOS packages for Expo and Capacitor apps. Queues offline, sends in batches, and survives being killed. If the server is down, the app behaves exactly as without it.",
+    "f7_p": "@bavrk/hush on npm, for Expo, React Native, the web and Capacitor, and a Swift package for native iOS apps. Queues offline, sends in batches, and survives being killed. If the server is down, the app behaves exactly as without it.",
     "f8_h": "Wired by your coding agent",
     "f8_p": "A Claude Code plugin, and a skill for Cursor, Codex and other agents, add hush to your app, plan its events and funnels, and answer questions about it, following the rules on the docs page.",
     "proTag": "Pro"
@@ -168,7 +168,7 @@
     "faq3_q": "Is there a hosted version?",
     "faq3_a": "No, on purpose. Your users' data stays on your server; we never see it. The live demo shows exactly what you get.",
     "faq4_q": "Which platforms does the SDK support?",
-    "faq4_a": "Expo and React Native, web pages, PWAs and Capacitor, all from the npm package @bavrk/hush; @bavrk/hush-expo and @bavrk/hush-capacitor add the native iOS side. Its core runs on any JavaScript platform that gives it storage and app lifecycle. The API is plain HTTP and JSON, so any client can talk to it; the README documents every endpoint.",
+    "faq4_a": "Expo and React Native, web pages, PWAs and Capacitor, all from the npm package @bavrk/hush, with @bavrk/hush-expo and @bavrk/hush-capacitor for the native iOS side; and native Swift apps through the Hush Swift package. Its core runs on any JavaScript platform that gives it storage and app lifecycle. The API is plain HTTP and JSON, so any client can talk to it; the README documents every endpoint.",
     "faq5_q": "What does it cost to run?",
     "faq5_a": "A container using under 100 MB of memory and a small Postgres database: the smallest VPS or a corner of a server you already have."
   },

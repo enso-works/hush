@@ -108,6 +108,9 @@ struct ServerForm: View {
             let access = try await AdminClient(Connection(baseURL: url, token: tokenToUse, headers: headers)).check()
             server.isDemo = access == .demo
             try model.save(server, token: token.isEmpty ? nil : token, headerValue: headerValue.isEmpty ? nil : headerValue)
+            if editing == nil {
+                Telemetry.track("server_added", ["method": "form", "access": access == .demo ? "demo" : access == .proxy ? "proxy" : "token"])
+            }
             connected = true
             dismiss()
         } catch HushError.unauthorized {

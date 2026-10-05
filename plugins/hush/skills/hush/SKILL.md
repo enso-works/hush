@@ -1,6 +1,6 @@
 ---
 name: hush
-description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native, web and Capacitor apps. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, remote config (typed values with targeting and rollouts, declared in the catalog, overridden on the dashboard, evaluated on the device), the hush server and its catalog (events, highlight, funnels, breakdowns, private screens, config keys), and Apple ad attribution through @bavrk/hush-expo or @bavrk/hush-capacitor (SKAdNetwork and AdAttributionKit conversion values). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention, feature flags, remote config or campaign attribution without IP addresses, advertising ids or a consent banner.
+description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native, web and Capacitor apps, or the Hush Swift package in native iOS apps. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, remote config (typed values with targeting and rollouts, declared in the catalog, overridden on the dashboard, evaluated on the device), the hush server and its catalog (events, highlight, funnels, breakdowns, private screens, config keys), and Apple ad attribution through @bavrk/hush-expo or @bavrk/hush-capacitor (SKAdNetwork and AdAttributionKit conversion values). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention, feature flags, remote config or campaign attribution without IP addresses, advertising ids or a consent banner.
 license: MIT
 compatibility: Expo apps on React Native 0.73 or later (Expo SDK 52 or later for @bavrk/hush-expo), bare React Native 0.73 or later with Expo modules, or a web, PWA or Capacitor app (iOS 15 or later for @bavrk/hush-capacitor). Needs the URL of a running hush server and a write key minted on it.
 metadata:
@@ -58,6 +58,14 @@ What it is not:
 | Web page, PWA, Capacitor | `npm install @bavrk/hush` | `@bavrk/hush/web` |
 | Capacitor, plus iOS ad attribution, TestFlight detection and background time for the flush | also `npm i @bavrk/hush-capacitor && npx cap sync ios`, then a native build | `@bavrk/hush-capacitor` |
 | Anything else (Electron, a game runtime) | `npm install @bavrk/hush` | `@bavrk/hush/core` |
+| Native Swift app (SwiftUI or UIKit, iOS 15+) | Swift Package Manager: `https://github.com/enso-works/hush`, from `0.1.0` | `import Hush` |
+
+A native Swift app calls `Hush.configure(url:key:)` and `Hush.start()` at
+launch, then `Hush.screen(_:)`, `Hush.track(_:_:once:)`, `Hush.identify(pro:rcId:)`,
+`Hush.entry(.link, url:)` in `onOpenURL`, and `await Hush.createTicket(…)` /
+`listTickets()` / `replyToTicket(_:body:)` for feedback, with the same rules
+as below; it has no remote config or ad attribution yet
+([guide](https://github.com/enso-works/hush/blob/main/swift/README.md)).
 
 Never import `@bavrk/hush` outside React Native: it imports `react-native` and
 three Expo modules at the top level. All five peers, `react-native` included,

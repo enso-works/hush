@@ -96,6 +96,17 @@ the server or the native packages without touching any of these. Add the
 changes nothing a user sees). A merge that changes `docs/site/` deploys the
 site.
 
+## The Swift SDK
+
+`Package.swift` at the root and `swift/` are `Hush`, the SDK for native
+Swift apps. It follows `sdk/src/core.ts` rule for rule (the queue, batches,
+sessions, once-events, entries, opt-out, forget, and feedback with email
+tickets kept apart), so the server cannot tell the two apart; a change to one
+is made to the other. `swift test` runs it on a Mac with stand-ins for
+storage, the network, the clock and the timers; with `HUSH_E2E_URL`,
+`HUSH_E2E_KEY` and `HUSH_E2E_ADMIN` it also runs against a real server.
+Released by a plain semver tag (see AGENTS.md).
+
 ## The iOS app
 
 `ios-app/` is the dashboard as an iOS app. `HushKit/` holds the `/admin`
