@@ -1,9 +1,10 @@
 # hush for iOS
 
 The hush dashboard as an iPhone and iPad app: read and answer feedback,
-and see each app's numbers, on any hush server. Work in progress: it adds
-servers (by the dashboard's QR code, by hand, or the demo) and shows the
-Overview and each app's page so far; feedback and push notifications come
+and see each app's numbers, on any hush server. It adds servers (by the
+dashboard's QR code, by hand, or the demo), shows the Overview and each
+app's page, and has a Feedback tab to read, answer, close, reopen and delete
+feedback, with filters, a search and quick replies. Push notifications come
 next.
 
 | Path | What it is |
@@ -21,7 +22,10 @@ xcodegen && open Hush.xcodeproj            # then run the Hush scheme
 ```
 
 The UI tests (`HushUITests`) walk the first launch and the screens against
-the live demo, so they need the network; CI only compiles them. With
+the live demo, so they need the network; CI only compiles them.
+`InboxTests` answers and closes feedback, so it needs a writable server with
+tickets of its own: give it a pairing link from that server's
+`/admin/pairing` as `TEST_RUNNER_PAIR_LINK` (it skips without one). With
 `TEST_RUNNER_SCREENSHOTS_DIR=<dir>` on the `xcodebuild test` line they save
 what each screen shows there.
 

@@ -125,6 +125,7 @@ private struct Totals: View {
     let answer: AppsAnswer
     let days: Int
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         // Installs quiet for longer than the retention window are deleted, so
@@ -135,7 +136,13 @@ private struct Totals: View {
             Stat(label: kept.map { "Installs seen in \($0) days" } ?? "Installs, all time", value: sum(\.totalInstalls).formatted())
             Stat(label: "New in \(min(days, kept ?? days)) days", value: sum(\.newInstalls).formatted())
             Stat(label: "Active in the last day", value: sum(\.dau).formatted())
-            Stat(label: "Open feedback", value: sum(\.openTickets).formatted())
+            Button {
+                model.showFeedback()
+            } label: {
+                Stat(label: "Open feedback", value: sum(\.openTickets).formatted())
+            }
+            .buttonStyle(Pressable())
+            .accessibilityHint("Shows the open feedback.")
         }
     }
 }
