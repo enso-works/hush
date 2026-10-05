@@ -24,6 +24,18 @@ the live demo, so they need the network; CI only compiles them. With
 `TEST_RUNNER_SCREENSHOTS_DIR=<dir>` on the `xcodebuild test` line they save
 what each screen shows there.
 
+## TestFlight
+
+```sh
+export ASC_KEY_ID=… ASC_ISSUER_ID=…   # the team's App Store Connect API key; the .p8 in ~/.appstoreconnect/private_keys
+scripts/testflight.sh                 # archive, sign and upload; --no-upload exports build/export/Hush.ipa only
+```
+
+Signing is automatic for bavrk's team (`HUSH_TEAM` for another). The build
+number is the date and time, so every run uploads a new build. The app record
+(bundle ID `com.bavrk.hush`) is made by hand in App Store Connect: Apple's API
+cannot create apps.
+
 The app talks to a server's `/admin` API with its `ADMIN_TOKEN`, as the
 web dashboard does. A server whose `/admin` is behind a VPN needs the phone
 on that VPN.

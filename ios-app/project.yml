@@ -1,6 +1,6 @@
 # The Xcode project, for XcodeGen: `xcodegen` here writes Hush.xcodeproj,
-# which is not committed. Sources are folders, so adding a file needs no
-# project change.
+# which is not committed. Sources are folders, so a new file needs no change
+# here, only `xcodegen` again.
 name: Hush
 options:
   bundleIdPrefix: com.bavrk
@@ -29,6 +29,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: hush
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.developer-tools
+        # HTTPS only, which is exempt: no export compliance question per build.
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait
@@ -38,6 +40,11 @@ targets:
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         ENABLE_USER_SCRIPT_SANDBOXING: YES
         ENABLE_PREVIEWS: YES
+        # An app: everything on the main actor unless it says otherwise, and
+        # async functions stay on their caller's actor (Swift 6.2's model).
+        # HushKit, a library, stays nonisolated.
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
   HushUITests:
     type: bundle.ui-testing
     platform: iOS

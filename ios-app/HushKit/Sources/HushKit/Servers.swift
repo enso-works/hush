@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import Synchronization
 
 /// A hush server the app knows. Its token and a proxy header's value are
 /// secrets, kept in the Keychain (`SecretStore`), never in this.
@@ -71,18 +72,18 @@ public struct KeychainStore: SecretStore {
     }
 }
 
-public final class MemorySecretStore: SecretStore, @unchecked Sendable {
-    private var values: [String: String] = [:]
-    private let lock = NSLock()
+/// For tests and UI tests: nothing touches the Keychain.
+public final class MemorySecretStore: SecretStore {
+    private let values = Mutex<[String: String]>([:])
 
     public init() {}
 
     public func read(_ account: String) throws -> String? {
-        lock.withLock { values[account] }
+        values.withLock { $0[account] }
     }
 
     public func write(_ value: String?, for account: String) throws {
-        lock.withLock { values[account] = value?.isEmpty == false ? value : nil }
+        values.withLock { $0[account] = value?.isEmpty == false ? value : nil }
     }
 }
 

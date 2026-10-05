@@ -15,6 +15,7 @@ struct ServerForm: View {
     @State private var headerValue = ""
     @State private var checking = false
     @State private var problem: String?
+    @State private var connected = false
 
     var body: some View {
         Form {
@@ -78,6 +79,8 @@ struct ServerForm: View {
             headerName = editing.headerName ?? ""
         }
         .interactiveDismissDisabled(checking)
+        .sensoryFeedback(.success, trigger: connected)
+        .sensoryFeedback(trigger: problem) { _, new in new == nil ? nil : .error }
     }
 
     private func connect() async {
@@ -105,6 +108,7 @@ struct ServerForm: View {
             let access = try await AdminClient(Connection(baseURL: url, token: tokenToUse, headers: headers)).check()
             server.isDemo = access == .demo
             try model.save(server, token: token.isEmpty ? nil : token, headerValue: headerValue.isEmpty ? nil : headerValue)
+            connected = true
             dismiss()
         } catch HushError.unauthorized {
             problem = tokenToUse == nil ? "This server wants its admin token." : "The server refused this token."

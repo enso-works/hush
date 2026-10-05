@@ -19,15 +19,38 @@ extension HushError {
     }
 }
 
+/// What went wrong, and a way to try again without knowing about pull to refresh.
 struct ErrorNote: View {
     let error: HushError
+    var retry: (() async -> Void)? = nil
+    @State private var retrying = false
 
     var body: some View {
-        Label(error.message, systemImage: "exclamationmark.triangle")
-            .font(.callout)
-            .foregroundStyle(.red)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(14)
-            .background(.red.opacity(0.08), in: .rect(cornerRadius: 14))
+        VStack(alignment: .leading, spacing: 10) {
+            Label(error.message, systemImage: "exclamationmark.triangle")
+                .foregroundStyle(.red)
+            if let retry {
+                Button {
+                    Task {
+                        retrying = true
+                        await retry()
+                        retrying = false
+                    }
+                } label: {
+                    if retrying {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Text("Try again")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(retrying)
+            }
+        }
+        .font(.callout)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.red.opacity(0.08), in: .rect(cornerRadius: 14))
     }
 }

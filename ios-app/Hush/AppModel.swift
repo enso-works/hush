@@ -3,7 +3,7 @@ import Observation
 import SwiftUI
 
 /// The servers the app knows and which one is open, for every screen.
-@Observable @MainActor
+@Observable
 final class AppModel {
     private let store: ServerStore
     private(set) var state: ServerStore.State
@@ -20,7 +20,12 @@ final class AppModel {
     /// read (it can, briefly, after a restart) gives one without them, which
     /// the server answers with 401, shown as such.
     func client(for server: Server) -> AdminClient {
-        AdminClient((try? store.connection(for: server)) ?? Connection(baseURL: server.baseURL))
+        do {
+            return AdminClient(try store.connection(for: server))
+        } catch {
+            log.error("Keychain unreadable for a server: \(error, privacy: .public)")
+            return AdminClient(Connection(baseURL: server.baseURL))
+        }
     }
 
     var client: AdminClient? { current.map(client(for:)) }
@@ -48,7 +53,11 @@ final class AppModel {
     }
 
     func remove(_ server: Server) {
-        try? store.removeSecrets(for: server)
+        do {
+            try store.removeSecrets(for: server)
+        } catch {
+            log.error("Could not forget a server's secrets: \(error, privacy: .public)")
+        }
         state.servers.removeAll { $0.id == server.id }
         if state.selected == server.id { state.selected = state.servers.first?.id }
         persist()
@@ -56,10 +65,18 @@ final class AppModel {
 
     func addDemo() {
         if let demo = state.servers.first(where: \.isDemo) { return select(demo) }
-        try? save(.demo(), token: nil, headerValue: nil)
+        do {
+            try save(.demo(), token: nil, headerValue: nil)
+        } catch {
+            log.error("Could not add the demo: \(error, privacy: .public)")
+        }
     }
 
     private func persist() {
-        try? store.save(state)
+        do {
+            try store.save(state)
+        } catch {
+            log.error("Could not save the server list: \(error, privacy: .public)")
+        }
     }
 }
