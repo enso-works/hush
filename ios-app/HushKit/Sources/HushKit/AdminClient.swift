@@ -82,13 +82,11 @@ public struct AdminClient: Sendable {
         return try await send("GET", ["admin", "apps", slug], query: query)
     }
 
-    /// The newest tickets first, all statuses and kinds unless filtered.
-    public func tickets(status: TicketStatus? = nil, kind: TicketKind? = nil) async throws -> [TicketSummary] {
-        var query: [String: String] = [:]
-        query["status"] = status?.rawValue
-        query["kind"] = kind?.rawValue
-        let answer: TicketsAnswer = try await send("GET", ["admin", "tickets"], query: query)
-        return answer.tickets
+    /// A page of tickets, open first, then newest. A server from before
+    /// October 2026 reads only `status` and `kind`, and answers every match at
+    /// once without `counts`: `TicketPage.filtered` is for that case.
+    public func tickets(_ query: TicketQuery = TicketQuery()) async throws -> TicketPage {
+        try await send("GET", ["admin", "tickets"], query: query.items)
     }
 
     public func ticket(_ id: ServerID) async throws -> Ticket {
