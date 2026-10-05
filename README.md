@@ -21,10 +21,12 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 In-app feedback and anonymous usage tracking for mobile and web apps: one small
-Node container, Postgres, a dashboard, and an SDK on npm (`@bavrk/hush`) for
+Node container, Postgres, a dashboard, and SDKs. On npm, `@bavrk/hush` for
 Expo, React Native, the web and Capacitor, with optional native iOS
 companions for Expo (`@bavrk/hush-expo`) and Capacitor
-(`@bavrk/hush-capacitor`).
+(`@bavrk/hush-capacitor`). For native iOS apps, `Hush`, a Swift package
+installed from this repository with Swift Package Manager
+([guide](swift/README.md)).
 
 Built for our own apps ([bavrk](https://bavrk.com): Braele and friends), where
 it runs in production. It is public so you can read it, fork it or run it
