@@ -169,6 +169,11 @@ export type InstallDetail = {
   tickets: { id: number; app: string; kind: TicketKind; subject: string | null; status: TicketStatus; created_at: string }[]
 }
 
+/** A phone signed in with a token of its own (src/devices.mjs). */
+export type Device = { id: string; name: string; created_at: string; last_seen_at: string | null }
+/** A single-use code for the QR code that pairs a phone. */
+export type Pairing = { code: string; expires_at: string }
+
 export type BreakdownRow = { value: string; n: number; installs: number }
 
 export type FunnelStep = { event: string; where: Record<string, string> | null; label: string; installs: number; median_s: number | null }
