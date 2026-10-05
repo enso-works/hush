@@ -37,6 +37,23 @@ number is the date and time, so every run uploads a new build. The app record
 (bundle ID `com.bavrk.hush`) is made by hand in App Store Connect: Apple's API
 cannot create apps.
 
+## Its own hush
+
+The app reports its own anonymous usage (screens, servers added and removed,
+pairing failures; never a server, an app on it, or anything read from one)
+and takes feedback to the hush team, to bavrk's hush as the app `hush-ios`,
+with the Swift SDK from this repository. Settings has Feedback, Share
+anonymous usage, and Delete my usage data. The server address is in
+`Config/App.xcconfig`; the write key is not in the repository: a gitignored
+`Config/Local.xcconfig` (`HUSH_KEY = <the dev key>`) for runs from Xcode,
+and `scripts/testflight.sh` passes the prod key, from `HUSH_KEY` or
+`~/.config/hush/hush-ios.env`. Without a key the app sends nothing and hides
+those screens. UI tests send nothing either; `testFeedbackRoundTrip` runs
+against a local hush (`HUSH_URL`, `HUSH_KEY` on the `xcodebuild` line and
+`TEST_RUNNER_FEEDBACK_SERVER=1`).
+
+## Servers
+
 The app talks to a server's `/admin` API as the web dashboard does. The
 easy way in is the dashboard's Phones page: its QR code, scanned with the
 iPhone's camera or Scan QR code in the app, gives the phone a token of its

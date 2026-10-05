@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  What the app collects and which APIs it uses that Apple asks a reason for.
-  It collects nothing and tracks no one: it talks only to the hush servers
-  its user adds. UserDefaults holds the dashboard's period and prod/dev
-  choice, read only by the app itself (CA92.1).
+  What the app collects, beside what the hush SDK's own manifest declares
+  (anonymous usage and diagnostics, not linked, no tracking): the feedback a
+  user writes to the hush team, and an email only when they type one. Both
+  are declared linked, since a message with an email is about that person.
+  No tracking. UserDefaults holds the dashboard's period and prod/dev choice,
+  read only by the app itself (CA92.1). The user's own servers, their tokens
+  and anything read from them never leave the device except to those servers.
 -->
 <plist version="1.0">
 <dict>
@@ -13,7 +16,32 @@
   <key>NSPrivacyTrackingDomains</key>
   <array/>
   <key>NSPrivacyCollectedDataTypes</key>
-  <array/>
+  <array>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeCustomerSupport</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeEmailAddress</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <true/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAppFunctionality</string>
+      </array>
+    </dict>
+  </array>
   <key>NSPrivacyAccessedAPITypes</key>
   <array>
     <dict>
