@@ -166,3 +166,35 @@ public struct AdminClient: Sendable {
         }
     }
 }
+
+/// How a server lets the app in, found by `AdminClient.check`.
+public enum Access: Equatable, Sendable {
+    /// The public read-only showcase: no token.
+    case demo
+    /// A proxy in front adds the token itself.
+    case proxy
+    /// The server took the token given.
+    case token
+}
+
+extension AdminClient {
+    /// Checks an address, and the token or proxy header with it, before the
+    /// app saves them: asks `/admin/session` without the token, then reads
+    /// `/admin/apps` the way the app will. Throws what went wrong:
+    /// `.unauthorized` when the server wants a token and none (or a wrong one)
+    /// was given, `.unreadable` when the address is not a hush server.
+    public func check() async throws -> Access {
+        let access: Access
+        do {
+            access = try await session().demo ? .demo : .proxy
+        } catch HushError.unauthorized {
+            guard let token = connection.token, !token.isEmpty else { throw HushError.unauthorized }
+            access = .token
+        } catch HushError.notFound {
+            // Every hush server answers /admin/session; a 404 is some other site.
+            throw HushError.unreadable("no /admin/session at this address")
+        }
+        _ = try await apps(days: 1)
+        return access
+    }
+}
