@@ -1,0 +1,37 @@
+name: publish swift
+
+# Releases the Swift SDK when a plain semver tag is pushed, e.g.
+#   (bump sdkVersion in swift/Sources/Hush/Client.swift, commit)
+#   git tag 0.1.1 && git push origin 0.1.1
+# Swift Package Manager reads versions from these tags directly; there is no
+# registry to upload to. The npm packages' tags carry a prefix (sdk-v…), so
+# only the Swift SDK uses plain ones. The tag must match sdkVersion.
+
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write # the GitHub release
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: The tag matches sdkVersion
+        run: |
+          version=$(sed -nE 's/^public let sdkVersion = "(.*)"$/\1/p' swift/Sources/Hush/Client.swift)
+          echo "sdkVersion $version, tag $GITHUB_REF_NAME"
+          test "$version" = "$GITHUB_REF_NAME"
+      - run: swift test
+      - name: Build for iOS
+        run: |
+          xcodebuild -scheme Hush -destination 'generic/platform=iOS Simulator' build | tail -n 5
+          test "${PIPESTATUS[0]}" -eq 0
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "Swift SDK $GITHUB_REF_NAME" --notes "The hush Swift SDK, $GITHUB_REF_NAME. Add it with
+          \`.package(url: \"https://github.com/enso-works/hush\", from: \"$GITHUB_REF_NAME\")\` and \`import Hush\`: see swift/README.md."

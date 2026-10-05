@@ -1,0 +1,28 @@
+name: swift
+
+# The Swift SDK (Package.swift, swift/): its tests on a Mac, and a build for
+# iOS. On its own paths: macOS minutes cost ten times Linux ones.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Package.swift"
+      - "swift/**"
+      - ".github/workflows/swift.yml"
+  pull_request:
+    paths:
+      - "Package.swift"
+      - "swift/**"
+      - ".github/workflows/swift.yml"
+
+jobs:
+  sdk:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift --version
+      - run: swift test
+      - name: Build for iOS
+        run: |
+          xcodebuild -scheme Hush -destination 'generic/platform=iOS Simulator' build | tail -n 5
+          test "${PIPESTATUS[0]}" -eq 0
