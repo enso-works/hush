@@ -1,9 +1,11 @@
 # hush: notes for agents working on this repository
 
 hush is in-app feedback and anonymous usage tracking: a Node server with
-Postgres and a dashboard, an SDK on npm (`@bavrk/hush`), and native iOS
+Postgres and a dashboard, an SDK on npm (`@bavrk/hush`), native iOS
 companions for Expo (`@bavrk/hush-expo`) and Capacitor
-(`@bavrk/hush-capacitor`). This file is for work on hush itself. Agents
+(`@bavrk/hush-capacitor`), a Swift SDK for native iOS apps (`Hush`, through
+Swift Package Manager from this repository), and an iOS dashboard app
+(`ios-app/`). This file is for work on hush itself. Agents
 that add hush to an app use the plugin in `plugins/hush/` instead.
 
 ## Layout
