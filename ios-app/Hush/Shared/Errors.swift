@@ -14,6 +14,18 @@ extension HushError {
         }
     }
 
+    /// A word for the app's own usage events: never the server's own message.
+    var reason: String {
+        switch self {
+        case .unauthorized: "unauthorized"
+        case .readOnly: "read_only"
+        case .notFound: "not_found"
+        case .server(let status, _): "http_\(status)"
+        case .unreachable: "unreachable"
+        case .unreadable: "unreadable"
+        }
+    }
+
     init(_ error: any Error) {
         self = error as? HushError ?? .unreachable(error.localizedDescription)
     }

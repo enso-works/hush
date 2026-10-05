@@ -68,6 +68,7 @@ struct AppView: View {
                 }
             }
         }
+        .onAppear { Telemetry.screen("app") }
         .sensoryFeedback(.selection, trigger: days)
         .sensoryFeedback(.selection, trigger: channel)
         .task(id: Query(days: days, env: env, channel: channel)) { await load() }

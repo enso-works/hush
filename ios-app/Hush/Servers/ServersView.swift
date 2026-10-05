@@ -42,11 +42,15 @@ struct ServersView: View {
                 Button("Scan the dashboard's QR code", systemImage: "qrcode.viewfinder") { scanning = true }
                 Button("Add server", systemImage: "plus") { adding = true }
                 if !model.servers.contains(where: \.isDemo) {
-                    Button("Add the demo", systemImage: "sparkles") { model.addDemo() }
+                    Button("Add the demo", systemImage: "sparkles") {
+                        model.addDemo()
+                        Telemetry.track("server_added", ["method": "demo"])
+                    }
                 }
             }
         }
         .navigationTitle("Servers")
+        .onAppear { Telemetry.screen("servers") }
         .sheet(isPresented: $adding) {
             NavigationStack { ServerForm(editing: nil) }
         }

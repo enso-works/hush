@@ -31,6 +31,7 @@ struct OverviewView: View {
         .navigationDestination(for: AppSummary.self) { app in
             AppView(server: server, slug: app.app, name: app.name, kept: answer?.installRetentionDays)
         }
+        .onAppear { Telemetry.screen("overview") }
         .sensoryFeedback(.selection, trigger: days)
         .sensoryFeedback(.selection, trigger: env)
         .task(id: Query(server: server, days: days, env: env)) { await load() }

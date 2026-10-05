@@ -38,6 +38,7 @@ struct WelcomeView: View {
                 .buttonStyle(.bordered)
                 Button {
                     model.addDemo()
+                    Telemetry.track("server_added", ["method": "demo"])
                 } label: {
                     Text("Try the demo").frame(maxWidth: .infinity)
                 }
@@ -49,6 +50,7 @@ struct WelcomeView: View {
             .controlSize(.large)
         }
         .padding(24)
+        .onAppear { Telemetry.screen("welcome") }
         .sheet(isPresented: $adding) {
             NavigationStack { ServerForm(editing: nil) }
         }

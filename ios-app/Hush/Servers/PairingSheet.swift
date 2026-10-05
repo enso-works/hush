@@ -54,18 +54,24 @@ struct PairingSheet: View {
             if let code = link.code {
                 let paired = try await AdminClient(Connection(baseURL: link.server)).pair(code: code, name: name.trimmingCharacters(in: .whitespaces))
                 try model.save(Server(name: host, baseURL: link.server, deviceID: paired.device.id), token: paired.token, headerValue: nil)
+                Telemetry.track("server_added", ["method": "qr", "access": "device"])
             } else {
                 let access = try await AdminClient(Connection(baseURL: link.server)).check()
                 try model.save(Server(name: access == .demo ? "Demo" : host, baseURL: link.server, isDemo: access == .demo), token: nil, headerValue: nil)
+                Telemetry.track("server_added", ["method": "qr", "access": access == .demo ? "demo" : "proxy"])
             }
             connected = true
             dismiss()
         } catch HushError.notFound {
             problem = "This code has been used or has expired. Show a new one on the dashboard."
+            Telemetry.track("pairing_failed", ["reason": "used_or_expired"])
         } catch HushError.unauthorized {
             problem = "This server wants its admin token: add it with Add server instead."
+            Telemetry.track("pairing_failed", ["reason": "needs_token"])
         } catch {
-            problem = HushError(error).message
+            let failure = HushError(error)
+            problem = failure.message
+            Telemetry.track("pairing_failed", ["reason": failure.reason])
         }
     }
 }

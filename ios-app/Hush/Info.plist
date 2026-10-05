@@ -15,6 +15,11 @@
       </array>
     </dict>
   </array>
+  <!-- The app's own hush (Config/App.xcconfig): empty key, nothing sent. -->
+  <key>HushURL</key>
+  <string>$(HUSH_URL)</string>
+  <key>HushKey</key>
+  <string>$(HUSH_KEY)</string>
   <!-- Plain http only to local addresses (an IP, a .local name): a server on
        the Mac or the LAN while it is being set up. Everything else needs https. -->
   <key>NSAppTransportSecurity</key>

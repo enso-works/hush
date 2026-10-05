@@ -5,6 +5,10 @@ import SwiftUI
 struct HushApp: App {
     @State private var model = AppModel(store: Self.store())
 
+    init() {
+        Telemetry.start()
+    }
+
     /// UI tests start from nothing every launch, and leave the Keychain alone.
     private static func store() -> ServerStore {
         if ProcessInfo.processInfo.arguments.contains("-ui-testing") {
@@ -35,7 +39,10 @@ struct RootView: View {
         @Bindable var model = model
         content
             .onOpenURL { url in
-                if let link = PairingLink(url) { model.pairing = link }
+                if let link = PairingLink(url) {
+                    Telemetry.openedFromLink()
+                    model.pairing = link
+                }
             }
             .sheet(isPresented: Binding(get: { model.pairing != nil }, set: { if !$0 { model.pairing = nil } })) {
                 if let link = model.pairing { PairingSheet(link: link) }
