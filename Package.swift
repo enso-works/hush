@@ -11,7 +11,8 @@ let package = Package(
     platforms: [.iOS(.v15), .macOS(.v12)],
     products: [.library(name: "Hush", targets: ["Hush"])],
     targets: [
-        .target(name: "Hush", path: "swift/Sources/Hush"),
+        // The privacy manifest Apple asks of SDKs that use UserDefaults.
+        .target(name: "Hush", path: "swift/Sources/Hush", resources: [.copy("PrivacyInfo.xcprivacy")]),
         .testTarget(name: "HushTests", dependencies: ["Hush"], path: "swift/Tests/HushTests"),
     ]
 )

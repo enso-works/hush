@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  What the hush SDK collects for the app that uses it, and the API Apple asks
+  a reason for. Usage and diagnostics are not linked to the user and track no
+  one: the only identifier is a random install id the SDK makes. Feedback, and
+  an email when the user types one, belong to the app's own answers: an app
+  that takes feedback declares Customer Support (and Email Address, linked, if
+  it asks for one), as the hush README's App Privacy answers say.
+  UserDefaults holds the SDK's own state (install id, queue, choices), read
+  back only by the app that wrote it (CA92.1).
+-->
+<plist version="1.0">
+<dict>
+  <key>NSPrivacyTracking</key>
+  <false/>
+  <key>NSPrivacyTrackingDomains</key>
+  <array/>
+  <key>NSPrivacyCollectedDataTypes</key>
+  <array>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeProductInteraction</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+      </array>
+    </dict>
+    <dict>
+      <key>NSPrivacyCollectedDataType</key>
+      <string>NSPrivacyCollectedDataTypeOtherDiagnosticData</string>
+      <key>NSPrivacyCollectedDataTypeLinked</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypeTracking</key>
+      <false/>
+      <key>NSPrivacyCollectedDataTypePurposes</key>
+      <array>
+        <string>NSPrivacyCollectedDataTypePurposeAnalytics</string>
+      </array>
+    </dict>
+  </array>
+  <key>NSPrivacyAccessedAPITypes</key>
+  <array>
+    <dict>
+      <key>NSPrivacyAccessedAPIType</key>
+      <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+      <key>NSPrivacyAccessedAPITypeReasons</key>
+      <array>
+        <string>CA92.1</string>
+      </array>
+    </dict>
+  </array>
+</dict>
+</plist>
