@@ -2,8 +2,9 @@
 
 The hush dashboard as an iPhone and iPad app: read and answer feedback,
 and see each app's numbers, on any hush server. Work in progress: it adds
-servers (or the demo) and shows the Overview and each app's page so far;
-feedback and push notifications come next.
+servers (by the dashboard's QR code, by hand, or the demo) and shows the
+Overview and each app's page so far; feedback and push notifications come
+next.
 
 | Path | What it is |
 |---|---|
@@ -36,8 +37,14 @@ number is the date and time, so every run uploads a new build. The app record
 (bundle ID `com.bavrk.hush`) is made by hand in App Store Connect: Apple's API
 cannot create apps.
 
-The app talks to a server's `/admin` API with its `ADMIN_TOKEN`, as the
-web dashboard does. A server whose `/admin` is behind a VPN needs the phone
+The app talks to a server's `/admin` API as the web dashboard does. The
+easy way in is the dashboard's Phones page: its QR code, scanned with the
+iPhone's camera or Scan QR code in the app, gives the phone a token of its
+own (`hush://pair?url=…&code=…`, single use, ten minutes), listed there and
+revocable; removing the server in the app revokes it too. Add server takes
+the `ADMIN_TOKEN` instead. The Simulator has no camera: paste the link, or
+`xcrun simctl openurl booted '<link>'`. `testPairingWithACode` pairs with a
+real server when `TEST_RUNNER_PAIR_LINK` holds a fresh link. A server whose `/admin` is behind a VPN needs the phone
 on that VPN.
 
 Two rules carry over from the dashboard. A ticket with an email is not

@@ -11,13 +11,16 @@ public struct Server: Codable, Identifiable, Hashable, Sendable {
     public var isDemo: Bool
     /// The header a proxy in front wants (`ADMIN_PROXY_HEADER`, an access proxy's), if any.
     public var headerName: String?
+    /// Set when the app signed in by pairing: its device on the server, revoked when the server is removed here.
+    public var deviceID: String?
 
-    public init(id: UUID = UUID(), name: String, baseURL: URL, isDemo: Bool = false, headerName: String? = nil) {
+    public init(id: UUID = UUID(), name: String, baseURL: URL, isDemo: Bool = false, headerName: String? = nil, deviceID: String? = nil) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
         self.isDemo = isDemo
         self.headerName = headerName
+        self.deviceID = deviceID
     }
 
     public static func demo() -> Server {

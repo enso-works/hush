@@ -7,6 +7,8 @@ import SwiftUI
 final class AppModel {
     private let store: ServerStore
     private(set) var state: ServerStore.State
+    /// A pairing link waiting to be confirmed: opened from the camera, or scanned in the app.
+    var pairing: PairingLink?
 
     init(store: ServerStore) {
         self.store = store
@@ -53,6 +55,17 @@ final class AppModel {
     }
 
     func remove(_ server: Server) {
+        // A paired phone signs itself out on the server too, while it still has its token.
+        if let device = server.deviceID {
+            let client = client(for: server)
+            Task {
+                do {
+                    try await client.revokeDevice(device)
+                } catch {
+                    log.error("Could not revoke this phone on its server: \(String(describing: error), privacy: .public)")
+                }
+            }
+        }
         do {
             try store.removeSecrets(for: server)
         } catch {

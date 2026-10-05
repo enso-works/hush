@@ -88,6 +88,10 @@ release.
   <img alt="Remote config: an app's keys, defaults, rules and overrides" src="docs/img/config-light.png">
 </picture>
 
+Phones: a QR code that signs the hush iOS app in with a token of its own
+(the admin token never leaves the server), and the phones signed in, each
+revocable on its own. The code works once, for ten minutes.
+
 The images come from the live demo; `npm run shots` in `dashboard/` takes
 them again.
 
@@ -572,8 +576,8 @@ exposes `ETag`.
 `/.well-known/appattribution/report-attribution` take Apple's postback copies:
 no key, Apple's signature is the proof.
 
-The operator side, `Authorization: Bearer <ADMIN_TOKEN>`, is what the
-dashboard reads: `/admin/session` (asked first, to know whether to show the
+The operator side, `Authorization: Bearer <ADMIN_TOKEN>` (or a phone's own
+token, below), is what the dashboard reads: `/admin/session` (asked first, to know whether to show the
 sign-in), `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`),
 `/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
 `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
@@ -584,8 +588,17 @@ catalog entry, override and what is served, and the orphaned overrides),
 `/config/history?key=&limit=&before=`, `/config/preview?install=&platform=&version=&channel=&language=&pro=&key=&draft=`,
 and `POST` (override, with the `base` change id the editor loaded; 409 when
 it is stale) and `DELETE` (revert to the catalog, with `base` too) on
-`/config/:key`. Writes
-must be `Content-Type: application/json`. CLI:
+`/config/:key`. Phones: `POST /admin/pairing` makes a pairing code
+(`{ code, expires_at }`: single use, ten minutes; the five newest stay live)
+for the Phones page's QR code, `GET /admin/devices` lists the phones signed
+in (`id`, `name`, `created_at`, `last_seen_at`), and `DELETE
+/admin/devices/:id` revokes one at once. `POST /admin/pair` `{ code, name }`
+→ 201 `{ token, device }` is the one admin path that takes no token: the
+code is the credential, it is used up, and it takes 10 tries a minute per
+address; 404 for a code that is unknown, used or expired. Only hashes of
+codes and device tokens are stored (migration 010), and a phone's token
+works on every `/admin` path, like the admin token, until it is revoked.
+Writes must be `Content-Type: application/json`. CLI:
 `node src/cli.mjs apps:list | apps:add <slug> <name> | keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id> | rc:projects | rc:link <app> <project_id> | rc:sync | rc:charts | rc:poll | asc:request <app> | asc:sync [app] | config:show <app> | config:history <app> [key] | migrate`
 (`config:show` prints the `/v1/config` answer, built in the CLI from the
 catalog file as it is on disk now and the stored overrides: run it in the

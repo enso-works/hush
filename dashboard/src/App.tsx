@@ -10,13 +10,15 @@ import { Feedback } from '@/pages/Feedback'
 import { Installs } from '@/pages/Installs'
 import { Login } from '@/pages/Login'
 import { Overview } from '@/pages/Overview'
+import { Phones } from '@/pages/Phones'
 
 export function App() {
   const { signedIn } = useSession()
   const route = useRoute()
 
   useEffect(() => {
-    document.title = route.page === 'feedback' ? 'Feedback · hush' : route.page === 'config' || route.page === 'configs' ? 'Remote config · hush' : 'hush'
+    document.title =
+      route.page === 'feedback' ? 'Feedback · hush' : route.page === 'config' || route.page === 'configs' ? 'Remote config · hush' : route.page === 'phones' ? 'Phones · hush' : 'hush'
   }, [route.page])
 
   if (!signedIn) return <Login />
@@ -33,6 +35,8 @@ export function App() {
           )
         ) : route.page === 'configs' ? (
           <ConfigApps />
+        ) : route.page === 'phones' ? (
+          <Phones />
         ) : route.page === 'installs' ? (
           <Installs id={route.id} />
         ) : route.page === 'feedback' ? (

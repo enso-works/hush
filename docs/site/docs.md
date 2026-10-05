@@ -673,14 +673,24 @@ Apps send `Authorization: Key <write key>`. The SDK does this for you.
 
 `/v1` answers CORS for any origin, so web and Capacitor apps can send.
 
-The operator side takes `Authorization: Bearer <ADMIN_TOKEN>` and is what the
-dashboard reads: `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`), its
+The operator side takes `Authorization: Bearer <ADMIN_TOKEN>`, or a phone's
+own token, and is what the dashboard reads: `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`), its
 `/breakdown`, `/props`, `/funnels`, `/funnel`, `/cohorts`, `/campaigns` and
 `/attribution`, `/admin/installs/:id` with `/forget`,
 `/admin/tickets`, `/admin/tickets/:id` with `/reply`, `/status` and `DELETE`,
 `/admin/revenue`, and for remote config `/admin/apps/:app/config`, its
 `/config/history` and `/config/preview`, and `POST` (override) and `DELETE`
 (revert) on `/config/:key`.
+
+**Phones.** The dashboard's Phones page shows a QR code that signs the hush
+iOS app in with a token of its own, so the admin token never has to be typed
+into a phone. `POST /admin/pairing` makes the code in it: single use, ten
+minutes. The app trades it at `POST /admin/pair` (`{ code, name }` → `{ token,
+device }`), the one admin path without a token, 10 tries a minute per
+address. `GET /admin/devices` lists the phones, and `DELETE
+/admin/devices/:id` revokes one at once. Only hashes are stored (migration
+010). `/admin/pair` stays private with the rest of `/admin/*`: the phone
+reaches it the way it reaches the dashboard.
 
 The command line, inside the container:
 
