@@ -1,0 +1,36 @@
+name: ios
+
+# The iOS app (ios-app/): HushKit's tests, then the app built for the
+# simulator. Its own workflow, on its own paths: macOS minutes cost ten
+# times Linux ones, and nothing else in the repository touches the app.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "ios-app/**"
+      - ".github/workflows/ios.yml"
+
+jobs:
+  app:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: ios-app
+    steps:
+      - uses: actions/checkout@v5
+      - run: xcodebuild -version && swift --version
+      - name: HushKit tests
+        working-directory: ios-app/HushKit
+        run: swift test
+      - run: brew install xcodegen
+      - run: xcodegen generate
+      - name: Build for the simulator
+        run: |
+          xcodebuild -project Hush.xcodeproj -scheme Hush \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -n 20
+          test "${PIPESTATUS[0]}" -eq 0
