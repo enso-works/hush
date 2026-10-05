@@ -48,6 +48,49 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(app.buttons["Try the demo"].waitForExistence(timeout: 5))
     }
 
+    /// The demo's QR code holds no code: opening it connects without one.
+    func testOpeningTheDemosPairingLink() {
+        let app = launch()
+        app.open(URL(string: "hush://pair?url=https%3A%2F%2Fhush.bavrk.com%2Fdemo")!)
+        XCTAssertTrue(app.navigationBars["Connect to hush"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).containing(NSPredicate(format: "label CONTAINS %@", "hush.bavrk.com")).firstMatch.exists)
+        app.buttons["Connect"].tap()
+        XCTAssertTrue(app.staticTexts["Stillwater"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.navigationBars["Demo"].exists)
+    }
+
+    /// A real code, against a real server: PAIR_LINK (TEST_RUNNER_PAIR_LINK on
+    /// the xcodebuild line) from a server's /admin/pairing. Skipped without one.
+    /// The server's /admin/devices then shows whether removing it revoked it.
+    func testPairingWithACode() throws {
+        guard let raw = ProcessInfo.processInfo.environment["PAIR_LINK"], let url = URL(string: raw) else { throw XCTSkip("PAIR_LINK not set") }
+        let app = launch()
+        app.open(url)
+        XCTAssertTrue(app.navigationBars["Connect to hush"].waitForExistence(timeout: 10))
+        let name = app.textFields["This phone's name"]
+        name.tap()
+        name.clearAndType("UI test iPhone")
+        app.buttons["Connect"].tap()
+        XCTAssertTrue(app.staticTexts["Open feedback"].waitForExistence(timeout: 15))
+
+        // Removing the server signs this phone out on the server too.
+        app.tabBars.buttons["Servers"].tap()
+        let row = app.buttons.containing(.staticText, identifier: "127.0.0.1").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.swipeLeft()
+        app.buttons["Remove"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["This phone is signed out on the server too. Connecting again needs a new code from the dashboard."].waitForExistence(timeout: 5))
+        app.buttons.matching(identifier: "Remove").allElementsBoundByIndex.last?.tap()
+        XCTAssertTrue(app.buttons["Try the demo"].waitForExistence(timeout: 5))
+        sleep(2) // the revocation is sent as the row goes
+
+        // The code is used up: the same link again is refused. (open() relaunches the app.)
+        app.open(url)
+        XCTAssertTrue(app.navigationBars["Connect to hush"].waitForExistence(timeout: 10))
+        app.buttons["Connect"].tap()
+        XCTAssertTrue(app.staticTexts["This code has been used or has expired. Show a new one on the dashboard."].waitForExistence(timeout: 10))
+    }
+
     func testTheDemoFromTheWelcomeScreen() {
         let app = launch()
         app.buttons["Try the demo"].tap()
@@ -83,5 +126,13 @@ final class OnboardingTests: XCTestCase {
         let problem = app.staticTexts.containing(NSPredicate(format: "label CONTAINS 'not what a hush server sends' OR label CONTAINS 'answered'")).firstMatch
         XCTAssertTrue(problem.waitForExistence(timeout: 15))
         XCTAssertTrue(app.buttons["Connect"].exists) // still on the form, nothing saved
+    }
+}
+
+extension XCUIElement {
+    func clearAndType(_ text: String) {
+        let current = value as? String ?? ""
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+        typeText(text)
     }
 }
