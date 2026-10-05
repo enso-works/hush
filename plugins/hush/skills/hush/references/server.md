@@ -245,7 +245,8 @@ The dashboard reads the admin API with `Authorization: Bearer <ADMIN_TOKEN>`:
 `/admin/session`, `/admin/apps` (`?days=&env=`; with `install_retention_days`, null when off), `/admin/apps/:app`
 (`?channel=`), `/admin/apps/:app/funnels`, `/funnel?step=…`, `/breakdown?event=&prop=`,
 `/props?event=`, `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
-`/admin/installs/:id` (and `POST …/forget`), `/admin/tickets`,
+`/admin/installs/:id` (and `POST …/forget`), `/admin/tickets`
+(`?status=&kind=&app=&q=&limit=&offset=`; answers `tickets`, `more`, `counts`),
 `/admin/tickets/:id` (and `POST …/reply`, `…/status`, `DELETE` for one
 ticket and its replies), `/admin/revenue` (`?refresh=1`). Reads are GETs.
 Replies, status changes, deletes and forget are writes, and every write is

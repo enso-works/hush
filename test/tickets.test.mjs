@@ -407,6 +407,56 @@ describe('a ticket with an email from an app version before SDK 2.3.0', () => {
   });
 });
 
+describe('the operator\'s list', () => {
+  // An app of its own, so the other tests' tickets stay out of these numbers.
+  let inbox;
+  before(async () => {
+    const k = await addApp(db, 'inbox', 'Inbox');
+    const c = client(srv.base, k);
+    const made = [];
+    for (const extra of [
+      { subject: 'Widgets please', kind: 'feature' },
+      { message: 'The timer stops 100% of the time.' },
+      { message: 'Crashes on launch' },
+      { message: 'Loving it', kind: 'love' },
+    ]) made.push((await create(c, ticket(uuid(), extra))).json);
+    await admin(srv.base).post(`/admin/tickets/${made[2].id}/reply`, { body: 'Fixed in the dark mode build.' });
+    await admin(srv.base).post(`/admin/tickets/${made[3].id}/status`, { status: 'closed' });
+    inbox = made;
+  });
+  const list = async (query) => (await admin(srv.base).get(`/admin/tickets?app=inbox&${query}`)).json;
+
+  test('by app, with every status counted under the same filters', async () => {
+    const all = await list('status=all');
+    assert.deepEqual(all.tickets.map((t) => String(t.id)), [1, 0, 3, 2].map((i) => String(inbox[i].id)), 'open first, then newest');
+    assert.deepEqual(all.counts, { open: 2, answered: 1, closed: 1 });
+    assert.equal(all.more, false);
+    const open = await list('status=open');
+    assert.equal(open.tickets.length, 2);
+    assert.deepEqual(open.counts, all.counts, 'the counts ignore the status filter, for the tabs');
+    assert.deepEqual((await list('status=all&kind=love')).counts, { open: 0, answered: 0, closed: 1 });
+  });
+
+  test('a search finds the subject, the message, a reply or the id, and % is only a character', async () => {
+    const ids = async (q) => (await list(`status=all&q=${encodeURIComponent(q)}`)).tickets.map((t) => String(t.id));
+    assert.deepEqual(await ids('widgets'), [String(inbox[0].id)]);
+    assert.deepEqual(await ids('dark mode'), [String(inbox[2].id)], 'found by the reply');
+    assert.deepEqual(await ids(`#${inbox[3].id}`), [String(inbox[3].id)]);
+    assert.deepEqual(await ids('100%'), [String(inbox[1].id)]);
+    assert.deepEqual(await ids('%'), [String(inbox[1].id)], 'not a wildcard');
+    assert.deepEqual((await list('status=all&q=nothing-like-this')).counts, { open: 0, answered: 0, closed: 0 });
+  });
+
+  test('pages: limit and offset, with more while there is a next page', async () => {
+    const first = await list('status=all&limit=3');
+    assert.equal(first.tickets.length, 3);
+    assert.equal(first.more, true);
+    const second = await list('status=all&limit=3&offset=3');
+    assert.deepEqual(second.tickets.map((t) => String(t.id)), [String(inbox[2].id)]);
+    assert.equal(second.more, false);
+  });
+});
+
 describe('deleting one ticket', () => {
   test('the operator deletes a ticket and its replies; 404 for one that is not there', async () => {
     const c = client(srv.base, key);

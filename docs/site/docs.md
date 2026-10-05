@@ -710,7 +710,9 @@ The operator side takes `Authorization: Bearer <ADMIN_TOKEN>`, or a phone's
 own token, and is what the dashboard reads: `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`), its
 `/breakdown`, `/props`, `/funnels`, `/funnel`, `/cohorts`, `/campaigns` and
 `/attribution`, `/admin/installs/:id` with `/forget`,
-`/admin/tickets`, `/admin/tickets/:id` with `/reply`, `/status` and `DELETE`,
+`/admin/tickets` (filtered by `status`, `kind`, `app` and a search `q`, in
+pages by `limit` and `offset`, with `more` and the count of each status),
+`/admin/tickets/:id` with `/reply`, `/status` and `DELETE`,
 `/admin/revenue`, and for remote config `/admin/apps/:app/config`, its
 `/config/history` and `/config/preview`, and `POST` (override) and `DELETE`
 (revert) on `/config/:key`.

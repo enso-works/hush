@@ -415,14 +415,18 @@ r.get('/admin/revenue', async (_req, res, { url }) => {
 });
 
 r.get('/admin/tickets', async (_req, res, { url }) => {
-  const status = url.searchParams.get('status');
-  const kind = url.searchParams.get('kind');
-  return json(res, 200, {
-    tickets: await adminList(
-      ['open', 'answered', 'closed'].includes(status) ? status : null,
-      KINDS.includes(kind) ? kind : null,
-    ),
-  });
+  const p = url.searchParams;
+  const status = p.get('status');
+  const kind = p.get('kind');
+  const whole = (name, max) => Math.min(max, Math.max(0, Number.parseInt(p.get(name), 10) || 0));
+  return json(res, 200, await adminList({
+    status: ['open', 'answered', 'closed'].includes(status) ? status : null,
+    kind: KINDS.includes(kind) ? kind : null,
+    app: str(p.get('app'), 40) || null,
+    search: str(p.get('q'), 200) || null,
+    limit: whole('limit', 200) || 200,
+    offset: whole('offset', 1_000_000),
+  }));
 });
 
 r.get('/admin/tickets/:id', async (_req, res, { params }) => {
