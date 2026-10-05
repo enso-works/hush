@@ -230,7 +230,12 @@ describe('catalog errors stop the boot, naming the path', () => {
   });
 
   test('each error, at its path, with its message', async () => {
-    const results = await Promise.all(CASES.map(([, config]) => boot(config)));
+    // Eight at a time: forty Node processes at once on a two-core CI runner
+    // have had one exit with no output.
+    const results = [];
+    for (let i = 0; i < CASES.length; i += 8) {
+      results.push(...await Promise.all(CASES.slice(i, i + 8).map(([, config]) => boot(config))));
+    }
     for (const [i, [name, , expected]] of CASES.entries()) {
       const { code, out } = results[i];
       assert.notEqual(code, 0, name);
