@@ -6,21 +6,29 @@ struct Stat: View {
     let value: String
     var change: Double? = nil
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        // At accessibility sizes the change goes under the number, so neither has to break.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline))
         VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
-            HStack(alignment: .firstTextBaseline) {
+                .lineLimit(typeSize.isAccessibilitySize ? 3 : 1)
+            layout {
                 Text(value)
                     .font(.title2.weight(.semibold).monospacedDigit())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
                     .contentTransition(reduceMotion ? .opacity : .numericText())
-                Spacer(minLength: 4)
+                if !typeSize.isAccessibilitySize { Spacer(minLength: 4) }
                 if let change {
                     Text(change, format: .percent.precision(.fractionLength(0)).sign(strategy: .always()))
                         .font(.caption2.weight(.semibold).monospacedDigit())
+                        .lineLimit(1)
                         .foregroundStyle(change >= 0 ? .green : .red)
                 }
             }
@@ -52,4 +60,9 @@ struct Panel<Content: View>: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 16))
     }
+}
+
+/// Columns for tiles: two side by side, one at accessibility text sizes.
+func tileColumns(_ typeSize: DynamicTypeSize) -> [GridItem] {
+    [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 320 : 150), spacing: 12)]
 }

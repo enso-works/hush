@@ -7,13 +7,16 @@ struct AppMark: View {
     let name: String
     var size: CGFloat = 36
     @Environment(\.redactionReasons) private var redaction
+    // Grows with the name beside it, so a large text size keeps the proportion.
+    @ScaledMetric(relativeTo: .headline) private var scale: CGFloat = 1
 
     var body: some View {
+        let side = size * scale
         Text(name.prefix(1).uppercased())
-            .font(.system(size: size * 0.42, weight: .semibold))
+            .font(.system(size: side * 0.42, weight: .semibold))
             .foregroundStyle(.white)
-            .frame(width: size, height: size)
-            .background(redaction.isEmpty ? Self.color(for: slug) : Color(.systemFill), in: .rect(cornerRadius: size * 0.28))
+            .frame(width: side, height: side)
+            .background(redaction.isEmpty ? Self.color(for: slug) : Color(.systemFill), in: .rect(cornerRadius: side * 0.28))
             .accessibilityHidden(true)
     }
 

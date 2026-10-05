@@ -17,4 +17,28 @@ final class MotionShots: XCTestCase {
             if app.staticTexts["Pace"].exists { after += 1 }
         }
     }
+
+    /// The Overview and an app's page at the largest accessibility text size.
+    func testLargeText() throws {
+        guard let dir = ProcessInfo.processInfo.environment["SCREENSHOTS_DIR"] else { throw XCTSkip("SCREENSHOTS_DIR not set") }
+        let save = { (name: String) in
+            try? XCUIScreen.main.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir).appending(component: "\(name).png"))
+        }
+        let app = XCUIApplication()
+        app.launchArguments = ["-ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
+        app.launch()
+        app.buttons["Try the demo"].tap()
+        XCTAssertTrue(app.staticTexts["Pace"].waitForExistence(timeout: 15))
+        save("large-overview")
+        app.swipeUp()
+        save("large-overview-cards")
+        app.staticTexts["Stillwater"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Activity"].waitForExistence(timeout: 15))
+        save("large-app")
+        app.swipeUp()
+        app.swipeUp()
+        save("large-app-retention")
+        app.swipeUp()
+        save("large-app-bars")
+    }
 }

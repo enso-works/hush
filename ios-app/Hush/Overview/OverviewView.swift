@@ -109,7 +109,12 @@ private struct DataMenu: View {
                 }
             }
         } label: {
-            Label(env == .prod ? "Prod" : "Dev", systemImage: "line.3.horizontal.decrease.circle")
+            // Release builds are the default; development data says so where it shows.
+            if env == .dev {
+                Label("Dev", systemImage: "hammer").labelStyle(.titleAndIcon)
+            } else {
+                Label("Release builds", systemImage: "line.3.horizontal.decrease.circle")
+            }
         }
     }
 }
@@ -118,21 +123,18 @@ private struct DataMenu: View {
 private struct Totals: View {
     let answer: AppsAnswer
     let days: Int
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         // Installs quiet for longer than the retention window are deleted, so
         // the total is the installs seen in it, and new installs count inside it.
         let kept = answer.installRetentionDays
         let sum = { (key: KeyPath<AppSummary, Int>) in answer.apps.reduce(0) { $0 + $1[keyPath: key] } }
-        Grid(horizontalSpacing: 12, verticalSpacing: 12) {
-            GridRow {
-                Stat(label: kept.map { "Installs seen in \($0) days" } ?? "Installs, all time", value: sum(\.totalInstalls).formatted())
-                Stat(label: "New in \(min(days, kept ?? days)) days", value: sum(\.newInstalls).formatted())
-            }
-            GridRow {
-                Stat(label: "Active in the last day", value: sum(\.dau).formatted())
-                Stat(label: "Open feedback", value: sum(\.openTickets).formatted())
-            }
+        LazyVGrid(columns: tileColumns(typeSize), spacing: 12) {
+            Stat(label: kept.map { "Installs seen in \($0) days" } ?? "Installs, all time", value: sum(\.totalInstalls).formatted())
+            Stat(label: "New in \(min(days, kept ?? days)) days", value: sum(\.newInstalls).formatted())
+            Stat(label: "Active in the last day", value: sum(\.dau).formatted())
+            Stat(label: "Open feedback", value: sum(\.openTickets).formatted())
         }
     }
 }
@@ -140,6 +142,7 @@ private struct Totals: View {
 private struct AppCard: View {
     let app: AppSummary
     let days: Int
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -160,8 +163,10 @@ private struct AppCard: View {
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     Text("Active installs per day")
+                        .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+                        .fixedSize(horizontal: false, vertical: true)
                     Spacer()
                     Text(Prefs.periodLabel(days)).monospacedDigit()
                 }
@@ -178,14 +183,14 @@ private struct AppCard: View {
                 }
             }
             Divider()
-            HStack {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: typeSize.isAccessibilitySize ? 2 : 4), spacing: 10) {
                 ForEach([("Installs", app.totalInstalls), ("DAU", app.dau), ("WAU", app.wau), ("MAU", app.mau)], id: \.0) { label, value in
                     VStack(spacing: 2) {
-                        Text(label).font(.caption2).foregroundStyle(.secondary)
+                        Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                         Text(value, format: .number).font(.subheadline.weight(.semibold).monospacedDigit())
+                            .lineLimit(1).minimumScaleFactor(0.7)
                             .contentTransition(.numericText(value: Double(value)))
                     }
-                    .frame(maxWidth: .infinity)
                 }
             }
             HStack {

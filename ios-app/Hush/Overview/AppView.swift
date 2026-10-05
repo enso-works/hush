@@ -40,6 +40,13 @@ struct AppView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(name)
         .toolbar {
+            if env == .dev {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Label("Dev", systemImage: "hammer").labelStyle(.titleAndIcon).font(.subheadline)
+                }
+            }
+        }
+        .toolbar {
             if let channels = detail?.channels, channels.count > 1 || channel != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
@@ -50,7 +57,13 @@ struct AppView: View {
                             }
                         }
                     } label: {
-                        Label(channel?.replacingOccurrences(of: "_", with: " ") ?? "All channels", systemImage: "line.3.horizontal.decrease.circle")
+                        // A filtered page names its channel where it shows.
+                        if let channel {
+                            Label(channel.replacingOccurrences(of: "_", with: " "), systemImage: "line.3.horizontal.decrease.circle.fill")
+                                .labelStyle(.titleAndIcon)
+                        } else {
+                            Label("All channels", systemImage: "line.3.horizontal.decrease.circle")
+                        }
                     }
                 }
             }
@@ -111,13 +124,14 @@ private struct Panels: View {
 }
 
 private struct Stats: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     let detail: AppDetail
     /// Days new installs are counted over, when the retention window is shorter than the period.
     let cut: Int?
 
     var body: some View {
         let c = detail.current, p = detail.prior
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 12)], spacing: 12) {
+        LazyVGrid(columns: tileColumns(typeSize), spacing: 12) {
             Stat(label: "Active installs", value: c.active.formatted(), change: change(c.active, p.active))
             Stat(label: cut.map { "New installs, last \($0) days" } ?? "New installs", value: c.newInstalls.formatted(),
                  change: cut == nil ? change(c.newInstalls, p.newInstalls) : nil)
@@ -138,6 +152,7 @@ private struct Stats: View {
 private struct Activity: View {
     let daily: [AppDetail.Day]
     @Environment(\.redactionReasons) private var redaction
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let points = daily.compactMap { d in day(d.day).map { (date: $0, d: d) } }
@@ -158,7 +173,8 @@ private struct Activity: View {
         .chartForegroundStyleScale(["Active installs": accent(redaction), "New installs": redaction.isEmpty ? Color.teal : Color(.systemFill)])
         .chartLegend(position: .top, alignment: .leading)
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+            // Fewer dates as the text grows, so they never run into each other.
+            AxisMarks(values: .automatic(desiredCount: typeSize.isAccessibilitySize ? 2 : 4)) { _ in
                 AxisGridLine()
                 AxisValueLabel(format: .dateTime.day().month(.abbreviated), centered: false)
             }
@@ -171,21 +187,25 @@ private struct Activity: View {
 private struct Retention: View {
     let retention: AppDetail.Retention
     @Environment(\.redactionReasons) private var redaction
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .subheadline) private var ring: CGFloat = 68
+    @ScaledMetric(relativeTo: .subheadline) private var stroke: CGFloat = 7
 
     var body: some View {
-        HStack(spacing: 12) {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 16)) : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             ForEach([("Day 1", retention.d1), ("Day 7", retention.d7), ("Day 30", retention.d30)], id: \.0) { label, r in
                 VStack(spacing: 8) {
                     ZStack {
-                        Circle().stroke(.quaternary, lineWidth: 7)
+                        Circle().stroke(.quaternary, lineWidth: stroke)
                         Circle()
                             .trim(from: 0, to: r.rate ?? 0)
-                            .stroke(accent(redaction), style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                            .stroke(accent(redaction), style: StrokeStyle(lineWidth: stroke, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                         Text(r.rate.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "–")
                             .font(.subheadline.weight(.semibold).monospacedDigit())
                     }
-                    .frame(width: 68, height: 68)
+                    .frame(width: ring, height: ring)
                     Text(label).font(.subheadline.weight(.medium))
                     Text("\(r.retained.formatted()) of \(r.cohort.formatted())")
                         .font(.caption2.monospacedDigit())
@@ -201,22 +221,43 @@ private struct Retention: View {
 private struct Bars: View {
     let rows: [(String, Int)]
     @Environment(\.redactionReasons) private var redaction
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .subheadline) private var labelWidth: CGFloat = 96
 
     var body: some View {
         let top = max(rows.map(\.1).max() ?? 1, 1)
-        VStack(spacing: 8) {
+        VStack(spacing: typeSize.isAccessibilitySize ? 14 : 8) {
             ForEach(rows, id: \.0) { label, n in
-                HStack(spacing: 10) {
-                    Text(label).font(.subheadline).lineLimit(1).frame(width: 96, alignment: .leading)
-                    GeometryReader { g in
-                        Capsule().fill(accent(redaction).opacity(0.75))
-                            .frame(width: max(4, g.size.width * CGFloat(n) / CGFloat(top)))
+                if typeSize.isAccessibilitySize {
+                    // The label and count on a line, the bar under them: nothing has to be cut.
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(label).font(.subheadline)
+                            Spacer()
+                            count(n)
+                        }
+                        bar(n, of: top)
                     }
-                    .frame(height: 8)
-                    Text(n, format: .number).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                        .frame(minWidth: 40, alignment: .trailing)
+                } else {
+                    HStack(spacing: 10) {
+                        Text(label).font(.subheadline).lineLimit(1).frame(width: labelWidth, alignment: .leading)
+                        bar(n, of: top)
+                        count(n).frame(minWidth: 40, alignment: .trailing)
+                    }
                 }
             }
         }
+    }
+
+    private func bar(_ n: Int, of top: Int) -> some View {
+        GeometryReader { g in
+            Capsule().fill(accent(redaction).opacity(0.75))
+                .frame(width: max(4, g.size.width * CGFloat(n) / CGFloat(top)))
+        }
+        .frame(height: 8)
+    }
+
+    private func count(_ n: Int) -> some View {
+        Text(n, format: .number).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
     }
 }
