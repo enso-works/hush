@@ -18,6 +18,7 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 | `expo/` | `@bavrk/hush-expo`: the Swift module in `ios/`, the JS in `src/`, the config plugin `app.plugin.js`. |
 | `capacitor/` | `@bavrk/hush-capacitor`: the same for Capacitor, iOS 15. The Swift plugin in `ios/Sources/HushCapacitorPlugin/`, `Package.swift` and `BavrkHushCapacitor.podspec` (both named as `npx cap sync` derives from the package name), the JS in `src/`. No config plugin. |
 | `ios-app/` | The iOS app (work in progress): `HushKit/`, a Swift package with the `/admin` API's models and client (`swift test`), and `Hush/`, the SwiftUI app, iOS 18. `project.yml` is the Xcode project for XcodeGen; `Hush.xcodeproj` is generated, not committed. |
+| `Package.swift`, `swift/` | `Hush`, the Swift SDK for native iOS apps (iOS 15), at the root because Swift Package Manager installs from there. `swift/Sources/Hush/`: the same rules as `sdk/src/core.ts` (events, sessions, queue, opt-out, forget, feedback); no remote config or attribution yet. Released by plain semver tags (`0.1.0`). |
 | `test/` | `node:test` suites. Server tests run the real server against real Postgres. `sdk.test.mjs` runs the SDK under Node with React Native mocked (`test/sdk/`). `expo.test.mjs`, `capacitor.test.mjs` (Capacitor's bridge mocked) and `plugin.test.mjs` need no database. `__snapshots__/v1-compat.json` freezes `/v1`. |
 | `examples/` | `docker-compose.yml`, `.env.example`, `catalog.example.json`, an Expo setup file. |
 | `docs/dogfood.md` | Friction found while using hush in our own apps, newest first. |
@@ -56,6 +57,7 @@ The packages and the dashboard, from the repository root:
 (cd capacitor && xcodebuild -scheme BavrkHushCapacitor -destination 'generic/platform=iOS Simulator' build)   # the Swift, against capacitor-swift-pm
 (cd dashboard && npm ci && npm run lint && npm run build)                  # writes src/dashboard/
 (cd dashboard && npx playwright install chromium && npm run e2e)           # needs the test Postgres
+swift test                                                                # the Swift SDK; HUSH_E2E_URL, _KEY, _ADMIN add the live test
 (cd ios-app/HushKit && swift test)                                       # the iOS app's models and client; HUSH_LIVE=1 adds the live demo
 (cd ios-app && xcodegen && xcodebuild -project Hush.xcodeproj -scheme Hush -destination 'generic/platform=iOS Simulator' build)
 (cd dashboard && npm run shots)                                          # the README's and the site's images, from the live demo; needs pngquant
@@ -108,6 +110,14 @@ claude plugin validate ./plugins/hush
 - **Releasing hush-capacitor**: bump `capacitor/package.json`, build the
   Swift (the `xcodebuild` line above) and an app that uses it, commit, then
   tag `capacitor-v<version>` and push the tag.
+- **Releasing the Swift SDK**: bump `sdkVersion` in
+  `swift/Sources/Hush/Client.swift` and the version in `docs/site/docs.md`
+  and `swift/README.md` (`test/site.test.mjs` checks the docs page), commit,
+  then tag the plain version (`git tag 0.1.1`) and push the tag. The `publish
+  swift` workflow checks the tag against `sdkVersion`, tests, builds for iOS
+  and creates the GitHub release; Swift Package Manager reads the tag. A
+  change to `/v1` the JavaScript SDK makes, the Swift one makes too: they
+  must stay indistinguishable to the server.
 - **Keep the plugin in step.** `plugins/hush/skills/hush/SKILL.md` and its
   `references/` describe the SDK, hush-expo, hush-capacitor, the server and
   the catalog as they are. When any of those change, update them in the same

@@ -59,6 +59,13 @@ test('the docs page names the package versions this repository is at', () => {
   assert.deepEqual(m.slice(1), [version('sdk'), version('expo'), version('capacitor')], 'docs.md describes other versions than sdk/, expo/ and capacitor/ are at');
 });
 
+test('the docs page names the Swift SDK version swift/ is at', () => {
+  const swift = /^public let sdkVersion = "([\d.]+)"$/m.exec(read(join(root, 'swift', 'Sources', 'Hush', 'Client.swift')))[1];
+  const named = [...docs.matchAll(/`Hush` ([\d.]+)|sdk: swift-([\d.]+)|from: "([\d.]+)"/g)].map((m) => m[1] ?? m[2] ?? m[3]);
+  assert.ok(named.length >= 3, 'docs.md no longer names the Swift SDK version');
+  assert.deepEqual([...new Set(named)], [swift], 'docs.md describes another Swift SDK version than swift/ is at');
+});
+
 test("the docs page's links within it reach a heading", () => {
   // Astro's slugs (github-slugger): lower case, punctuation dropped, spaces to dashes.
   const slug = (h) => h.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
