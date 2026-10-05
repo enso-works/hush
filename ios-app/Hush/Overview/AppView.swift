@@ -26,7 +26,7 @@ struct AppView: View {
         ScrollView {
             VStack(spacing: 16) {
                 PeriodPicker(days: $days)
-                if let error { ErrorNote(error: error) }
+                if let error { ErrorNote(error: error) { await load() } }
                 if detail != nil || error == nil {
                     Panels(detail: detail ?? Placeholder.detail, days: days, cut: kept.flatMap { $0 < days ? $0 : nil }, env: env)
                         .placeholder(detail == nil)

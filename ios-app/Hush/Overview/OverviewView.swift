@@ -18,7 +18,7 @@ struct OverviewView: View {
         ScrollView {
             VStack(spacing: 16) {
                 PeriodPicker(days: $days)
-                if let error { ErrorNote(error: error) }
+                if let error { ErrorNote(error: error) { await load() } }
                 content
             }
             .padding(16)

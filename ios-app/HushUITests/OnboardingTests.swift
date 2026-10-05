@@ -33,6 +33,21 @@ final class OnboardingTests: XCTestCase {
         snap(app, "app-retention")
     }
 
+    func testRemovingAServerAsksFirst() {
+        let app = launch()
+        app.buttons["Try the demo"].tap()
+        app.tabBars.buttons["Servers"].tap()
+        let row = app.buttons.containing(.staticText, identifier: "Demo").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.swipeLeft()
+        app.buttons["Remove"].firstMatch.tap()
+        // Asked, not done: the server is still there until the answer.
+        XCTAssertTrue(app.staticTexts["Remove Demo?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(row.exists)
+        app.buttons.matching(identifier: "Remove").allElementsBoundByIndex.last?.tap()
+        XCTAssertTrue(app.buttons["Try the demo"].waitForExistence(timeout: 5))
+    }
+
     func testTheDemoFromTheWelcomeScreen() {
         let app = launch()
         app.buttons["Try the demo"].tap()
