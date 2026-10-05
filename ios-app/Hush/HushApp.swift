@@ -57,7 +57,7 @@ struct RootView: View {
                         OverviewView(server: server)
                     }
                 }
-                Tab("Servers", systemImage: "server.rack") {
+                Tab("Settings", systemImage: "gearshape") {
                     NavigationStack {
                         ServersView()
                     }
