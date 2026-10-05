@@ -1,6 +1,6 @@
 # The Xcode project, for XcodeGen: `xcodegen` here writes Hush.xcodeproj,
-# which is not committed. Sources are folders, so adding a file needs no
-# project change.
+# which is not committed. Sources are folders, so a new file needs no change
+# here, only `xcodegen` again.
 name: Hush
 options:
   bundleIdPrefix: com.bavrk
