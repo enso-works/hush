@@ -18,6 +18,7 @@ struct AppView: View {
     @State private var channel: String?
     @State private var detail: AppDetail?
     @State private var error: HushError?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct Query: Equatable { let days: Int; let env: Env; let channel: String? }
 
@@ -25,33 +26,13 @@ struct AppView: View {
         ScrollView {
             VStack(spacing: 16) {
                 PeriodPicker(days: $days)
-
                 if let error { ErrorNote(error: error) }
-
-                if let d = detail {
-                    Stats(detail: d, cut: kept.flatMap { $0 < days ? $0 : nil })
-                    if env == .prod, let last = d.lastEvent, Date.now.timeIntervalSince(last) > 2 * 86_400 {
-                        Label("Nothing has arrived since \(when(last)). A quiet stretch, or a revoked key, a wrong URL or an SDK that stopped sending.",
-                              systemImage: "exclamationmark.triangle")
-                            .font(.callout)
-                            .padding(14)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(.orange.opacity(0.12), in: .rect(cornerRadius: 14))
-                    }
-                    Panel(title: "Activity", trailing: Prefs.periodLabel(days)) { Activity(daily: d.daily) }
-                    Panel(title: "Retention") { Retention(retention: d.retention) }
-                    if !d.versions.isEmpty {
-                        Panel(title: "Versions") {
-                            Bars(rows: d.versions.prefix(6).map { ($0.version, $0.installs) })
-                        }
-                    }
-                    if !d.countries.isEmpty {
-                        Panel(title: "Countries") {
-                            Bars(rows: d.countries.prefix(8).map { c in (flag(c.country).map { "\($0) \(c.country)" } ?? "Other", c.installs) })
-                        }
-                    }
-                } else if error == nil {
-                    ProgressView().padding(.top, 80)
+                if detail != nil || error == nil {
+                    Panels(detail: detail ?? Placeholder.detail, days: days, cut: kept.flatMap { $0 < days ? $0 : nil }, env: env)
+                        .placeholder(detail == nil)
+                        // The first answer replaces the placeholder whole (see OverviewView).
+                        .id(detail == nil)
+                        .transition(.opacity)
                 }
             }
             .padding(16)
@@ -82,11 +63,49 @@ struct AppView: View {
 
     private func load() async {
         do {
-            detail = try await model.client(for: server).app(slug, days: days, env: env, channel: channel)
-            error = nil
+            let fresh = try await model.client(for: server).app(slug, days: days, env: env, channel: channel)
+            withAnimation(arrival(reduceMotion: reduceMotion)) {
+                detail = fresh
+                error = nil
+            }
         } catch is CancellationError {
         } catch {
             self.error = HushError(error)
+        }
+    }
+}
+
+/// Everything below the period picker, for one answer (or its placeholder).
+private struct Panels: View {
+    let detail: AppDetail
+    let days: Int
+    let cut: Int?
+    let env: Env
+
+    var body: some View {
+        let d = detail
+        VStack(spacing: 16) {
+            Stats(detail: d, cut: cut)
+            if env == .prod, let last = d.lastEvent, Date.now.timeIntervalSince(last) > 2 * 86_400 {
+                Label("Nothing has arrived since \(when(last)). A quiet stretch, or a revoked key, a wrong URL or an SDK that stopped sending.",
+                      systemImage: "exclamationmark.triangle")
+                    .font(.callout)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.orange.opacity(0.12), in: .rect(cornerRadius: 14))
+            }
+            Panel(title: "Activity", trailing: Prefs.periodLabel(days)) { Activity(daily: d.daily) }
+            Panel(title: "Retention") { Retention(retention: d.retention) }
+            if !d.versions.isEmpty {
+                Panel(title: "Versions") {
+                    Bars(rows: d.versions.prefix(6).map { ($0.version, $0.installs) })
+                }
+            }
+            if !d.countries.isEmpty {
+                Panel(title: "Countries") {
+                    Bars(rows: d.countries.prefix(8).map { c in (flag(c.country).map { "\($0) \(c.country)" } ?? "Other", c.installs) })
+                }
+            }
         }
     }
 }
@@ -118,24 +137,25 @@ private struct Stats: View {
 /// Active installs per day, with new installs dashed over it.
 private struct Activity: View {
     let daily: [AppDetail.Day]
+    @Environment(\.redactionReasons) private var redaction
 
     var body: some View {
         let points = daily.compactMap { d in day(d.day).map { (date: $0, d: d) } }
         Chart {
             ForEach(points, id: \.date) { p in
                 AreaMark(x: .value("Day", p.date, unit: .day), y: .value("Active", p.d.active))
-                    .foregroundStyle(.linearGradient(colors: [.accentColor.opacity(0.3), .accentColor.opacity(0)], startPoint: .top, endPoint: .bottom))
+                    .foregroundStyle(.linearGradient(colors: [accent(redaction).opacity(0.3), accent(redaction).opacity(0)], startPoint: .top, endPoint: .bottom))
                     .interpolationMethod(.monotone)
                 LineMark(x: .value("Day", p.date, unit: .day), y: .value("Active", p.d.active), series: .value("Series", "Active installs"))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(accent(redaction))
                     .interpolationMethod(.monotone)
                 LineMark(x: .value("Day", p.date, unit: .day), y: .value("New", p.d.newInstalls), series: .value("Series", "New installs"))
-                    .foregroundStyle(.teal)
+                    .foregroundStyle(redaction.isEmpty ? Color.teal : Color(.systemFill))
                     .lineStyle(StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
                     .interpolationMethod(.monotone)
             }
         }
-        .chartForegroundStyleScale(["Active installs": Color.accentColor, "New installs": .teal])
+        .chartForegroundStyleScale(["Active installs": accent(redaction), "New installs": redaction.isEmpty ? Color.teal : Color(.systemFill)])
         .chartLegend(position: .top, alignment: .leading)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { _ in
@@ -150,6 +170,7 @@ private struct Activity: View {
 /// Of the installs old enough, the share still active one, seven and thirty days on.
 private struct Retention: View {
     let retention: AppDetail.Retention
+    @Environment(\.redactionReasons) private var redaction
 
     var body: some View {
         HStack(spacing: 12) {
@@ -159,7 +180,7 @@ private struct Retention: View {
                         Circle().stroke(.quaternary, lineWidth: 7)
                         Circle()
                             .trim(from: 0, to: r.rate ?? 0)
-                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                            .stroke(accent(redaction), style: StrokeStyle(lineWidth: 7, lineCap: .round))
                             .rotationEffect(.degrees(-90))
                         Text(r.rate.map { $0.formatted(.percent.precision(.fractionLength(0))) } ?? "–")
                             .font(.subheadline.weight(.semibold).monospacedDigit())
@@ -179,6 +200,7 @@ private struct Retention: View {
 /// Labelled counts as bars of their share of the largest.
 private struct Bars: View {
     let rows: [(String, Int)]
+    @Environment(\.redactionReasons) private var redaction
 
     var body: some View {
         let top = max(rows.map(\.1).max() ?? 1, 1)
@@ -187,7 +209,7 @@ private struct Bars: View {
                 HStack(spacing: 10) {
                     Text(label).font(.subheadline).lineLimit(1).frame(width: 96, alignment: .leading)
                     GeometryReader { g in
-                        Capsule().fill(Color.accentColor.opacity(0.75))
+                        Capsule().fill(accent(redaction).opacity(0.75))
                             .frame(width: max(4, g.size.width * CGFloat(n) / CGFloat(top)))
                     }
                     .frame(height: 8)

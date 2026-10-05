@@ -6,13 +6,14 @@ struct AppMark: View {
     let slug: String
     let name: String
     var size: CGFloat = 36
+    @Environment(\.redactionReasons) private var redaction
 
     var body: some View {
         Text(name.prefix(1).uppercased())
             .font(.system(size: size * 0.42, weight: .semibold))
             .foregroundStyle(.white)
             .frame(width: size, height: size)
-            .background(Self.color(for: slug), in: .rect(cornerRadius: size * 0.28))
+            .background(redaction.isEmpty ? Self.color(for: slug) : Color(.systemFill), in: .rect(cornerRadius: size * 0.28))
             .accessibilityHidden(true)
     }
 

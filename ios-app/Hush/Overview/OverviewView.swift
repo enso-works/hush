@@ -10,6 +10,7 @@ struct OverviewView: View {
     @AppStorage("env") private var env = Env.prod
     @State private var answer: AppsAnswer?
     @State private var error: HushError?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct Query: Equatable { let server: Server; let days: Int; let env: Env }
 
@@ -38,23 +39,30 @@ struct OverviewView: View {
     }
 
     @ViewBuilder private var content: some View {
-        if let answer {
-            if answer.apps.isEmpty {
-                ContentUnavailableView("No apps yet", systemImage: "square.grid.2x2",
-                                       description: Text("Register one on the server with `apps:add`, then create a write key with `keys:create`."))
-            } else {
-                Totals(answer: answer, days: days)
-                AppGrid(apps: answer.apps, days: days)
+        if let answer, answer.apps.isEmpty {
+            ContentUnavailableView("No apps yet", systemImage: "square.grid.2x2",
+                                   description: Text("Register one on the server with `apps:add`, then create a write key with `keys:create`."))
+        } else if answer != nil || error == nil {
+            let shown = answer ?? Placeholder.apps
+            VStack(spacing: 16) {
+                Totals(answer: shown, days: days)
+                AppGrid(apps: shown.apps, days: days)
             }
-        } else if error == nil {
-            ProgressView().padding(.top, 80)
+            .placeholder(answer == nil)
+            // The first answer replaces the placeholder whole, with a fade:
+            // numbers rolling up from invented values would say something false.
+            .id(answer == nil)
+            .transition(.opacity)
         }
     }
 
     private func load() async {
         do {
-            answer = try await model.client(for: server).apps(days: days, env: env)
-            error = nil
+            let fresh = try await model.client(for: server).apps(days: days, env: env)
+            withAnimation(arrival(reduceMotion: reduceMotion)) {
+                answer = fresh
+                error = nil
+            }
         } catch is CancellationError {
         } catch {
             self.error = HushError(error)
@@ -175,6 +183,7 @@ private struct AppCard: View {
                     VStack(spacing: 2) {
                         Text(label).font(.caption2).foregroundStyle(.secondary)
                         Text(value, format: .number).font(.subheadline.weight(.semibold).monospacedDigit())
+                            .contentTransition(.numericText(value: Double(value)))
                     }
                     .frame(maxWidth: .infinity)
                 }

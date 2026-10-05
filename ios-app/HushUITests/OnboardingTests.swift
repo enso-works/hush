@@ -19,6 +19,7 @@ final class OnboardingTests: XCTestCase {
     func testTheOverviewAndAnAppsPage() {
         let app = launch()
         app.buttons["Try the demo"].tap()
+        snap(app, "overview-loading")
         let card = app.buttons.containing(.staticText, identifier: "Stillwater").firstMatch
         XCTAssertTrue(card.waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Open feedback"].exists)

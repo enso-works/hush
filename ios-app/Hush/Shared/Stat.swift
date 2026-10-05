@@ -5,6 +5,7 @@ struct Stat: View {
     let label: String
     let value: String
     var change: Double? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -15,7 +16,7 @@ struct Stat: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(value)
                     .font(.title2.weight(.semibold).monospacedDigit())
-                    .contentTransition(.numericText())
+                    .contentTransition(reduceMotion ? .opacity : .numericText())
                 Spacer(minLength: 4)
                 if let change {
                     Text(change, format: .percent.precision(.fractionLength(0)).sign(strategy: .always()))
