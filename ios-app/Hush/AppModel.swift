@@ -63,8 +63,12 @@ final class AppModel {
         openInbox(fresh: true)
     }
 
+    /// Told before a server goes, while its client still has the token: push signs off.
+    var willRemove: ((Server, AdminClient) -> Void)?
+
     func remove(_ server: Server) {
         Telemetry.track("server_removed", ["paired": server.deviceID == nil ? "no" : "yes"])
+        willRemove?(server, client(for: server))
         // A paired phone signs itself out on the server too, while it still has its token.
         if let device = server.deviceID {
             let client = client(for: server)

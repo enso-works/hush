@@ -25,7 +25,7 @@ targets:
     platform: iOS
     sources:
       - path: Hush
-        excludes: [Info.plist]
+        excludes: [Info.plist, Hush.entitlements]
     dependencies:
       - package: HushKit
       - package: HushSDK
@@ -38,6 +38,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.bavrk.hush
         # The URL scheme; everything else in the Info.plist comes from these settings.
         INFOPLIST_FILE: Hush/Info.plist
+        # Push for new feedback and replies (Hush/Push).
+        CODE_SIGN_ENTITLEMENTS: Hush/Hush.entitlements
         INFOPLIST_KEY_NSCameraUsageDescription: "To scan the QR code on your hush dashboard's Phones page. Nothing is recorded or kept."
         PRODUCT_NAME: Hush
         # The SDK's module is Hush: the app's is named apart.
