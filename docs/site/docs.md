@@ -419,6 +419,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `RETENTION_DAYS` | Raw events older than this are deleted. Default 180. |
 | `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days. Default `RETENTION_DAYS`, when its events are gone too; 0 keeps every row. Shorter than `RETENTION_DAYS`, the row goes while its events stay, and the server warns at boot. Its tickets keep the install id. The dashboard's install total and Countries panel then count the installs seen in that window, and new installs and retention over a longer period (the 1y view) count only the installs first seen inside it, and say so. |
 | `RC_API_KEY` | RevenueCat v2 secret key with read-only scopes, for revenue on the dashboard. |
+| `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app. Or `APNS_KEY_P8_BASE64`; `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` | An App Store Connect API key, for App Store campaign reports. The Admin role once; Sales and Reports after. Or `ASC_PRIVATE_KEY_FILE`, a path inside the container, in place of `ASC_PRIVATE_KEY`. |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header and secret a trusted proxy sets instead of the token, so the dashboard opens signed in on a private network. |
 
@@ -725,7 +726,13 @@ device }`), the one admin path without a token, 10 tries a minute per
 address. `GET /admin/devices` lists the phones, and `DELETE
 /admin/devices/:id` revokes one at once. Only hashes are stored (migration
 010). `/admin/pair` stays private with the rest of `/admin/*`: the phone
-reaches it the way it reaches the dashboard. In the app, each app's page
+reaches it the way it reaches the dashboard. With an APNs key
+(`APNS_KEY_ID` and the rest), the app notifies a phone of new feedback and
+users' replies, and answers or closes from the notification:
+`POST /admin/push` signs it up (`{ token, sandbox, label, tickets, replies,
+apps }`), `DELETE /admin/push/:token` signs it off, `POST /admin/push/test`
+sends one. A push carries the app's name, the subject and a line of the
+message, never an email or an install id. In the app, each app's page
 shows whether it is sending, its numbers and an activity chart read day by
 day, and leads to funnels (the catalog's, and one built from any events),
 retention with weekly cohorts, engagement, audience, and every event broken

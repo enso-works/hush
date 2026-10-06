@@ -109,7 +109,9 @@ install is looked up by its id, with its events arriving live, and can be
 forgotten from there. Remote config is there too: each key's default and
 rules, an editor for both with what a device would get before saving, a
 revert to the catalog, and the history; and in Settings, the server's
-phones, each revocable, with a QR code to sign in another. A Feedback tab
+phones, each revocable, with a QR code to sign in another. With an APNs
+key on the server, the phone is notified of new feedback and users' replies,
+per app, and answers or closes one from the notification. A Feedback tab
 holds every app's
 feedback with the open count on the tab, filters by status, kind and app, a
 search, and the thread with a reply field (sent by email too when the user
@@ -386,6 +388,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `RETENTION_DAYS` | Raw events are deleted after this many days. Default 180. |
 | `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days: no batch, and no event dated inside the window. Default `RETENTION_DAYS`, when its events are gone too; 0 keeps every row. Shorter than `RETENTION_DAYS`, the row goes while its events stay, and an install that sends again before they go counts as new; the server warns at boot. Its tickets keep the install id. The dashboard's install total and Countries panel then count the installs seen in that window, not all time. New installs and retention count only the installs first seen inside the window, so a longer period (the 1y view) is cut to it and says so: an older install is on record only if it kept sending, and counting it would push the retention rate up. An install that sends again after its row went counts as new. |
 | `RC_API_KEY`, `RC_PROJECTS`, `RC_CURRENCY` | RevenueCat v2 secret key with read-only scopes; see `src/revenuecat.mjs`. `RC_STALE_MINUTES` (10), `RC_FLOOR_SECONDS` (60) and `RC_RATE_PER_MINUTE` (20) pace its refreshes. |
+| `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` (or `_BASE64`) | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app. `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` (or `_FILE`) | An App Store Connect API key, for campaign reports (below). The Admin role once, to create each app's report request; Sales and Reports after. `ASC_API_BASE` changes Apple's address, for tests. |
 | `DEMO` | `1`: a public read-only showcase with invented data. It wipes its database daily, so give it one of its own; it refuses a database with write keys. |
 | `PORT`, `MAIL_DRY_RUN` | `3000`; `1` logs mail instead of sending it. |
@@ -630,6 +633,15 @@ code is the credential, it is used up, and it takes 10 tries a minute per
 address; 404 for a code that is unknown, used or expired. Only hashes of
 codes and device tokens are stored (migration 010), and a phone's token
 works on every `/admin` path, like the admin token, until it is revoked.
+Push (migration 011): `POST /admin/push` `{ token, sandbox, label, tickets,
+replies, apps }` signs a phone up with its APNs token (again to change what
+it wants), `GET /admin/push?token=` reads it back with `configured` (whether
+the server has an APNs key), `DELETE /admin/push/:token` signs it off, and
+`POST /admin/push/test` `{ token }` sends one. A new ticket and a user's
+reply go to every phone that wants it: the app's name, the kind, the subject
+and a line of the message, and the phone's `label` so it opens the right
+server. Never an email or an install id. A paired phone's sign-up goes when
+the phone is revoked; a token Apple says is gone is forgotten.
 Writes must be `Content-Type: application/json`. CLI:
 `node src/cli.mjs apps:list | apps:add <slug> <name> | keys:create <app> <prod|dev> [label] | keys:list | keys:revoke <id> | rc:projects | rc:link <app> <project_id> | rc:sync | rc:charts | rc:poll | asc:request <app> | asc:sync [app] | config:show <app> | config:history <app> [key] | migrate`
 (`config:show` prints the `/v1/config` answer, built in the CLI from the
