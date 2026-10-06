@@ -81,6 +81,14 @@ export const cfg = {
   apnsKey: env('APNS_KEY_P8').replace(/\\n/g, '\n') || (env('APNS_KEY_P8_BASE64') && Buffer.from(env('APNS_KEY_P8_BASE64'), 'base64').toString('utf8')),
   // The app's bundle id; a build of the iOS app under another one sets it.
   apnsTopic: env('APNS_TOPIC', 'com.bavrk.hush'),
+  // Without an APNs key of its own, a server pushes to the App Store hush app
+  // through bavrk's relay (src/relay.mjs): sealed, so the relay sees a token
+  // and an opaque blob, never what was written. Only used for phones that
+  // turned notifications on. "off" turns it off.
+  pushRelay: ['off', 'false', '0'].includes(env('PUSH_RELAY').toLowerCase()) ? '' : env('PUSH_RELAY', 'https://hush.bavrk.com/push').replace(/\/+$/, ''),
+  // Runs this server as that relay (with its APNs key): /push/register and
+  // /push/send. The secret signs the passes; 32 characters at least.
+  relaySecret: env('PUSH_RELAY_SECRET'),
   // Apple's hosts; the tests point these at a local HTTP/2 server.
   apnsHost: env('APNS_HOST', 'https://api.push.apple.com'),
   apnsSandboxHost: env('APNS_SANDBOX_HOST', 'https://api.sandbox.push.apple.com'),

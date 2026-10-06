@@ -21,7 +21,8 @@ import { clientKey, dailyLimiter, isUuid, json, rateLimiter, readJson, router, s
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { createPairing, deviceAuthorized, listDevices, pair, revokeDevice } from './devices.mjs';
-import { pushConfigured, register as registerPush, testPush, unregister as unregisterPush } from './push.mjs';
+import { pushConfigured, pushVia, register as registerPush, testPush, unregister as unregisterPush } from './push.mjs';
+import { parseRegistration, parseSend, passFor, relay, relayOn } from './relay.mjs';
 import { migrate } from './migrate.mjs';
 import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
@@ -48,6 +49,11 @@ const forgetLimit = rateLimiter(10);
 // /admin/pair is the one admin route without the token; a code is 128 random
 // bits, so this only keeps a flood of guesses off the database.
 const pairLimit = rateLimiter(10);
+// The push relay's, per address and per phone: a server notifies about
+// feedback, which comes minutes apart, not many a second.
+const relayRegisterLimit = rateLimiter(20);
+const relaySendLimit = rateLimiter(600);
+const relayTokenLimit = rateLimiter(20);
 // A ticket sent with an email has no install to count five a day by, so the
 // same five count by caller address and app, in memory like the limits above.
 const unlinkedTicketLimit = dailyLimiter(MAX_PER_DAY);
@@ -474,13 +480,36 @@ r.post('/admin/pair', async (req, res) => {
 r.get('/admin/push', async (_req, res, { url }) => {
   const token = url.searchParams.get('token');
   const { rows } = token ? await q('SELECT sandbox, label, tickets, replies, apps FROM push_tokens WHERE token = $1', [token.toLowerCase()]) : { rows: [] };
-  return json(res, 200, { configured: pushConfigured(), signup: rows[0] ?? null });
+  return json(res, 200, { configured: pushConfigured(), via: pushVia(), signup: rows[0] ?? null });
 });
 
 r.post('/admin/push', async (req, res, { device }) => {
   const out = await registerPush(await readJson(req, 16_384), device ?? null);
   if (typeof out === 'string') return json(res, 400, { error: out });
   return json(res, 200, { configured: pushConfigured(), signup: out });
+});
+
+// The push relay (src/relay.mjs), when this server is one (PUSH_RELAY_SECRET
+// and an APNs key): public, like /v1, and keeping nothing.
+r.post('/push/register', async (req, res) => {
+  if (!relayOn()) return json(res, 404, { error: 'not a push relay' });
+  if (!relayRegisterLimit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
+  const reg = parseRegistration(await readJson(req, 4096));
+  if (typeof reg === 'string') return json(res, 400, { error: reg });
+  return json(res, 200, { pass: passFor(reg.token, reg.sandbox) });
+});
+
+r.post('/push/send', async (req, res) => {
+  if (!relayOn()) return json(res, 404, { error: 'not a push relay' });
+  if (!relaySendLimit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
+  const s = parseSend(await readJson(req, 8192));
+  if (typeof s === 'string') return json(res, 400, { error: s });
+  if (!relayTokenLimit(s.token)) return json(res, 429, { error: 'too many for this phone' });
+  const out = await relay(s);
+  if (out.status === 403) return json(res, 403, { error: 'not this token\'s pass' });
+  if (out.status === 410) return json(res, 410, { error: 'the phone is gone' });
+  if (out.status !== 200) return json(res, 502, { error: `Apple refused it: ${out.reason ?? 'unknown'}` });
+  return json(res, 200, { ok: true });
 });
 
 r.delete('/admin/push/:token', async (_req, res, { params }) => {
@@ -490,10 +519,10 @@ r.delete('/admin/push/:token', async (_req, res, { params }) => {
 
 r.post('/admin/push/test', async (req, res) => {
   const body = await readJson(req, 4096);
-  if (!pushConfigured()) return json(res, 503, { error: 'this server has no APNs key (APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8)' });
+  if (!pushConfigured()) return json(res, 503, { error: 'this server cannot push: no APNs key, and PUSH_RELAY is off' });
   const out = await testPush(body?.token ?? '');
   if (out.status === 404) return json(res, 404, { error: 'not signed up' });
-  if (!out.ok) return json(res, 502, { error: `Apple refused it: ${out.reason ?? out.status}` });
+  if (!out.ok) return json(res, 502, { error: pushVia() === 'relay' ? `the push relay refused it: ${out.reason ?? out.status}` : `Apple refused it: ${out.reason ?? out.status}` });
   return json(res, 200, { ok: true });
 });
 

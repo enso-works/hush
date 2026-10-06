@@ -4,7 +4,13 @@
 // A push carries the app's name, the ticket's kind and number and a line of
 // what was written, and the label the phone gave this server. Never an email
 // or an install id: a lock screen is seen by others.
-import { createPrivateKey, sign } from 'node:crypto';
+//
+// Two ways out. A server with an APNs key for the app's team sends to Apple
+// itself. Any other server sends through the relay (src/relay.mjs, run by
+// bavrk for the App Store app): it encrypts what the push says with the key
+// the phone gave it, so the relay only forwards an opaque blob, and the
+// phone's notification extension decrypts it.
+import { createCipheriv, createHash, createPrivateKey, randomBytes, sign } from 'node:crypto';
 import http2 from 'node:http2';
 
 import { cfg, log } from './config.mjs';
@@ -36,7 +42,11 @@ function signingKey() {
   return key;
 }
 
-export const pushConfigured = () => Boolean(cfg.apnsKeyId && cfg.apnsTeamId && cfg.apnsKey) && signingKey() !== null;
+/** Whether this server holds an APNs key and sends to Apple itself. */
+export const apnsConfigured = () => Boolean(cfg.apnsKeyId && cfg.apnsTeamId && cfg.apnsKey) && signingKey() !== null;
+/** How pushes leave: `apns`, `relay`, or null for not at all. */
+export const pushVia = () => (apnsConfigured() ? 'apns' : cfg.pushRelay ? 'relay' : null);
+export const pushConfigured = () => pushVia() !== null;
 
 let jwt = null;
 let jwtAt = 0;
@@ -112,12 +122,11 @@ const reasonOf = (body) => {
   }
 };
 
-/** Sends one push. Returns { ok, status, reason }; a dead token's row is deleted. */
-export async function sendPush({ token, sandbox }, payload, { collapseId } = {}) {
-  if (!pushConfigured()) return { ok: false, status: 0, reason: 'unconfigured' };
+/** One push to Apple with this server's key. Returns { ok, status, reason, dead }. */
+export async function deliver({ token, sandbox }, payload, { collapseId } = {}) {
   const host = sandbox ? cfg.apnsSandboxHost : cfg.apnsHost;
   const body = JSON.stringify(payload);
-  const headers = collapseId ? { 'apns-collapse-id': collapseId } : {};
+  const headers = { ...(collapseId ? { 'apns-collapse-id': collapseId } : {}) };
   let res = await post(host, token, body, headers);
   let reason = res.status === 200 ? null : reasonOf(res.body);
   if (STALE_JWT.has(reason)) {
@@ -125,12 +134,56 @@ export async function sendPush({ token, sandbox }, payload, { collapseId } = {})
     res = await post(host, token, body, headers);
     reason = res.status === 200 ? null : reasonOf(res.body);
   }
-  if (res.status === 410 || DEAD.has(reason)) {
-    await q('DELETE FROM push_tokens WHERE token = $1', [token]);
-  } else if (res.status !== 200) {
-    log.warn('APNs refused a push', { status: res.status, reason });
-  }
-  return { ok: res.status === 200, status: res.status, reason };
+  const dead = res.status === 410 || DEAD.has(reason);
+  if (!dead && res.status !== 200) log.warn('APNs refused a push', { status: res.status, reason });
+  return { ok: res.status === 200, status: res.status, reason, dead };
+}
+
+/**
+ * What a push says, sealed for the phone: AES-256-GCM with the key it gave
+ * this server, as nonce, ciphertext and tag in one base64 string (CryptoKit's
+ * combined form, which the notification extension opens).
+ */
+export function seal(content, keyB64) {
+  const key = Buffer.from(keyB64, 'base64');
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', key, nonce);
+  const ct = Buffer.concat([cipher.update(JSON.stringify(content), 'utf8'), cipher.final()]);
+  return Buffer.concat([nonce, ct, cipher.getAuthTag()]).toString('base64');
+}
+
+async function viaRelay(row, payload) {
+  if (!row.pass || !row.enc_key) return { ok: false, status: 0, reason: 'no relay pass' };
+  // The lock screen's words, sealed; the relay sees the token and an opaque blob.
+  const { aps, ...data } = payload;
+  const content = { title: aps.alert.title, subtitle: aps.alert.subtitle ?? null, body: aps.alert.body, ...data };
+  const res = await fetch(`${cfg.pushRelay}/send`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      token: row.token,
+      sandbox: row.sandbox,
+      pass: row.pass,
+      sealed: seal(content, row.enc_key),
+      // Which phone key opens it, and a per-ticket stack: both opaque to the relay.
+      label: row.label ?? null,
+      thread: aps['thread-id'] ? createHash('sha256').update(`${row.label}:${aps['thread-id']}`).digest('base64url').slice(0, 22) : null,
+      category: aps.category ?? null,
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.status !== 200 && res.status !== 410) log.warn('the push relay refused a push', { status: res.status, error: body.error });
+  return { ok: res.status === 200, status: res.status, reason: body.error ?? null, dead: res.status === 410 };
+}
+
+/** Sends one push, to Apple or through the relay. A dead token's row is deleted. */
+export async function sendPush(row, payload, opts = {}) {
+  const via = pushVia();
+  if (!via) return { ok: false, status: 0, reason: 'unconfigured' };
+  const out = via === 'apns' ? await deliver(row, payload, opts) : await viaRelay(row, payload);
+  if (out.dead) await q('DELETE FROM push_tokens WHERE token = $1', [row.token]);
+  return out;
 }
 
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
@@ -153,7 +206,7 @@ export function notify({ type, app, ticketId, kind, subject, text }) {
     const { rows: apps } = await q('SELECT name FROM apps WHERE slug = $1', [app]);
     const name = apps[0]?.name ?? app;
     const { rows } = await q(
-      `SELECT token, sandbox, label FROM push_tokens
+      `SELECT token, sandbox, label, pass, enc_key FROM push_tokens
         WHERE ${type === 'reply' ? 'replies' : 'tickets'} AND (apps IS NULL OR $1 = ANY(apps))`,
       [app],
     );
@@ -192,16 +245,21 @@ export async function register(body, deviceId) {
   for (const f of ['sandbox', 'tickets', 'replies']) {
     if (body[f] != null && typeof body[f] !== 'boolean') return `${f}: true or false`;
   }
+  // From the relay, through the app: what lets this server push through it, and the key to seal pushes with.
+  if (body.pass != null && (typeof body.pass !== 'string' || !/^[A-Za-z0-9_-]{20,200}$/.test(body.pass))) return 'pass: the relay\'s pass for this token';
+  if (body.key != null && (typeof body.key !== 'string' || Buffer.from(body.key, 'base64').length !== 32)) return 'key: 32 bytes, base64';
   if (body.apps != null && !(Array.isArray(body.apps) && body.apps.length <= 100 && body.apps.every((a) => typeof a === 'string' && /^[a-z][a-z0-9-]{0,39}$/.test(a)))) {
     return 'apps: a list of app slugs, or null for every app';
   }
   const { rows } = await q(
-    `INSERT INTO push_tokens (token, device_id, sandbox, label, tickets, replies, apps)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO push_tokens (token, device_id, sandbox, label, tickets, replies, apps, pass, enc_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      ON CONFLICT (token) DO UPDATE SET device_id = EXCLUDED.device_id, sandbox = EXCLUDED.sandbox, label = EXCLUDED.label,
-       tickets = EXCLUDED.tickets, replies = EXCLUDED.replies, apps = EXCLUDED.apps, updated_at = now()
+       tickets = EXCLUDED.tickets, replies = EXCLUDED.replies, apps = EXCLUDED.apps,
+       pass = EXCLUDED.pass, enc_key = EXCLUDED.enc_key, updated_at = now()
      RETURNING token, sandbox, label, tickets, replies, apps`,
-    [body.token.toLowerCase(), deviceId, body.sandbox ?? false, body.label ?? null, body.tickets ?? true, body.replies ?? true, body.apps ?? null],
+    [body.token.toLowerCase(), deviceId, body.sandbox ?? false, body.label ?? null, body.tickets ?? true, body.replies ?? true, body.apps ?? null,
+      body.pass ?? null, body.key ?? null],
   );
   return rows[0];
 }
@@ -213,7 +271,7 @@ export async function unregister(token) {
 
 /** A push to one phone to show it works. */
 export async function testPush(token) {
-  const { rows } = await q('SELECT token, sandbox, label FROM push_tokens WHERE token = $1', [String(token).toLowerCase()]);
+  const { rows } = await q('SELECT token, sandbox, label, pass, enc_key FROM push_tokens WHERE token = $1', [String(token).toLowerCase()]);
   if (!rows[0]) return { ok: false, status: 404, reason: 'not signed up' };
   return sendPush(rows[0], {
     aps: { alert: { title: 'hush', body: 'Notifications work: new feedback and replies arrive here.' }, sound: 'default' },
