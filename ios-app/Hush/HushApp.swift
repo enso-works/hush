@@ -12,6 +12,8 @@ struct HushApp: App {
     /// UI tests start from nothing every launch, and leave the Keychain alone.
     private static func store() -> ServerStore {
         if ProcessInfo.processInfo.arguments.contains("-ui-testing") {
+            // And from the default filters and orders, whatever the last run picked.
+            if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
             let file = FileManager.default.temporaryDirectory.appending(component: "servers-\(UUID().uuidString).json")
             return ServerStore(file: file, secrets: MemorySecretStore())
         }

@@ -1,15 +1,18 @@
 import HushKit
 import SwiftUI
 
-/// Every app on one server, as the web dashboard's overview shows them.
+/// Every app on one server, as the web dashboard's overview shows them, in
+/// the order picked, and searchable once there are many.
 struct OverviewView: View {
     let server: Server
 
     @Environment(AppModel.self) private var model
     @AppStorage("days") private var days = 30
     @AppStorage("env") private var env = Env.prod
+    @AppStorage("appOrder") private var order = AppOrder.active
     @State private var answer: AppsAnswer?
     @State private var error: HushError?
+    @State private var search = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private struct Query: Equatable { let server: Server; let days: Int; let env: Env }
@@ -17,23 +20,38 @@ struct OverviewView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
-                PeriodPicker(days: $days)
                 if let error { ErrorNote(error: error) { await load() } }
                 content
             }
             .padding(16)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            FilterBar(extraActive: order != .active, reset: { order = .active }) {
+                Menu {
+                    Picker("Order", selection: $order) {
+                        ForEach(AppOrder.allCases) { Text($0.title).tag($0) }
+                    }
+                } label: {
+                    Chip(title: order.title, symbol: "arrow.up.arrow.down", active: order != .active)
+                }
+                .accessibilityLabel("Order, \(order.title)")
+                .sensoryFeedback(.selection, trigger: order)
+            }
+            .background(.bar)
+        }
+        .modifier(SearchApps(text: $search, shown: (answer?.apps.count ?? 0) > 5))
         .background(Color(.systemGroupedBackground))
         .navigationTitle(server.name)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { DataMenu(server: server, env: $env) }
+            ToolbarItem(placement: .topBarTrailing) { ServerMenu(server: server) }
         }
         .navigationDestination(for: AppSummary.self) { app in
-            AppView(server: server, slug: app.app, name: app.name, kept: answer?.installRetentionDays)
+            AppView(server: server, app: app, client: model.client(for: server), kept: answer?.installRetentionDays)
+        }
+        .navigationDestination(for: InstallRoute.self) { route in
+            InstallView(server: server, id: route.id)
         }
         .onAppear { Telemetry.screen("overview") }
-        .sensoryFeedback(.selection, trigger: days)
-        .sensoryFeedback(.selection, trigger: env)
         .task(id: Query(server: server, days: days, env: env)) { await load() }
         .refreshable { await load() }
         .onChange(of: server) { answer = nil }
@@ -45,15 +63,21 @@ struct OverviewView: View {
                                    description: Text("Register one on the server with `apps:add`, then create a write key with `keys:create`."))
         } else if answer != nil || error == nil {
             let shown = answer ?? Placeholder.apps
+            let apps = order.sorted(shown.apps).filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.app.contains(search.lowercased()) }
             VStack(spacing: 16) {
                 Totals(answer: shown, days: days)
-                AppGrid(apps: shown.apps, days: days)
+                if apps.isEmpty {
+                    ContentUnavailableView.search(text: search)
+                } else {
+                    AppGrid(apps: apps, days: days)
+                }
             }
             .placeholder(answer == nil)
             // The first answer replaces the placeholder whole, with a fade:
             // numbers rolling up from invented values would say something false.
             .id(answer == nil)
             .transition(.opacity)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: apps.map(\.app))
         }
     }
 
@@ -66,7 +90,47 @@ struct OverviewView: View {
             }
         } catch is CancellationError {
         } catch {
-            self.error = HushError(error)
+            if !Task.isCancelled { self.error = HushError(error) }
+        }
+    }
+}
+
+/// The order of the app cards.
+enum AppOrder: String, CaseIterable, Identifiable {
+    case active, installs, feedback, recent, name
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .active: "Most active"
+        case .installs: "Most installs"
+        case .feedback: "Open feedback"
+        case .recent: "Latest event"
+        case .name: "Name"
+        }
+    }
+
+    func sorted(_ apps: [AppSummary]) -> [AppSummary] {
+        switch self {
+        case .active: apps.sorted { ($0.dau, $0.mau) > ($1.dau, $1.mau) }
+        case .installs: apps.sorted { $0.totalInstalls > $1.totalInstalls }
+        case .feedback: apps.sorted { $0.openTickets > $1.openTickets }
+        case .recent: apps.sorted { ($0.lastEvent ?? .distantPast) > ($1.lastEvent ?? .distantPast) }
+        case .name: apps.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
+    }
+}
+
+/// A search field for the apps, once there are enough to need one.
+private struct SearchApps: ViewModifier {
+    @Binding var text: String
+    let shown: Bool
+
+    func body(content: Content) -> some View {
+        if shown {
+            content.searchable(text: $text, prompt: "App name")
+        } else {
+            content
         }
     }
 }
@@ -86,17 +150,15 @@ private struct AppGrid: View {
     }
 }
 
-/// Which builds' data to show, and which server, when there are several.
-private struct DataMenu: View {
+/// Looking up an install, and the other servers, when there are several.
+private struct ServerMenu: View {
     let server: Server
-    @Binding var env: Env
     @Environment(AppModel.self) private var model
 
     var body: some View {
         Menu {
-            Picker("Data", selection: $env) {
-                Text("Release builds (prod)").tag(Env.prod)
-                Text("Development (dev)").tag(Env.dev)
+            NavigationLink(value: InstallRoute(id: "")) {
+                Label("Look Up an Install", systemImage: "person.crop.rectangle.badge.magnifyingglass")
             }
             if model.servers.count > 1 {
                 Section("Server") {
@@ -110,12 +172,7 @@ private struct DataMenu: View {
                 }
             }
         } label: {
-            // Release builds are the default; development data says so where it shows.
-            if env == .dev {
-                Label("Dev", systemImage: "hammer").labelStyle(.titleAndIcon)
-            } else {
-                Label("Release builds", systemImage: "line.3.horizontal.decrease.circle")
-            }
+            Label("More", systemImage: "ellipsis.circle")
         }
     }
 }
