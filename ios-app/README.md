@@ -32,7 +32,7 @@ tickets of its own: give it a pairing link from that server's
 `/admin/pairing` as `TEST_RUNNER_PAIR_LINK` (it skips without one).
 `ConfigTests` (the same link, on a server whose catalog gives Stillwater
 `paywall_variant`, as the demo's does) overrides and reverts a key and
-opens Phones. `AppTests` walks an app's screens; `TEST_RUNNER_INSTALL_ID`, an install id
+opens Phones. `ScrollShots` saves each screen's header while it scrolls, to check by eye on both iOS 18 and iOS 26, whose bars differ. `AppTests` walks an app's screens; `TEST_RUNNER_INSTALL_ID`, an install id
 from one of the demo's tickets, adds a look at a real install. With
 `TEST_RUNNER_SCREENSHOTS_DIR=<dir>` on the `xcodebuild test` line they save
 what each screen shows there.
