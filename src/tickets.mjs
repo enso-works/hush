@@ -286,7 +286,20 @@ export async function unlinkOldClientTickets() {
 const LINKS = `CASE WHEN t.email IS NULL THEN t.install END AS install,
                CASE WHEN t.email IS NULL THEN t.rc_id END AS rc_id`;
 
-export async function adminList(status, kind) {
+// The text a search matches: a #123 or a bare number is the ticket's id;
+// anything else is found in the subject, the message, the email or a reply.
+const matches = (text, like) => `(${text}::text IS NULL
+   OR t.id::text = ltrim(${text}, '#')
+   OR t.subject ILIKE ${like} OR t.message ILIKE ${like} OR t.email ILIKE ${like}
+   OR EXISTS (SELECT 1 FROM ticket_replies r WHERE r.ticket_id = t.id AND r.body ILIKE ${like}))`;
+
+/**
+ * A page of tickets, open first, then newest, with every status's count under
+ * the same app, kind and search, so a list can show its tabs' numbers without
+ * loading each. `more` says whether a next page exists.
+ */
+export async function adminList({ status = null, kind = null, app = null, search = null, limit = 200, offset = 0 } = {}) {
+  const like = search ? `%${search.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
   const { rows } = await q(
     `SELECT t.id, t.app, t.kind, ${LINKS}, t.email, t.subject, t.status, t.created_at, t.updated_at,
             left(t.message, 160) AS preview,
@@ -294,11 +307,23 @@ export async function adminList(status, kind) {
      FROM tickets t
      WHERE ($1::text IS NULL OR t.status = $1)
        AND ($2::text IS NULL OR t.kind = $2)
-     ORDER BY (t.status = 'open') DESC, t.created_at DESC
-     LIMIT 200`,
-    [status ?? null, kind ?? null],
+       AND ($3::text IS NULL OR t.app = $3)
+       AND ${matches('$4', '$5')}
+     ORDER BY (t.status = 'open') DESC, t.created_at DESC, t.id DESC
+     LIMIT $6 OFFSET $7`,
+    [status, kind, app, search, like, limit + 1, offset],
   );
-  return rows;
+  const { rows: counts } = await q(
+    `SELECT t.status, count(*)::int AS n FROM tickets t
+     WHERE ($1::text IS NULL OR t.kind = $1) AND ($2::text IS NULL OR t.app = $2) AND ${matches('$3', '$4')}
+     GROUP BY t.status`,
+    [kind, app, search, like],
+  );
+  return {
+    tickets: rows.slice(0, limit),
+    more: rows.length > limit,
+    counts: Object.fromEntries(['open', 'answered', 'closed'].map((s) => [s, counts.find((c) => c.status === s)?.n ?? 0])),
+  };
 }
 
 export async function adminGet(id) {

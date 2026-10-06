@@ -593,8 +593,10 @@ token, below), is what the dashboard reads: `/admin/session` (asked first, to kn
 sign-in), `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`),
 `/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
 `/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
-`/admin/installs/:id` (+ `/forget`), `/admin/tickets`, `/admin/tickets/:id`
-(+ `/reply`, `/status`, and `DELETE`), `/admin/revenue` (`?refresh=1` asks RevenueCat
+`/admin/installs/:id` (+ `/forget`), `/admin/tickets`
+(`?status=&kind=&app=&q=&limit=&offset=`; `q` matches the subject, the message,
+the email, a reply or `#id`; the answer has `more` and each status's `counts`),
+`/admin/tickets/:id` (+ `/reply`, `/status`, and `DELETE`), `/admin/revenue` (`?refresh=1` asks RevenueCat
 now), and for remote config `/admin/apps/:app/config` (every key with its
 catalog entry, override and what is served, and the orphaned overrides),
 `/config/history?key=&limit=&before=`, `/config/preview?install=&platform=&version=&channel=&language=&pro=&key=&draft=`,
