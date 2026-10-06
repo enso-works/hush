@@ -65,6 +65,29 @@ final class AppData {
         await load(scope, reduceMotion: reduceMotion, force: true)
     }
 
+    /// The app's remote config, read by its screens and kept here so a write
+    /// shows on the list and the key at once.
+    private(set) var config: ConfigAnswer?
+    private(set) var configError: HushError?
+
+    func loadConfig() async {
+        do {
+            config = try await client.config(slug)
+            configError = nil
+        } catch is CancellationError {
+        } catch {
+            if !Task.isCancelled { configError = HushError(error) }
+        }
+    }
+
+    /// A key as a write left it.
+    func replace(_ key: ConfigKey, revision: String) {
+        guard var c = config, let i = c.keys.firstIndex(where: { $0.key == key.key }) else { return }
+        c.keys[i] = key
+        c.revision = revision
+        config = c
+    }
+
     /// New installs and retention count only installs first seen inside the
     /// retention window: a longer period is cut to it.
     func cut(days: Int) -> Int? {
@@ -76,6 +99,7 @@ final class AppData {
 enum AppRoute: Hashable {
     case funnels, retention, engagement, audience, events
     case event(String)
+    case config, configKey(String), configHistory(key: String?), configPreview
 }
 
 /// One install, from any screen.
