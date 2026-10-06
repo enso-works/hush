@@ -102,7 +102,9 @@ each app's page: whether it is sending, its numbers, an activity chart to
 read day by day, and a screen each for funnels (the catalog's, or one built
 on the phone), retention and weekly cohorts, engagement, audience, and
 events, each broken down by its props. The period, release or development
-data, and the build channel are filters at the top of every screen. An
+data, and the build channel are filters at the top of every screen, and in
+the title's menu once they have scrolled away. The server's name, the
+Overview's title, switches servers. An
 install is looked up by its id, with its events arriving live, and can be
 forgotten from there. Remote config is there too: each key's default and
 rules, an editor for both with what a device would get before saving, a
