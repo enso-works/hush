@@ -45,6 +45,8 @@ public enum HushError: Error, Equatable, Sendable {
     case readOnly
     /// 404: the ticket or app is gone.
     case notFound
+    /// 409: someone changed it since it was read (a config key); read it again.
+    case conflict
     /// Any other answer that is not a success, with the server's `error`.
     case server(status: Int, message: String)
     /// No answer: offline, the host unknown, TLS refused, a timeout.
@@ -163,6 +165,7 @@ public struct AdminClient: Sendable {
         default:
             let message = (try? HushJSON.decoder.decode(ErrorBody.self, from: data))?.error ?? HTTPURLResponse.localizedString(forStatusCode: http.statusCode)
             if http.statusCode == 403, message == "read-only demo" { throw HushError.readOnly }
+            if http.statusCode == 409, message == "changed since you opened it" { throw HushError.conflict }
             throw HushError.server(status: http.statusCode, message: message)
         }
     }

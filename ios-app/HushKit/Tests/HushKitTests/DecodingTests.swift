@@ -121,3 +121,28 @@ func dates(_ s: String) throws {
     #expect(d.events.first?.props["minutes"] == .number(8))
     #expect(d.tickets.allSatisfy { $0.app == row.app })
 }
+
+@Test func remoteConfig() throws {
+    let config = try decode(ConfigAnswer.self, "config")
+    #expect(config.keys.map(\.key) == ["paywall_variant", "review_prompt_after", "streak_freeze"])
+    let variant = try #require(config.keys.first)
+    #expect(variant.type == .string && !variant.overridden && variant.change == 0)
+    let rule = try #require(variant.effective.rules.first)
+    #expect(rule.when.platform == ["ios"] && rule.when.version == ">=1.4.0" && rule.rollout == 50)
+    #expect(rule.value == .string("b"))
+
+    let preview = try decode(ConfigPreview.self, "config-preview")
+    #expect(preview.context.platform == "ios")
+    let outcomes = try #require(preview.keys.first).outcomes
+    #expect(outcomes.map(\.share).reduce(0, +) == 100)
+    #expect(outcomes.last?.rule == -1, "-1 is the default")
+}
+
+@Test func anOverrideSaysWhichPartsItOverrides() throws {
+    let json = #"{"rules": [{"when": {}, "value": true}], "note": null, "updated_at": "2026-10-06T10:00:00.000Z"}"#
+    let o = try HushJSON.decoder.decode(ConfigOverride.self, from: Data(json.utf8))
+    #expect(o.default == nil, "no default key: the catalog's default stands")
+    #expect(o.rules?.first?.rollout == 100, "a rule without rollout is every device")
+    let withNull = try HushJSON.decoder.decode(ConfigOverride.self, from: Data(#"{"default": null, "note": null}"#.utf8))
+    #expect(withNull.default == .null)
+}
