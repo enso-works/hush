@@ -21,6 +21,7 @@
 [![npm: @bavrk/hush](https://img.shields.io/npm/v/@bavrk/hush?label=%40bavrk%2Fhush)](https://www.npmjs.com/package/@bavrk/hush)
 [![npm: @bavrk/hush-expo](https://img.shields.io/npm/v/@bavrk/hush-expo?label=%40bavrk%2Fhush-expo)](https://www.npmjs.com/package/@bavrk/hush-expo)
 [![npm: @bavrk/hush-capacitor](https://img.shields.io/npm/v/@bavrk/hush-capacitor?label=%40bavrk%2Fhush-capacitor)](https://www.npmjs.com/package/@bavrk/hush-capacitor)
+[![Swift Package: Hush](https://img.shields.io/github/v/tag/enso-works/hush?filter=%21%2A-v%2A&label=Hush%20%28Swift%29&color=F05138)](swift/README.md)
 [![test](https://github.com/enso-works/hush/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/enso-works/hush/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
