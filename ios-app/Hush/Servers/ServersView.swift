@@ -41,6 +41,19 @@ struct ServersView: View {
             } footer: {
                 Text("Tokens stay in this device's Keychain. Removing a server forgets its token.")
             }
+            if let current = model.current {
+                Section {
+                    NavigationLink {
+                        PhonesView(server: current)
+                    } label: {
+                        Label("Phones", systemImage: "iphone")
+                    }
+                } header: {
+                    Text(current.name)
+                } footer: {
+                    Text("The phones signed in to this server, and a code to sign in another.")
+                }
+            }
             Section {
                 Button("Scan the dashboard's QR code", systemImage: "qrcode.viewfinder") { scanning = true }
                 Button("Add server", systemImage: "plus") { adding = true }
