@@ -152,10 +152,10 @@ public struct ConfigAnswer: Decodable, Sendable {
     }
 
     public let app: String
-    public let revision: String
+    public var revision: String
     public let sizeBytes: Int
     public let limits: ConfigLimits
-    public let keys: [ConfigKey]
+    public var keys: [ConfigKey]
     /// Overrides for keys the catalog no longer has. Never served.
     public let orphans: [Orphan]
 
@@ -207,7 +207,7 @@ public struct ConfigHistory: Decodable, Sendable {
 }
 
 /// The device to preview for: what it reports, or an install whose last report fills the gaps.
-public struct PreviewContext: Sendable, Hashable, Codable {
+public struct DeviceContext: Sendable, Hashable, Codable {
     public var platform: String?
     public var version: String?
     public var channel: String?
@@ -321,7 +321,7 @@ extension AdminClient {
     }
 
     /// What a device would get. With `key` and `draft`, that key as it would be after the edit.
-    public func configPreview(_ slug: String, _ context: PreviewContext, key: String? = nil, draft: ConfigWrite? = nil) async throws -> ConfigPreview {
+    public func configPreview(_ slug: String, _ context: DeviceContext, key: String? = nil, draft: ConfigWrite? = nil) async throws -> ConfigPreview {
         var q = context.items
         q["key"] = key
         if let draft {

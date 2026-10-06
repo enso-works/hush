@@ -156,7 +156,7 @@ final class Stub: URLProtocol, @unchecked Sendable {
         }
 
         Stub.handler = { _ in (200, try fixture("config-preview")) }
-        _ = try await client.configPreview("pace", PreviewContext(platform: "ios", pro: true), key: "paywall_variant",
+        _ = try await client.configPreview("pace", DeviceContext(platform: "ios", pro: true), key: "paywall_variant",
                                            draft: ConfigWrite(base: 0, default: .string("c")))
         let items = URLComponents(url: try #require(Stub.seen.last?.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
         let q = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
@@ -244,7 +244,7 @@ func theLiveDemo() async throws {
     _ = try await client.cohorts(slug, Scope())
     let config = try await client.config(slug)
     if let key = config.keys.first {
-        _ = try await client.configPreview(slug, PreviewContext(platform: "ios"), key: key.key, draft: ConfigWrite(base: key.change, default: key.effective.default))
+        _ = try await client.configPreview(slug, DeviceContext(platform: "ios"), key: key.key, draft: ConfigWrite(base: key.change, default: key.effective.default))
         _ = try await client.configHistory(slug, key: key.key)
     }
     let event = try #require(detail.events.first).name
