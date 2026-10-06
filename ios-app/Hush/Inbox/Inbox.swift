@@ -11,6 +11,8 @@ final class Inbox {
 
     /// What the list shows. Changing it reloads (the view's task).
     var query = TicketQuery(status: .open)
+    /// The thread open beside or over the list, kept here so another screen can open one.
+    var selection: ServerID?
     private(set) var tickets: [TicketSummary] = []
     private(set) var counts: TicketPage.Counts?
     private(set) var more = false

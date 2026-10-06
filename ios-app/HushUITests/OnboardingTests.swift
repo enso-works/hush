@@ -28,9 +28,6 @@ final class OnboardingTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Active installs"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Activity"].exists)
         snap(app, "app")
-        app.swipeUp()
-        XCTAssertTrue(app.staticTexts["Retention"].waitForExistence(timeout: 5))
-        snap(app, "app-retention")
     }
 
     func testRemovingAServerAsksFirst() {

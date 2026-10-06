@@ -90,6 +90,15 @@ final class AppModel {
     /// Feedback with a filter, from another screen: an app's open messages.
     func showFeedback(app: String? = nil, status: TicketStatus? = .open) {
         inbox?.query = TicketQuery(status: status, app: app)
+        inbox?.selection = nil
+        tab = .feedback
+    }
+
+    /// One thread, from another screen (an install's tickets): the list
+    /// shows every status, so the thread's row is in it whatever its status.
+    func showTicket(_ id: ServerID) {
+        inbox?.query = TicketQuery()
+        inbox?.selection = id
         tab = .feedback
     }
 

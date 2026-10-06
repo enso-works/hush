@@ -28,11 +28,15 @@ final class MotionShots: XCTestCase {
         app.launchArguments = ["-ui-testing", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXL"]
         app.launch()
         app.buttons["Try the demo"].tap()
-        XCTAssertTrue(app.staticTexts["Pace"].waitForExistence(timeout: 15))
+        // The cards are lazy: at this size they are made as they scroll in.
+        XCTAssertTrue(app.staticTexts["Open feedback"].waitForExistence(timeout: 15))
         save("large-overview")
         app.swipeUp()
+        app.swipeUp()
         save("large-overview-cards")
-        app.staticTexts["Stillwater"].firstMatch.tap()
+        let card = app.staticTexts["Stillwater"].firstMatch
+        for _ in 0..<4 where !card.isHittable { app.swipeUp() }
+        card.tap()
         XCTAssertTrue(app.staticTexts["Activity"].waitForExistence(timeout: 15))
         save("large-app")
         app.swipeUp()

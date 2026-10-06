@@ -86,3 +86,38 @@ func dates(_ s: String) throws {
     #expect(t.kind == .other("praise"))
     #expect(t.status.rawValue == "snoozed")
 }
+
+@Test func insights() throws {
+    let funnels = try decode(FunnelsAnswer.self, "funnels").funnels
+    #expect(funnels.map(\.name).prefix(2) == ["First run", "Paywall"])
+    let first = try #require(funnels.first)
+    #expect(first.windowDays == 7)
+    #expect(first.steps.first?.medianSeconds == nil, "the first step has no time from a step before")
+    #expect(first.steps.dropFirst().allSatisfy { $0.medianSeconds != nil })
+    #expect(try decode(BuiltFunnel.self, "funnel").steps.map(\.event) == ["paywall_viewed", "purchase_started"])
+
+    let cohorts = try decode(CohortsAnswer.self, "cohorts")
+    #expect(cohorts.weeks == 8)
+    let last = try #require(cohorts.cohorts.last)
+    #expect(last.active.first == last.installs, "week 0 is every install of the week")
+    #expect(last.active.last == .some(nil), "a week still to come is nil")
+
+    let keys = try HushJSON.decoder.decode(PropsAnswer.self, from: fixture("props")).keys
+    #expect(keys.contains { $0.key == "entry" })
+    let rows = try HushJSON.decoder.decode(BreakdownAnswer.self, from: fixture("breakdown")).rows
+    #expect(rows.first?.value == "launch")
+    #expect(rows.allSatisfy { $0.installs <= $0.n })
+
+    let detail = try decode(AppDetail.self, "app")
+    #expect(detail.breakdowns != nil && detail.unknown != nil)
+}
+
+@Test func install() throws {
+    let d = try decode(InstallDetail.self, "install")
+    let row = try #require(d.install)
+    #expect(row.id == d.id)
+    #expect(row.firstSeen <= row.lastSeen)
+    #expect(!d.events.isEmpty)
+    #expect(d.events.first?.props["minutes"] == .number(8))
+    #expect(d.tickets.allSatisfy { $0.app == row.app })
+}

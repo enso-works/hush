@@ -97,7 +97,14 @@ release.
 Phones: a QR code that signs the hush iOS app in with a token of its own
 (the admin token never leaves the server), and the phones signed in, each
 revocable on its own. The code works once, for ten minutes. On the phone the
-app shows the Overview and each app's page, and a Feedback tab: every app's
+app shows the Overview (sorted by activity, installs, feedback or name) and
+each app's page: whether it is sending, its numbers, an activity chart to
+read day by day, and a screen each for funnels (the catalog's, or one built
+on the phone), retention and weekly cohorts, engagement, audience, and
+events, each broken down by its props. The period, release or development
+data, and the build channel are filters at the top of every screen. An
+install is looked up by its id, with its events arriving live, and can be
+forgotten from there. A Feedback tab holds every app's
 feedback with the open count on the tab, filters by status, kind and app, a
 search, and the thread with a reply field (sent by email too when the user
 left an address), close, reopen, delete and quick replies. On an iPad the

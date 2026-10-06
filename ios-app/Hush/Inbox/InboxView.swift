@@ -9,7 +9,6 @@ struct InboxView: View {
     @Bindable var inbox: Inbox
 
     @Environment(AppModel.self) private var model
-    @State private var selection: ServerID?
     @State private var search = ""
     @State private var apps: [String: String] = [:]
     @State private var editingReplies = false
@@ -18,7 +17,7 @@ struct InboxView: View {
 
     var body: some View {
         NavigationSplitView(columnVisibility: $columns) {
-            TicketList(inbox: inbox, apps: apps, selection: $selection, searching: !search.isEmpty)
+            TicketList(inbox: inbox, apps: apps, selection: $inbox.selection, searching: !search.isEmpty)
                 .navigationTitle("Feedback")
                 .searchable(text: $search, prompt: "Subject, message, email or #id")
                 .toolbar {
@@ -27,8 +26,8 @@ struct InboxView: View {
                     }
                 }
         } detail: {
-            if let selection {
-                TicketView(inbox: inbox, id: selection, appName: { apps[$0] ?? $0 }, deleted: { self.selection = nil })
+            if let selection = inbox.selection {
+                TicketView(inbox: inbox, id: selection, appName: { apps[$0] ?? $0 }, deleted: { inbox.selection = nil })
                     .id(selection)
             } else {
                 ContentUnavailableView("No message selected", systemImage: "bubble.left.and.bubble.right",

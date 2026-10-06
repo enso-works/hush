@@ -137,7 +137,10 @@ public struct AdminClient: Sendable {
     }
 
     func send<T: Decodable>(_ method: String, _ path: [String], query: [String: String] = [:], body: (any Encodable)? = nil, withToken: Bool = true) async throws -> T {
-        let r = try request(method, path, query: query, body: body, withToken: withToken)
+        try await send(try request(method, path, query: query, body: body, withToken: withToken))
+    }
+
+    func send<T: Decodable>(_ r: URLRequest) async throws -> T {
         let data: Data
         let response: URLResponse
         do {
