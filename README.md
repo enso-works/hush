@@ -104,7 +104,11 @@ on the phone), retention and weekly cohorts, engagement, audience, and
 events, each broken down by its props. The period, release or development
 data, and the build channel are filters at the top of every screen. An
 install is looked up by its id, with its events arriving live, and can be
-forgotten from there. A Feedback tab holds every app's
+forgotten from there. Remote config is there too: each key's default and
+rules, an editor for both with what a device would get before saving, a
+revert to the catalog, and the history; and in Settings, the server's
+phones, each revocable, with a QR code to sign in another. A Feedback tab
+holds every app's
 feedback with the open count on the tab, filters by status, kind and app, a
 search, and the thread with a reply field (sent by email too when the user
 left an address), close, reopen, delete and quick replies. On an iPad the
