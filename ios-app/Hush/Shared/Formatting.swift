@@ -22,7 +22,7 @@ func when(_ date: Date?, now: Date = .now) -> String {
 }
 
 /// `meditation_completed` as `Meditation completed`.
-func eventLabel(_ name: String) -> String {
+nonisolated func eventLabel(_ name: String) -> String {
     let words = name.split(separator: "_").joined(separator: " ")
     return words.prefix(1).uppercased() + words.dropFirst()
 }

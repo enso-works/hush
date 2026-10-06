@@ -37,12 +37,27 @@ func decode<T: Decodable>(_ type: T.Type, _ name: String) throws -> T {
 }
 
 @Test func ticketList() throws {
-    let tickets = try HushJSON.decoder.decode(TicketsAnswer.self, from: fixture("tickets")).tickets
-    #expect(!tickets.isEmpty)
+    let page = try HushJSON.decoder.decode(TicketPage.self, from: fixture("tickets"))
+    #expect(!page.tickets.isEmpty)
     // A ticket with an email is never linked to an install.
-    for t in tickets where t.email != nil {
+    for t in page.tickets where t.email != nil {
         #expect(t.install == nil && t.rcId == nil)
     }
+    // The fixture is an older server's answer: everything at once, no counts.
+    #expect(page.counts == nil && !page.more)
+}
+
+@Test func anOlderServersListIsFilteredHereAsTheServerWould() throws {
+    let page = try HushJSON.decoder.decode(TicketPage.self, from: fixture("tickets"))
+    let app = try #require(page.tickets.first).app
+    let open = page.filtered(by: TicketQuery(status: .open, app: app))
+    #expect(open.tickets.allSatisfy { $0.status == .open && $0.app == app })
+    let counts = try #require(open.counts)
+    #expect(counts.all == page.tickets.filter { $0.app == app }.count, "the counts ignore the status")
+    #expect(counts.open == open.tickets.count)
+    let one = try #require(page.tickets.last)
+    #expect(page.filtered(by: TicketQuery(search: "#\(one.id)")).tickets.map(\.id) == [one.id])
+    #expect(page.filtered(by: TicketQuery(search: "nothing-like-this")).tickets.isEmpty)
 }
 
 @Test func ticketThread() throws {

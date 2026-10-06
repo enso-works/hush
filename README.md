@@ -96,7 +96,12 @@ release.
 
 Phones: a QR code that signs the hush iOS app in with a token of its own
 (the admin token never leaves the server), and the phones signed in, each
-revocable on its own. The code works once, for ten minutes.
+revocable on its own. The code works once, for ten minutes. On the phone the
+app shows the Overview and each app's page, and a Feedback tab: every app's
+feedback with the open count on the tab, filters by status, kind and app, a
+search, and the thread with a reply field (sent by email too when the user
+left an address), close, reopen, delete and quick replies. On an iPad the
+list and the thread sit side by side.
 
 The images come from the live demo; `npm run shots` in `dashboard/` takes
 them again.

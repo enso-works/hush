@@ -99,6 +99,19 @@ final class Stub: URLProtocol, @unchecked Sendable {
         #expect(body?["close"] as? Bool == true)
     }
 
+    @Test func aTicketQueryIsTheServersFilters() async throws {
+        let client = Stub.client { _ in (200, Data(#"{"tickets":[],"more":true,"counts":{"open":3,"answered":1,"closed":0}}"#.utf8)) }
+        let page = try await client.tickets(TicketQuery(status: .open, kind: .feature, app: "braele", search: " 100% ", limit: 20, offset: 40))
+        #expect(page.more)
+        #expect(page.counts == TicketPage.Counts(open: 3, answered: 1, closed: 0))
+        let url = try #require(Stub.seen.first?.url)
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        #expect(Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+                == ["status": "open", "kind": "feature", "app": "braele", "q": "100%", "limit": "20", "offset": "40"])
+        _ = try await client.tickets()
+        #expect(Stub.seen.last?.url?.query() == "limit=50", "no status lists every status")
+    }
+
     @Test func statusAndDelete() async throws {
         let client = Stub.client { _ in (200, Data(#"{"ok":true}"#.utf8)) }
         try await client.setStatus("7", .closed)
@@ -169,7 +182,7 @@ func theLiveDemo() async throws {
     let apps = try await client.apps()
     #expect(!apps.apps.isEmpty)
     _ = try await client.app(apps.apps[0].app)
-    let tickets = try await client.tickets()
+    let tickets = try await client.tickets().tickets
     _ = try await client.ticket(try #require(tickets.first).id)
     await #expect(throws: HushError.readOnly) { try await client.setStatus(tickets[0].id, .closed) }
 }

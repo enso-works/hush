@@ -9,10 +9,16 @@ final class AppModel {
     private(set) var state: ServerStore.State
     /// A pairing link waiting to be confirmed: opened from the camera, or scanned in the app.
     var pairing: PairingLink?
+    /// The tab shown, so a screen can send the user to another.
+    var tab = AppTab.overview
+    /// The open server's feedback, kept while the tab changes, so the tab's
+    /// badge has its count and a thread left open is still there.
+    private(set) var inbox: Inbox?
 
     init(store: ServerStore) {
         self.store = store
         state = store.load()
+        openInbox()
     }
 
     var servers: [Server] { state.servers }
@@ -35,6 +41,7 @@ final class AppModel {
     func select(_ server: Server) {
         state.selected = server.id
         persist()
+        openInbox()
     }
 
     /// Adds the server, or replaces the one with its id, and opens it.
@@ -52,6 +59,8 @@ final class AppModel {
         }
         state.selected = server.id
         persist()
+        // The token may have changed: a new inbox, with a client that has it.
+        openInbox(fresh: true)
     }
 
     func remove(_ server: Server) {
@@ -75,6 +84,19 @@ final class AppModel {
         state.servers.removeAll { $0.id == server.id }
         if state.selected == server.id { state.selected = state.servers.first?.id }
         persist()
+        openInbox()
+    }
+
+    /// Feedback with a filter, from another screen: an app's open messages.
+    func showFeedback(app: String? = nil, status: TicketStatus? = .open) {
+        inbox?.query = TicketQuery(status: status, app: app)
+        tab = .feedback
+    }
+
+    private func openInbox(fresh: Bool = false) {
+        guard let server = current else { inbox = nil; return }
+        if !fresh, inbox?.serverID == server.id { return }
+        inbox = Inbox(serverID: server.id, client: client(for: server))
     }
 
     func addDemo() {
@@ -93,4 +115,8 @@ final class AppModel {
             log.error("Could not save the server list: \(error, privacy: .public)")
         }
     }
+}
+
+enum AppTab: Hashable {
+    case overview, feedback, settings
 }

@@ -227,11 +227,11 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
     public let rcId: String?
     public let email: String?
     public let subject: String?
-    public let status: TicketStatus
+    public var status: TicketStatus
     public let createdAt: Date
-    public let updatedAt: Date
+    public var updatedAt: Date
     public let preview: String
-    public let replies: Int
+    public var replies: Int
 
     enum CodingKeys: String, CodingKey {
         case id, app, kind, install, email, subject, status, preview, replies
@@ -239,10 +239,6 @@ public struct TicketSummary: Decodable, Sendable, Identifiable, Hashable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
-}
-
-struct TicketsAnswer: Decodable {
-    let tickets: [TicketSummary]
 }
 
 /// `GET /admin/tickets/:id`: the thread.

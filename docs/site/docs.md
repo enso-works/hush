@@ -725,7 +725,11 @@ device }`), the one admin path without a token, 10 tries a minute per
 address. `GET /admin/devices` lists the phones, and `DELETE
 /admin/devices/:id` revokes one at once. Only hashes are stored (migration
 010). `/admin/pair` stays private with the rest of `/admin/*`: the phone
-reaches it the way it reaches the dashboard.
+reaches it the way it reaches the dashboard. In the app, the Feedback tab
+lists every app's feedback, open first, with the open count on the tab;
+filters it by status, kind and app; searches it; and opens a thread to
+answer, close, reopen or delete it. Quick replies, kept on the phone, start
+an answer in one tap.
 
 The command line, inside the container:
 

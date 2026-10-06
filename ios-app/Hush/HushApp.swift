@@ -51,18 +51,25 @@ struct RootView: View {
 
     @ViewBuilder private var content: some View {
         if let server = model.current {
-            TabView {
-                Tab("Overview", systemImage: "square.grid.2x2") {
+            @Bindable var model = model
+            TabView(selection: $model.tab) {
+                Tab("Overview", systemImage: "square.grid.2x2", value: .overview) {
                     NavigationStack {
                         OverviewView(server: server)
                     }
                 }
-                Tab("Settings", systemImage: "gearshape") {
+                Tab("Feedback", systemImage: "bubble.left.and.bubble.right", value: .feedback) {
+                    if let inbox = model.inbox { InboxView(server: server, inbox: inbox) }
+                }
+                .badge(model.inbox?.openTotal ?? 0)
+                Tab("Settings", systemImage: "gearshape", value: .settings) {
                     NavigationStack {
                         ServersView()
                     }
                 }
             }
+            // The badge counts before the tab is first opened.
+            .task(id: model.inbox.map(ObjectIdentifier.init)) { await model.inbox?.load() }
         } else {
             WelcomeView()
         }
