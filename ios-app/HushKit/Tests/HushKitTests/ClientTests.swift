@@ -112,6 +112,30 @@ final class Stub: URLProtocol, @unchecked Sendable {
         #expect(Stub.seen.last?.url?.query() == "limit=50", "no status lists every status")
     }
 
+    @Test func insightsTakeTheScope() async throws {
+        let client = Stub.client { _ in (200, Data(#"{"window_days":3,"steps":[]}"#.utf8)) }
+        let scope = Scope(days: 7, env: .dev, channel: "testflight")
+        _ = try await client.funnel("pace", steps: [StepQuery("paywall_viewed"), StepQuery("purchase_started", prop: "plan", value: "yearly")],
+                                    windowDays: 3, scope)
+        let url = try #require(Stub.seen.last?.url)
+        #expect(url.path() == "/admin/apps/pace/funnel")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        #expect(items.filter { $0.name == "step" }.map(\.value) == ["paywall_viewed", "purchase_started:plan=yearly"], "steps keep their order")
+        #expect(Set(items.filter { $0.name != "step" }.map { "\($0.name)=\($0.value ?? "")" })
+                == ["days=7", "env=dev", "channel=testflight", "window=3"])
+
+        Stub.handler = { _ in (200, Data(#"{"weeks":8,"cohorts":[]}"#.utf8)) }
+        _ = try await client.cohorts("pace", scope)
+        #expect(Stub.seen.last?.url?.query() == "channel=testflight&env=dev&weeks=8", "cohorts count whole weeks, not days")
+
+        Stub.handler = { _ in (200, Data(#"{"ok":true,"deleted":{"events":4,"tickets":1}}"#.utf8)) }
+        let gone = try await client.forget(install: "294EAEE7-97D1-46C2-8AB3-467DEF05BF69")
+        #expect(gone.deleted.events == 4)
+        #expect(Stub.seen.last?.httpMethod == "POST")
+        #expect(Stub.seen.last?.url?.path() == "/admin/installs/294eaee7-97d1-46c2-8ab3-467def05bf69/forget")
+        #expect("294eaee7-97d1-46c2-8ab3-467def05bf69 ".isInstallID && !"#168".isInstallID)
+    }
+
     @Test func statusAndDelete() async throws {
         let client = Stub.client { _ in (200, Data(#"{"ok":true}"#.utf8)) }
         try await client.setStatus("7", .closed)
@@ -181,8 +205,19 @@ func theLiveDemo() async throws {
     #expect(try await client.session().demo)
     let apps = try await client.apps()
     #expect(!apps.apps.isEmpty)
-    _ = try await client.app(apps.apps[0].app)
+    let slug = apps.apps[0].app
+    let detail = try await client.app(slug, Scope())
+    #expect(!(try await client.funnels(slug, Scope())).isEmpty)
+    _ = try await client.cohorts(slug, Scope())
+    let event = try #require(detail.events.first).name
+    if let prop = try await client.props(slug, event: event, Scope()).first {
+        _ = try await client.breakdown(slug, event: event, prop: prop.key, Scope())
+    }
     let tickets = try await client.tickets().tickets
     _ = try await client.ticket(try #require(tickets.first).id)
     await #expect(throws: HushError.readOnly) { try await client.setStatus(tickets[0].id, .closed) }
+    if let install = tickets.compactMap(\.install).first {
+        #expect(try await client.install(install).install?.id == install)
+    }
+    await #expect(throws: HushError.notFound) { try await client.install(UUID().uuidString) }
 }

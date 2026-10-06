@@ -149,6 +149,24 @@ public struct AppDetail: Decodable, Sendable {
     public let countries: [Country]
     public let tickets: Int
     public let lastEvent: Date?
+    /// Charts the catalog pins to this app's page (servers from 2026-09 on).
+    public let breakdowns: [Pinned]?
+    /// Event names this period that the catalog does not list: a typo, or a name to add.
+    public let unknown: [Unknown]?
+
+    /// A breakdown the catalog pins: `event` by `prop`, counted per event or once per install.
+    public struct Pinned: Decodable, Sendable, Hashable {
+        public let event: String
+        public let prop: String
+        public let title: String
+        /// `events` or `installs`.
+        public let count: String
+    }
+
+    public struct Unknown: Decodable, Sendable, Hashable {
+        public let name: String
+        public let n: Int
+    }
 
     public struct Channel: Decodable, Sendable, Hashable {
         public let channel: String
