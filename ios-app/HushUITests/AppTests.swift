@@ -102,8 +102,7 @@ final class AppTests: XCTestCase {
 
     func testLookingUpAnInstall() {
         XCTAssertTrue(card("Stillwater").waitForExistence(timeout: 15))
-        app.navigationBars.buttons["More"].tap()
-        app.buttons["Look Up an Install"].tap()
+        app.navigationBars.buttons["Look Up an Install"].tap()
         let field = app.textFields["install-id"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()
