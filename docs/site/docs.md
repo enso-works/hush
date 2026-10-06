@@ -420,6 +420,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `INSTALL_RETENTION_DAYS` | An install's row is deleted once it has sent nothing for this many days. Default `RETENTION_DAYS`, when its events are gone too; 0 keeps every row. Shorter than `RETENTION_DAYS`, the row goes while its events stay, and the server warns at boot. Its tickets keep the install id. The dashboard's install total and Countries panel then count the installs seen in that window, and new installs and retention over a longer period (the 1y view) count only the installs first seen inside it, and say so. |
 | `RC_API_KEY` | RevenueCat v2 secret key with read-only scopes, for revenue on the dashboard. |
 | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app. Or `APNS_KEY_P8_BASE64`; `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
+| `PUSH_RELAY` | Without an APNs key, pushes to the App Store hush app go through bavrk's relay (default `https://hush.bavrk.com/push`), sealed with a key only the phone has: the relay sees a token and an opaque blob. Used only for phones that turned notifications on. `off` turns it off. `PUSH_RELAY_SECRET` (32 characters or more, with an APNs key) runs a server as such a relay. |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` | An App Store Connect API key, for App Store campaign reports. The Admin role once; Sales and Reports after. Or `ASC_PRIVATE_KEY_FILE`, a path inside the container, in place of `ASC_PRIVATE_KEY`. |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header and secret a trusted proxy sets instead of the token, so the dashboard opens signed in on a private network. |
 
@@ -732,7 +733,10 @@ users' replies, and answers or closes from the notification:
 `POST /admin/push` signs it up (`{ token, sandbox, label, tickets, replies,
 apps }`), `DELETE /admin/push/:token` signs it off, `POST /admin/push/test`
 sends one. A push carries the app's name, the subject and a line of the
-message, never an email or an install id. In the app, each app's page
+message, never an email or an install id. A server without an APNs key
+pushes through bavrk's relay (`PUSH_RELAY`, on by default): sealed with a
+key only the phone has, so the relay sees a token and an opaque blob, never
+what was written. In the app, each app's page
 shows whether it is sending, its numbers and an activity chart read day by
 day, and leads to funnels (the catalog's, and one built from any events),
 retention with weekly cohorts, engagement, audience, and every event broken

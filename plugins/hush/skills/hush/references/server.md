@@ -62,6 +62,7 @@ what its `environment:` block lists.
 | `RC_PROJECTS`, `RC_CURRENCY`, `RC_STALE_MINUTES`, `RC_FLOOR_SECONDS`, `RC_RATE_PER_MINUTE` | Project mapping (`myapp=projabc`) when names differ; currency (USD); cache and rate settings (10 min, 60 s, 20 a minute). |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16 characters or more), accepted on `/admin/*` in place of the token. Both or neither. |
 | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` or `APNS_KEY_P8_BASE64`, `APNS_TOPIC` | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app; `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
+| `PUSH_RELAY` | Without an APNs key, pushes to the App Store hush app go through bavrk's relay (default `https://hush.bavrk.com/push`), sealed with a key only the phone has: the relay sees a token and an opaque blob. Used only for phones that turned notifications on. `off` turns it off. `PUSH_RELAY_SECRET` (32 characters or more, with an APNs key) runs a server as such a relay. |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` or `ASC_PRIVATE_KEY_FILE`, `ASC_API_BASE` | App Store Connect API key for campaign reports; see [attribution.md](attribution.md). `ASC_PRIVATE_KEY_FILE` is a path inside the container: mount the `.p8` there. |
 | `MAIL_DRY_RUN` | `1` logs mail instead of sending it. |
 | `DEMO` | `1`: a public, read-only showcase with invented data. Wipes its database daily and refuses a database that has write keys; `/v1` returns 403. |
@@ -269,6 +270,18 @@ reply go to every phone that wants it: the app's name, the kind, the subject
 and a line of the message, and the phone's `label` so it opens the right
 server. Never an email or an install id. A paired phone's sign-up goes when
 the phone is revoked; a token Apple says is gone is forgotten.
+
+A server without an APNs key reaches the App Store app through bavrk's push
+relay (`PUSH_RELAY`, on by default; migration 012). The phone gets a pass
+for its token from the relay (`POST /push/register` `{ token, sandbox }` →
+`{ pass }`: an HMAC, nothing stored) and signs up with `pass` and `key`, 32
+random bytes of its own for that server. The server seals what a push says
+with the key (AES-256-GCM) and sends the relay the token, the pass and the
+sealed blob (`POST /push/send`); the relay checks the pass, forwards a
+placeholder alert with the blob, and keeps nothing. The app's notification
+extension opens it. `GET /admin/push` says `via`: `apns` or `relay`;
+`POST /admin/push/test` with `"via": "relay"` tests the relay from a server
+that has its own key.
 
 Remote config, under the same guard (the demo answers the reads and refuses
 the writes):
