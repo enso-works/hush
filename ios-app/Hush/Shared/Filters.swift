@@ -120,3 +120,71 @@ func channelName(_ channel: String) -> String {
     default: eventLabel(channel)
     }
 }
+
+/// The filters as one line: `Last 30 days`, `Last 7 days · Development · TestFlight`.
+func scopeLine(days: Int, env: Env, channel: String?) -> String {
+    [Prefs.periodName(days), env == .dev ? "Development" : nil, channel.map(channelName)].compactMap(\.self).joined(separator: " · ")
+}
+
+extension View {
+    /// The screen's filters under its title, so they show however far it is
+    /// scrolled. iOS 26 has subtitles; before it, the title menu says them.
+    @ViewBuilder func scopeSubtitle(_ line: String) -> some View {
+        if #available(iOS 26, *) {
+            navigationSubtitle(line)
+        } else {
+            self
+        }
+    }
+}
+
+/// The filters again, from the screen's title: in reach however far the
+/// screen is scrolled, the chips at its top long gone.
+struct ScopeMenu: View {
+    @Bindable var data: AppData
+    @AppStorage("days") private var days = 30
+    @AppStorage("env") private var env = Env.prod
+
+    var body: some View {
+        Picker(selection: $days) {
+            ForEach(Prefs.periods, id: \.self) { Text(Prefs.periodName($0)).tag($0) }
+        } label: {
+            Label("Period", systemImage: "calendar")
+            Text(Prefs.periodName(days))
+        }
+        .pickerStyle(.menu)
+        Picker(selection: $env) {
+            Text("Release builds").tag(Env.prod)
+            Text("Development builds").tag(Env.dev)
+        } label: {
+            Label("Data", systemImage: env == .prod ? "app.badge.checkmark" : "hammer")
+            Text(env == .prod ? "Release builds" : "Development builds")
+        }
+        .pickerStyle(.menu)
+        if let channels = data.detail?.channels, channels.count > 1 || data.channel != nil {
+            Picker(selection: $data.channel) {
+                Text("All channels").tag(String?.none)
+                ForEach(channels, id: \.channel) { Text(channelName($0.channel)).tag(Optional($0.channel)) }
+            } label: {
+                Label("Build channel", systemImage: "shippingbox")
+                Text(data.channel.map(channelName) ?? "All channels")
+            }
+            .pickerStyle(.menu)
+        }
+        if days != 30 || env != .prod || data.channel != nil {
+            Button("Reset Filters", systemImage: "xmark") {
+                days = 30
+                env = .prod
+                data.channel = nil
+            }
+        }
+    }
+}
+
+extension View {
+    /// An app screen's title: the filters under it, and in a menu on it.
+    func scopeTitle(_ data: AppData, days: Int, env: Env) -> some View {
+        scopeSubtitle(scopeLine(days: days, env: env, channel: data.channel))
+            .toolbarTitleMenu { ScopeMenu(data: data) }
+    }
+}

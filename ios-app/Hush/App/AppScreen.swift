@@ -26,6 +26,7 @@ struct AppScreen<Content: View>: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .scopeTitle(data, days: days, env: env)
         .onAppear { Telemetry.screen(screen) }
         .task(id: scope) { await data.load(scope, reduceMotion: reduceMotion) }
         .refreshable { await data.refresh(scope, reduceMotion: reduceMotion) }

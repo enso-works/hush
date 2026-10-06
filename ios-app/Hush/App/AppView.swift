@@ -34,6 +34,7 @@ struct AppView: View {
         .navigationTitle(data.name)
         // A large title under a pinned filter bar blurs into the bar on iOS 26.
         .navigationBarTitleDisplayMode(.inline)
+        .scopeTitle(data, days: days, env: env)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: InstallRoute(id: "")) {
