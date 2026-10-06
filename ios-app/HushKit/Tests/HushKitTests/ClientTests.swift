@@ -169,6 +169,17 @@ final class Stub: URLProtocol, @unchecked Sendable {
         #expect(PairingLink(link.url) == link)
     }
 
+    @Test func pushSignUpsSayEveryApp() async throws {
+        let client = Stub.client { _ in (200, Data(#"{"configured":true,"signup":{"sandbox":true,"label":"x","tickets":true,"replies":false,"apps":null}}"#.utf8)) }
+        let status = try await client.signUpForPush(PushSignup(token: "ab12", sandbox: true, label: "x", replies: false))
+        #expect(status.configured && status.signup?.replies == false)
+        let body = try #require(try JSONSerialization.jsonObject(with: Stub.seen.last?.httpBody ?? Data()) as? [String: Any])
+        #expect(body["apps"] is NSNull, "null is every app")
+        #expect(body["token"] as? String == "ab12" && body["sandbox"] as? Bool == true)
+        _ = try await client.pushStatus(token: "ab12")
+        #expect(Stub.seen.last?.url?.query() == "token=ab12")
+    }
+
     @Test func statusAndDelete() async throws {
         let client = Stub.client { _ in (200, Data(#"{"ok":true}"#.utf8)) }
         try await client.setStatus("7", .closed)
@@ -258,4 +269,12 @@ func theLiveDemo() async throws {
         #expect(try await client.install(install).install?.id == install)
     }
     await #expect(throws: HushError.notFound) { try await client.install(UUID().uuidString) }
+}
+
+@Test func aPushTellsWhichServerAndTicket() {
+    let info: [AnyHashable: Any] = ["aps": ["alert": ["title": "New problem in Game"]], "ticket": "42", "app": "game", "server": "8B1F…"]
+    let p = PushTicket(info)
+    #expect(p?.ticket == "42" && p?.app == "game" && p?.server == "8B1F…")
+    #expect(PushTicket(["aps": [:]]) == nil, "a test push names no ticket")
+    #expect(Data([0xde, 0xad, 0x01]).hexToken == "dead01")
 }
