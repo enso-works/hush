@@ -19,6 +19,7 @@ struct InboxView: View {
         NavigationSplitView(columnVisibility: $columns) {
             TicketList(inbox: inbox, apps: apps, selection: $inbox.selection, searching: !search.isEmpty)
                 .navigationTitle("Feedback")
+                .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $search, prompt: "Subject, message, email or #id")
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -100,11 +101,10 @@ private struct TicketList: View {
             }
         }
         .listStyle(.plain)
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .pinnedBar(.top) {
             StatusPicker(status: $inbox.query.status, counts: inbox.counts)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(.bar)
         }
         .overlay { if inbox.loaded, inbox.tickets.isEmpty, inbox.error == nil { empty } }
         .animation(reduceMotion ? nil : .smooth(duration: 0.3), value: inbox.tickets.map(\.id))

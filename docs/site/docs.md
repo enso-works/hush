@@ -730,7 +730,7 @@ shows whether it is sending, its numbers and an activity chart read day by
 day, and leads to funnels (the catalog's, and one built from any events),
 retention with weekly cohorts, engagement, audience, and every event broken
 down by its props; the period, release or development data and the build
-channel filter every screen. An install is looked up by its id (its events
+channel filter every screen, from chips at its top or its title's menu. An install is looked up by its id (its events
 arrive live) and can be forgotten there. Remote config reads and edits each
 key's default and rules (saved with a note, previewed for a device first,
 reverted to the catalog, with the history), and Settings lists the

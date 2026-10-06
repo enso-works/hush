@@ -18,14 +18,15 @@ struct AppScreen<Content: View>: View {
         let scope = data.scope(days: days, env: env)
         ScrollView {
             VStack(spacing: 16) {
+                AppFilters(data: data)
                 content(scope, data.key(days: days, env: env))
             }
             .padding(16)
         }
-        .safeAreaInset(edge: .top, spacing: 0) { AppFilters(data: data) }
         .background(Color(.systemGroupedBackground))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .scopeTitle(data, days: days, env: env)
         .onAppear { Telemetry.screen(screen) }
         .task(id: scope) { await data.load(scope, reduceMotion: reduceMotion) }
         .refreshable { await data.refresh(scope, reduceMotion: reduceMotion) }

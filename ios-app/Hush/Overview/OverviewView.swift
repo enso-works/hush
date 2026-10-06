@@ -25,7 +25,7 @@ struct OverviewView: View {
             }
             .padding(16)
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .pinnedBar(.top) {
             FilterBar(extraActive: order != .active, reset: { order = .active }) {
                 Menu {
                     Picker("Order", selection: $order) {
@@ -37,13 +37,21 @@ struct OverviewView: View {
                 .accessibilityLabel("Order, \(order.title)")
                 .sensoryFeedback(.selection, trigger: order)
             }
-            .background(.bar)
         }
         .modifier(SearchApps(text: $search, shown: (answer?.apps.count ?? 0) > 5))
         .background(Color(.systemGroupedBackground))
         .navigationTitle(server.name)
+        // A large title under a pinned filter bar blurs into the bar on iOS 26.
+        .navigationBarTitleDisplayMode(.inline)
+        // The server's name is the title: tapping it switches servers.
+        .toolbarTitleMenu { ServerPicker(server: server) }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) { ServerMenu(server: server) }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(value: InstallRoute(id: "")) {
+                    Image(systemName: "person.text.rectangle")
+                }
+                .accessibilityLabel("Look Up an Install")
+            }
         }
         .navigationDestination(for: AppSummary.self) { app in
             AppView(server: server, app: app, client: model.client(for: server), kept: answer?.installRetentionDays)
@@ -150,30 +158,25 @@ private struct AppGrid: View {
     }
 }
 
-/// Looking up an install, and the other servers, when there are several.
-private struct ServerMenu: View {
+/// The servers, in the title's menu: the open one checked.
+private struct ServerPicker: View {
     let server: Server
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        Menu {
-            NavigationLink(value: InstallRoute(id: "")) {
-                Label("Look Up an Install", systemImage: "person.crop.rectangle.badge.magnifyingglass")
-            }
-            if model.servers.count > 1 {
-                Section("Server") {
-                    ForEach(model.servers) { s in
-                        Button {
-                            model.select(s)
-                        } label: {
-                            if s.id == server.id { Label(s.name, systemImage: "checkmark") } else { Text(s.name) }
-                        }
-                    }
+        ForEach(model.servers) { s in
+            Button {
+                model.select(s)
+            } label: {
+                if s.id == server.id {
+                    Label(s.name, systemImage: "checkmark")
+                } else {
+                    Text(s.name)
                 }
             }
-        } label: {
-            Label("More", systemImage: "ellipsis.circle")
         }
+        Divider()
+        Button("Servers…", systemImage: "server.rack") { model.tab = .settings }
     }
 }
 

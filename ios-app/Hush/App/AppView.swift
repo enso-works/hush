@@ -18,6 +18,7 @@ struct AppView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                AppFilters(data: data)
                 if let error = data.error { ErrorNote(error: error) { await load() } }
                 if data.detail != nil || data.error == nil {
                     Page(data: data, detail: data.detail ?? Placeholder.detail, days: days, env: env)
@@ -29,13 +30,15 @@ struct AppView: View {
             }
             .padding(16)
         }
-        .safeAreaInset(edge: .top, spacing: 0) { AppFilters(data: data) }
         .background(Color(.systemGroupedBackground))
         .navigationTitle(data.name)
+        // A large title under a pinned filter bar blurs into the bar on iOS 26.
+        .navigationBarTitleDisplayMode(.inline)
+        .scopeTitle(data, days: days, env: env)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: InstallRoute(id: "")) {
-                    Image(systemName: "person.crop.rectangle.badge.magnifyingglass")
+                    Image(systemName: "person.text.rectangle")
                 }
                 .accessibilityLabel("Look Up an Install")
             }
@@ -65,7 +68,9 @@ struct AppView: View {
 }
 
 /// The filters of an app's screens: the period, the data, and the channel
-/// when its installs come from more than one.
+/// when its installs come from more than one. The first row of the content,
+/// not pinned: on iOS 26 a bar pinned under a pushed screen's navigation bar
+/// is washed out by the bar's scroll edge effect.
 struct AppFilters: View {
     @Bindable var data: AppData
 
@@ -75,7 +80,9 @@ struct AppFilters: View {
                 ChannelChip(channel: $data.channel, channels: channels)
             }
         }
-        .background(.bar)
+        // The chips scroll to the screen's edges, past the content's margin.
+        .padding(.horizontal, -16)
+        .padding(.vertical, -8)
     }
 }
 
