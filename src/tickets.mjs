@@ -4,6 +4,7 @@ import { cfg, log } from './config.mjs';
 import { q, tx } from './db.mjs';
 import { flatObject, str } from './http.mjs';
 import { sendMail } from './mail.mjs';
+import { notify } from './push.mjs';
 
 export const MAX_PER_DAY = 5;
 // How long a ticket with an email from an app version before SDK 2.3.0 keeps
@@ -130,6 +131,7 @@ export async function createTicket({ app, install = null, email = null, subject,
     replyTo: email ?? undefined,
     text: `${message}\n\n--\n${who}\n${diagLines}${replyLine()}`,
   });
+  notify({ type: 'ticket', app, ticketId: ticket.id, kind, subject, text: message });
   return thread ? { ...ticket, thread } : ticket;
 }
 
@@ -174,6 +176,7 @@ export async function userReply({ id, install = null, thread = null, app, body }
     replyTo: ticket.email ?? undefined,
     text: `${body}\n\n--\nticket: #${id}${install && !ticket.email ? `\ninstall: ${install}` : ''}${replyLine()}`,
   });
+  notify({ type: 'reply', app, ticketId: id, subject: ticket.subject, text: body });
   return reply;
 }
 

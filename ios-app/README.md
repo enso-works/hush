@@ -7,9 +7,10 @@ app's page with a screen for each closer look (funnels and a funnel
 builder, retention and cohorts, engagement, audience, events and their
 props), edits remote config (with a preview of what a device gets, the
 history and a revert), lists and revokes the server's phones and signs in
-another with a QR code, looks up an install by its id, and has a Feedback tab to read,
+another with a QR code, notifies the phone of new feedback and replies
+(answered or closed from the notification), looks up an install by its id, and has a Feedback tab to read,
 answer, close, reopen and delete feedback, with filters, a search and quick
-replies. Push notifications come next.
+replies.
 
 | Path | What it is |
 |---|---|
@@ -30,7 +31,11 @@ the live demo, so they need the network; CI only compiles them.
 `InboxTests` answers and closes feedback, so it needs a writable server with
 tickets of its own: give it a pairing link from that server's
 `/admin/pairing` as `TEST_RUNNER_PAIR_LINK` (it skips without one).
-`ConfigTests` (the same link, on a server whose catalog gives Stillwater
+`PushTests` (the same link) turns notifications on with a stand-in token,
+then waits for two pushes sent from outside with `xcrun simctl push <sim>
+com.bavrk.hush <payload.apns>`, a payload as the server sends it with the
+`server` label the app signed up with: it opens the first and answers the
+second from the notification. `ConfigTests` (the same link, on a server whose catalog gives Stillwater
 `paywall_variant`, as the demo's does) overrides and reverts a key and
 opens Phones. `HeaderTests` checks the headers while scrolling (titles
 stay, pinned filters stay in reach, the title's menu changes the filters);

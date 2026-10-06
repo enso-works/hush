@@ -3,14 +3,16 @@ import SwiftUI
 
 @main
 struct HushApp: App {
-    @State private var model = AppModel(store: Self.store())
+    // The delegate holds the model: a notification's Reply or Close can wake
+    // the app with no window, and still needs the servers and their tokens.
+    @UIApplicationDelegateAdaptor private var delegate: AppDelegate
 
     init() {
         Telemetry.start()
     }
 
     /// UI tests start from nothing every launch, and leave the Keychain alone.
-    private static func store() -> ServerStore {
+    static func store() -> ServerStore {
         if ProcessInfo.processInfo.arguments.contains("-ui-testing") {
             // And from the default filters and orders, whatever the last run picked.
             if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
@@ -29,7 +31,8 @@ struct HushApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
-                .environment(model)
+                .environment(delegate.model)
+                .environment(delegate.push)
         }
     }
 }

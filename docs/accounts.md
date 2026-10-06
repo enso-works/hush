@@ -23,7 +23,7 @@ What does not change:
 
 ## The model
 
-One migration (`011_accounts.sql`):
+One migration (the next free number; `011` went to push):
 
 | Table | Columns | Notes |
 |---|---|---|

@@ -61,6 +61,7 @@ what its `environment:` block lists.
 | `RC_API_KEY` | RevenueCat v2 secret key with read-only scopes, for the revenue panel. |
 | `RC_PROJECTS`, `RC_CURRENCY`, `RC_STALE_MINUTES`, `RC_FLOOR_SECONDS`, `RC_RATE_PER_MINUTE` | Project mapping (`myapp=projabc`) when names differ; currency (USD); cache and rate settings (10 min, 60 s, 20 a minute). |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16 characters or more), accepted on `/admin/*` in place of the token. Both or neither. |
+| `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` or `APNS_KEY_P8_BASE64`, `APNS_TOPIC` | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app; `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` or `ASC_PRIVATE_KEY_FILE`, `ASC_API_BASE` | App Store Connect API key for campaign reports; see [attribution.md](attribution.md). `ASC_PRIVATE_KEY_FILE` is a path inside the container: mount the `.p8` there. |
 | `MAIL_DRY_RUN` | `1` logs mail instead of sending it. |
 | `DEMO` | `1`: a public, read-only showcase with invented data. Wipes its database daily and refuses a database that has write keys; `/v1` returns 403. |
@@ -258,6 +259,16 @@ ten-minute pairing code for the dashboard's Phones page QR code;
 admin path without a token, 10 tries a minute per address); `GET
 /admin/devices` lists them and `DELETE /admin/devices/:id` revokes one.
 A device token is accepted on every `/admin` path, as `Bearer`, until revoked.
+
+Push (migration 011): `POST /admin/push` `{ token, sandbox, label, tickets,
+replies, apps }` signs a phone up with its APNs token (again to change what
+it wants), `GET /admin/push?token=` reads it back with `configured` (whether
+the server has an APNs key), `DELETE /admin/push/:token` signs it off, and
+`POST /admin/push/test` `{ token }` sends one. A new ticket and a user's
+reply go to every phone that wants it: the app's name, the kind, the subject
+and a line of the message, and the phone's `label` so it opens the right
+server. Never an email or an install id. A paired phone's sign-up goes when
+the phone is revoked; a token Apple says is gone is forgotten.
 
 Remote config, under the same guard (the demo answers the reads and refuses
 the writes):

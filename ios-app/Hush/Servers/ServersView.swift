@@ -44,6 +44,11 @@ struct ServersView: View {
             if let current = model.current {
                 Section {
                     NavigationLink {
+                        NotificationsView(server: current)
+                    } label: {
+                        Label("Notifications", systemImage: "bell.badge")
+                    }
+                    NavigationLink {
                         PhonesView(server: current)
                     } label: {
                         Label("Phones", systemImage: "iphone")
@@ -51,7 +56,7 @@ struct ServersView: View {
                 } header: {
                     Text(current.name)
                 } footer: {
-                    Text("The phones signed in to this server, and a code to sign in another.")
+                    Text("New feedback on this phone, the phones signed in to this server, and a code to sign in another.")
                 }
             }
             Section {
