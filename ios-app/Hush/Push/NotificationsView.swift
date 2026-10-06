@@ -17,6 +17,8 @@ struct NotificationsView: View {
     @State private var apps: Set<String>?
     @State private var names: [AppSummary] = []
     @State private var configured: Bool?
+    /// `apns` or `relay`: how the server's pushes leave.
+    @State private var via: String?
     @State private var working = false
     @State private var problem: String?
     @State private var tested = 0
@@ -90,9 +92,13 @@ struct NotificationsView: View {
 
     private var footer: String {
         if configured == false {
-            return "This server has no APNs key yet, so nothing arrives. Its operator sets APNS_KEY_ID, APNS_TEAM_ID and APNS_KEY_P8."
+            return "This server sends no notifications: its operator turned the push relay off (PUSH_RELAY=off) and gave it no APNs key."
         }
-        return "A notification names the app and shows the first line of the message; answer or close it from there. Never the user's email."
+        let what = "A notification names the app and shows the first line of the message; answer or close it from there. Never the user's email."
+        if via == "relay" {
+            return what + " They come through bavrk's push relay, sealed on the server with a key only this phone has: the relay never sees what was written."
+        }
+        return what
     }
 
     private func load() async {
@@ -104,7 +110,9 @@ struct NotificationsView: View {
         }
         await push.refreshAuthorization()
         let client = model.client(for: server)
-        configured = try? await client.pushStatus(token: push.signup(server)?.token).configured
+        let status = try? await client.pushStatus(token: push.signup(server)?.token)
+        configured = status?.configured
+        via = status?.via
         names = (try? await client.apps(days: 1).apps) ?? []
     }
 
@@ -113,8 +121,10 @@ struct NotificationsView: View {
         defer { working = false }
         do {
             if new {
-                configured = try await push.signUp(server, tickets: tickets, replies: replies, apps: apps.map { $0.sorted() })
-                Telemetry.track("push_on")
+                let status = try await push.signUp(server, tickets: tickets, replies: replies, apps: apps.map { $0.sorted() })
+                configured = status?.configured
+                via = status?.via
+                Telemetry.track("push_on", ["via": status?.via ?? "none"])
             } else {
                 try await push.signOff(server)
                 Telemetry.track("push_off")
@@ -128,7 +138,9 @@ struct NotificationsView: View {
 
     private func save() async {
         do {
-            configured = try await push.signUp(server, tickets: tickets, replies: replies, apps: apps.map { $0.sorted() })
+            let status = try await push.signUp(server, tickets: tickets, replies: replies, apps: apps.map { $0.sorted() })
+            configured = status?.configured
+            via = status?.via
             problem = nil
         } catch {
             problem = HushError(error).message

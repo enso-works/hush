@@ -31,6 +31,15 @@ the live demo, so they need the network; CI only compiles them.
 `InboxTests` answers and closes feedback, so it needs a writable server with
 tickets of its own: give it a pairing link from that server's
 `/admin/pairing` as `TEST_RUNNER_PAIR_LINK` (it skips without one).
+A server without an APNs key pushes through bavrk's relay (`HUSH_PUSH_RELAY`
+in `Config/App.xcconfig`): the app gets a pass for its token there and gives
+each server it signs up with a sealing key of its own, kept in a keychain
+group (`<team>.com.bavrk.hush.shared`) shared with `HushNotifications/`, the
+notification service extension that opens a sealed push before it shows.
+`simctl push` skips service extensions, so the opening is covered by
+HushKit's tests (`PushSeal`), and on a phone by a test push with
+`"via": "relay"`.
+
 `PushTests` (the same link) turns notifications on with a stand-in token,
 then waits for two pushes sent from outside with `xcrun simctl push <sim>
 com.bavrk.hush <payload.apns>`, a payload as the server sends it with the

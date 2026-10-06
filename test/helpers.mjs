@@ -91,6 +91,8 @@ async function startOnce(db, env, port) {
       // The harness gives every client its own address in this header; a
       // test that needs the socket address overrides it with ''.
       CLIENT_IP_HEADER: 'cf-connecting-ip',
+      // No test reaches bavrk's push relay; relay.test.mjs runs its own.
+      PUSH_RELAY: 'off',
       ...env,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

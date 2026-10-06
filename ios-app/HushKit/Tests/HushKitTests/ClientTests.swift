@@ -278,3 +278,30 @@ func theLiveDemo() async throws {
     #expect(PushTicket(["aps": [:]]) == nil, "a test push names no ticket")
     #expect(Data([0xde, 0xad, 0x01]).hexToken == "dead01")
 }
+
+/// Sealed by the server's own code (src/push.mjs `seal`), opened as the notification extension does.
+@Test func aSealedPushOpensWithItsKey() throws {
+    struct Fixture: Decodable { let key: String; let sealed: String }
+    let f = try JSONDecoder().decode(Fixture.self, from: fixture("sealed"))
+    let key = try #require(Data(base64Encoded: f.key))
+    let content = try #require(PushSeal.open(f.sealed, key: key))
+    #expect(content["title"] as? String == "New problem in Game")
+    #expect(content["ticket"] as? String == "42" && content["server"] as? String == "srv-b")
+    #expect(PushSeal.open(f.sealed, key: PushSeal.newKey()) == nil, "another key opens nothing")
+    #expect(PushSeal.newKey().count == 32)
+}
+
+/// A push as the relay sends it: a placeholder, the sealed words, and the label of the server's key.
+@Test func aRelayedPushIsRevealedForTheApp() throws {
+    struct Fixture: Decodable { let key: String; let sealed: String }
+    let f = try JSONDecoder().decode(Fixture.self, from: fixture("sealed"))
+    let key = try #require(Data(base64Encoded: f.key))
+    let info: [AnyHashable: Any] = ["aps": ["alert": ["title": "hush", "body": "Something new on one of your servers."], "mutable-content": 1],
+                                    "sealed": f.sealed, "server": "srv-b"]
+    let r = try #require(PushSeal.reveal(info, keyFor: { $0 == "srv-b" ? key : nil }))
+    #expect(r.title == "New problem in Game" && r.subtitle == "Timer" && r.body == "The timer stops.")
+    #expect(r.userInfo == ["ticket": "42", "app": "game", "server": "srv-b"])
+    #expect(PushTicket(r.userInfo)?.ticket == "42", "the app opens the ticket from what it reveals")
+    #expect(PushSeal.reveal(info, keyFor: { _ in nil }) == nil, "no key, the placeholder stays")
+    #expect(PushSeal.reveal(["aps": [:]], keyFor: { _ in key }) == nil, "a push not sealed is left alone")
+}
