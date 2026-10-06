@@ -73,7 +73,7 @@ struct InstallView: View {
             } else if let error {
                 Section {
                     if error == .notFound {
-                        ContentUnavailableView("Nothing for this id", systemImage: "person.crop.rectangle.badge.magnifyingglass",
+                        ContentUnavailableView("Nothing for this id", systemImage: "person.text.rectangle",
                                                description: Text("No install with it on this server: a typo, an install deleted after it went quiet, or one forgotten."))
                     } else {
                         ErrorNote(error: error) { await load() }
