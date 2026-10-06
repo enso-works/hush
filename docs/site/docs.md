@@ -725,7 +725,13 @@ device }`), the one admin path without a token, 10 tries a minute per
 address. `GET /admin/devices` lists the phones, and `DELETE
 /admin/devices/:id` revokes one at once. Only hashes are stored (migration
 010). `/admin/pair` stays private with the rest of `/admin/*`: the phone
-reaches it the way it reaches the dashboard. In the app, the Feedback tab
+reaches it the way it reaches the dashboard. In the app, each app's page
+shows whether it is sending, its numbers and an activity chart read day by
+day, and leads to funnels (the catalog's, and one built from any events),
+retention with weekly cohorts, engagement, audience, and every event broken
+down by its props; the period, release or development data and the build
+channel filter every screen. An install is looked up by its id (its events
+arrive live) and can be forgotten there. The Feedback tab
 lists every app's feedback, open first, with the open count on the tab;
 filters it by status, kind and app; searches it; and opens a thread to
 answer, close, reopen or delete it. Quick replies, kept on the phone, start
