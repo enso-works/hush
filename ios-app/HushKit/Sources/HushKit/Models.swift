@@ -320,7 +320,7 @@ public struct ReplyResult: Decodable, Sendable {
 }
 
 /// Any JSON value, for fields whose shape the server does not fix.
-public enum JSONValue: Decodable, Sendable, Hashable, CustomStringConvertible {
+public enum JSONValue: Codable, Sendable, Hashable, CustomStringConvertible {
     case string(String), number(Double), bool(Bool), null
     case array([JSONValue]), object([String: JSONValue])
 
@@ -332,6 +332,20 @@ public enum JSONValue: Decodable, Sendable, Hashable, CustomStringConvertible {
         else if let s = try? c.decode(String.self) { self = .string(s) }
         else if let a = try? c.decode([JSONValue].self) { self = .array(a) }
         else { self = .object(try c.decode([String: JSONValue].self)) }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .string(let s): try c.encode(s)
+        case .number(let n):
+            // A whole number goes out as 3, not 3.0, so the history shows what was typed.
+            if n.rounded() == n, abs(n) < 1e15 { try c.encode(Int64(n)) } else { try c.encode(n) }
+        case .bool(let b): try c.encode(b)
+        case .null: try c.encodeNil()
+        case .array(let a): try c.encode(a)
+        case .object(let o): try c.encode(o)
+        }
     }
 
     public var description: String {

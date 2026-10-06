@@ -48,6 +48,10 @@ struct AppView: View {
             case .audience: AudienceView(data: data)
             case .events: EventsView(data: data)
             case .event(let name): EventView(data: data, name: name)
+            case .config: ConfigView(data: data)
+            case .configKey(let key): ConfigKeyView(data: data, name: key)
+            case .configHistory(let key): ConfigHistoryView(data: data, key: key)
+            case .configPreview: ConfigPreviewView(data: data)
             }
         }
         .onAppear { Telemetry.screen("app") }
@@ -247,6 +251,16 @@ private struct Cards: View {
             Card(symbol: "globe", title: "Audience", value: d.versions.first?.version ?? "–",
                  caption: "Top of \(d.versions.count) versions, \(d.countries.count) countries")
         }
+        NavigationLink(value: AppRoute.config) {
+            if let config = data.config {
+                let overridden = config.keys.filter(\.overridden).count
+                Card(symbol: "slider.horizontal.3", title: "Remote config", value: config.keys.count.formatted(),
+                     caption: config.keys.isEmpty ? "No keys in the catalog" : overridden == 0 ? "Keys, as the catalog says" : "Keys, \(overridden) overridden")
+            } else {
+                Card(symbol: "slider.horizontal.3", title: "Remote config", value: "–", caption: "Values the app reads at launch")
+            }
+        }
+        .task { if data.config == nil { await data.loadConfig() } }
         Button {
             model.showFeedback(app: data.slug)
         } label: {

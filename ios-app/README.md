@@ -5,7 +5,9 @@ and see each app's numbers, on any hush server. It adds servers (by the
 dashboard's QR code, by hand, or the demo), shows the Overview and each
 app's page with a screen for each closer look (funnels and a funnel
 builder, retention and cohorts, engagement, audience, events and their
-props), looks up an install by its id, and has a Feedback tab to read,
+props), edits remote config (with a preview of what a device gets, the
+history and a revert), lists and revokes the server's phones and signs in
+another with a QR code, looks up an install by its id, and has a Feedback tab to read,
 answer, close, reopen and delete feedback, with filters, a search and quick
 replies. Push notifications come next.
 
@@ -28,7 +30,9 @@ the live demo, so they need the network; CI only compiles them.
 `InboxTests` answers and closes feedback, so it needs a writable server with
 tickets of its own: give it a pairing link from that server's
 `/admin/pairing` as `TEST_RUNNER_PAIR_LINK` (it skips without one).
-`AppTests` walks an app's screens; `TEST_RUNNER_INSTALL_ID`, an install id
+`ConfigTests` (the same link, on a server whose catalog gives Stillwater
+`paywall_variant`, as the demo's does) overrides and reverts a key and
+opens Phones. `AppTests` walks an app's screens; `TEST_RUNNER_INSTALL_ID`, an install id
 from one of the demo's tickets, adds a look at a real install. With
 `TEST_RUNNER_SCREENSHOTS_DIR=<dir>` on the `xcodebuild test` line they save
 what each screen shows there.

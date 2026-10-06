@@ -731,7 +731,10 @@ day, and leads to funnels (the catalog's, and one built from any events),
 retention with weekly cohorts, engagement, audience, and every event broken
 down by its props; the period, release or development data and the build
 channel filter every screen. An install is looked up by its id (its events
-arrive live) and can be forgotten there. The Feedback tab
+arrive live) and can be forgotten there. Remote config reads and edits each
+key's default and rules (saved with a note, previewed for a device first,
+reverted to the catalog, with the history), and Settings lists the
+server's phones, revokes one, and shows a QR code for another. The Feedback tab
 lists every app's feedback, open first, with the open count on the tab;
 filters it by status, kind and app; searches it; and opens a thread to
 answer, close, reopen or delete it. Quick replies, kept on the phone, start

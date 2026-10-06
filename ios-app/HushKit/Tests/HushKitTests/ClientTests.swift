@@ -136,6 +136,39 @@ final class Stub: URLProtocol, @unchecked Sendable {
         #expect("294eaee7-97d1-46c2-8ab3-467def05bf69 ".isInstallID && !"#168".isInstallID)
     }
 
+    @Test func configWritesSayOnlyWhatChanges() async throws {
+        // The demo's first key, as a write's answer carries it.
+        let config = try #require(try JSONSerialization.jsonObject(with: fixture("config")) as? [String: Any])
+        let first = try #require((config["keys"] as? [Any])?.first)
+        let written = try JSONSerialization.data(withJSONObject: ["ok": true, "revision": "r", "key": first])
+        let client = Stub.client { _ in (200, written) }
+        _ = try await client.setConfig("pace", key: "paywall_variant", ConfigWrite(base: 4, default: .string("c"), note: "  "))
+        let r = try #require(Stub.seen.last)
+        #expect(r.httpMethod == "POST" && r.url?.path() == "/admin/apps/pace/config/paywall_variant")
+        let body = try #require(try JSONSerialization.jsonObject(with: r.httpBody ?? Data()) as? [String: Any])
+        #expect(Set(body.keys) == ["base", "default"], "no rules: the catalog's stand; a blank note is no note")
+        _ = try await client.revertConfig("pace", key: "paywall_variant", base: 5)
+        #expect(Stub.seen.last?.httpMethod == "DELETE")
+
+        Stub.handler = { _ in (409, Data(#"{"error":"changed since you opened it","key":{}}"#.utf8)) }
+        await #expect(throws: HushError.conflict) {
+            try await client.setConfig("pace", key: "paywall_variant", ConfigWrite(base: 0, default: .string("c")))
+        }
+
+        Stub.handler = { _ in (200, try fixture("config-preview")) }
+        _ = try await client.configPreview("pace", DeviceContext(platform: "ios", pro: true), key: "paywall_variant",
+                                           draft: ConfigWrite(base: 0, default: .string("c")))
+        let items = URLComponents(url: try #require(Stub.seen.last?.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let q = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
+        #expect(q["platform"] == "ios" && q["pro"] == "true" && q["key"] == "paywall_variant")
+        #expect(q["draft"] == #"{"default":"c"}"#)
+    }
+
+    @Test func aPairingLinkRoundTrips() throws {
+        let link = PairingLink(server: URL(string: "https://ops.example.com/hush")!, code: "ABC123")
+        #expect(PairingLink(link.url) == link)
+    }
+
     @Test func statusAndDelete() async throws {
         let client = Stub.client { _ in (200, Data(#"{"ok":true}"#.utf8)) }
         try await client.setStatus("7", .closed)
@@ -209,6 +242,11 @@ func theLiveDemo() async throws {
     let detail = try await client.app(slug, Scope())
     #expect(!(try await client.funnels(slug, Scope())).isEmpty)
     _ = try await client.cohorts(slug, Scope())
+    let config = try await client.config(slug)
+    if let key = config.keys.first {
+        _ = try await client.configPreview(slug, DeviceContext(platform: "ios"), key: key.key, draft: ConfigWrite(base: key.change, default: key.effective.default))
+        _ = try await client.configHistory(slug, key: key.key)
+    }
     let event = try #require(detail.events.first).name
     if let prop = try await client.props(slug, event: event, Scope()).first {
         _ = try await client.breakdown(slug, event: event, prop: prop.key, Scope())
