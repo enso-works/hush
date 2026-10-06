@@ -59,10 +59,10 @@ const cache = new Map();
 const TTL_MS = 60_000;
 const MAX_ENTRIES = 1000;
 
-/** Whether the request carries a device token that is still paired. */
+/** The paired device the request's token belongs to (its id), or null. */
 export async function deviceAuthorized(headers) {
   const m = /^Bearer\s+(\S+)$/.exec(headers.authorization ?? '');
-  if (!m || !m[1].startsWith(DEVICE_PREFIX)) return false;
+  if (!m || !m[1].startsWith(DEVICE_PREFIX)) return null;
   const hash = hashKey(m[1]);
   let hit = cache.get(hash);
   if (!hit || hit.until <= Date.now()) {
@@ -72,10 +72,10 @@ export async function deviceAuthorized(headers) {
     cache.set(hash, hit);
     while (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value);
   }
-  if (!hit.id) return false;
+  if (!hit.id) return null;
   if (Date.now() - hit.seen > 60_000) {
     hit.seen = Date.now();
     await q('UPDATE admin_devices SET last_seen_at = now() WHERE id = $1', [hit.id]);
   }
-  return true;
+  return hit.id;
 }

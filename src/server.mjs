@@ -21,6 +21,7 @@ import { clientKey, dailyLimiter, isUuid, json, rateLimiter, readJson, router, s
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { createPairing, deviceAuthorized, listDevices, pair, revokeDevice } from './devices.mjs';
+import { pushConfigured, register as registerPush, testPush, unregister as unregisterPush } from './push.mjs';
 import { migrate } from './migrate.mjs';
 import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
@@ -468,6 +469,34 @@ r.post('/admin/pair', async (req, res) => {
   return json(res, 201, out);
 });
 
+// Push to the iOS app (src/push.mjs). A phone signs up with its APNs token
+// and what it wants; `configured` says whether this server can send at all.
+r.get('/admin/push', async (_req, res, { url }) => {
+  const token = url.searchParams.get('token');
+  const { rows } = token ? await q('SELECT sandbox, label, tickets, replies, apps FROM push_tokens WHERE token = $1', [token.toLowerCase()]) : { rows: [] };
+  return json(res, 200, { configured: pushConfigured(), signup: rows[0] ?? null });
+});
+
+r.post('/admin/push', async (req, res, { device }) => {
+  const out = await registerPush(await readJson(req, 16_384), device ?? null);
+  if (typeof out === 'string') return json(res, 400, { error: out });
+  return json(res, 200, { configured: pushConfigured(), signup: out });
+});
+
+r.delete('/admin/push/:token', async (_req, res, { params }) => {
+  await unregisterPush(params.token);
+  return json(res, 200, { ok: true });
+});
+
+r.post('/admin/push/test', async (req, res) => {
+  const body = await readJson(req, 4096);
+  if (!pushConfigured()) return json(res, 503, { error: 'this server has no APNs key (APNS_KEY_ID, APNS_TEAM_ID, APNS_KEY_P8)' });
+  const out = await testPush(body?.token ?? '');
+  if (out.status === 404) return json(res, 404, { error: 'not signed up' });
+  if (!out.ok) return json(res, 502, { error: `Apple refused it: ${out.reason ?? out.status}` });
+  return json(res, 200, { ok: true });
+});
+
 r.get('/admin/devices', async (_req, res) => json(res, 200, { devices: await listDevices() }));
 
 r.delete('/admin/devices/:id', async (_req, res, { params }) => {
@@ -547,7 +576,9 @@ const server = http.createServer(async (req, res) => {
       return await route.handler(req, res, { url, params: route.params });
     }
     if (url.pathname.startsWith('/admin/')) {
-      if (!adminAuthorized(req.headers) && !(await deviceAuthorized(req.headers))) return json(res, 401, { error: 'unauthorized' });
+      // A paired phone's id goes to the handler: its push sign-up belongs to it.
+      const device = adminAuthorized(req.headers) ? null : await deviceAuthorized(req.headers);
+      if (!device && !adminAuthorized(req.headers)) return json(res, 401, { error: 'unauthorized' });
       // A proxy may sign the dashboard in by adding the token itself (ops on a
       // private network does), and then the browser's requests carry it
       // whatever page sent them. So a write must be one no other site can
@@ -559,7 +590,7 @@ const server = http.createServer(async (req, res) => {
           return json(res, 403, { error: 'admin writes are same-origin JSON' });
         }
       }
-      return await route.handler(req, res, { url, params: route.params });
+      return await route.handler(req, res, { url, params: route.params, device });
     }
     if (url.pathname.startsWith('/v1/')) {
       if (!v1Limit(clientKey(req))) return json(res, 429, { error: 'rate limited' });

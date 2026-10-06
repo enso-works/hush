@@ -72,6 +72,18 @@ export const cfg = {
   ascPrivateKey: env('ASC_PRIVATE_KEY'),
   ascPrivateKeyFile: env('ASC_PRIVATE_KEY_FILE'),
   ascApiBase: env('ASC_API_BASE', 'https://api.appstoreconnect.apple.com'),
+  // Push to the hush iOS app (src/push.mjs) for new feedback and replies:
+  // an APNs auth key (Apple Developer, Keys, APNs) of the team that signs the
+  // app. One key serves every app of a team. The .p8 inline (\n allowed) or
+  // base64. Unset: phones can still sign up, and nothing is sent.
+  apnsKeyId: env('APNS_KEY_ID'),
+  apnsTeamId: env('APNS_TEAM_ID'),
+  apnsKey: env('APNS_KEY_P8').replace(/\\n/g, '\n') || (env('APNS_KEY_P8_BASE64') && Buffer.from(env('APNS_KEY_P8_BASE64'), 'base64').toString('utf8')),
+  // The app's bundle id; a build of the iOS app under another one sets it.
+  apnsTopic: env('APNS_TOPIC', 'com.bavrk.hush'),
+  // Apple's hosts; the tests point these at a local HTTP/2 server.
+  apnsHost: env('APNS_HOST', 'https://api.push.apple.com'),
+  apnsSandboxHost: env('APNS_SANDBOX_HOST', 'https://api.sandbox.push.apple.com'),
 };
 
 // How long an install row outlives its last batch, in whole days; null when
