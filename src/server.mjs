@@ -520,7 +520,7 @@ r.delete('/admin/push/:token', async (_req, res, { params }) => {
 r.post('/admin/push/test', async (req, res) => {
   const body = await readJson(req, 4096);
   if (!pushConfigured()) return json(res, 503, { error: 'this server cannot push: no APNs key, and PUSH_RELAY is off' });
-  const out = await testPush(body?.token ?? '');
+  const out = await testPush(body?.token ?? '', { via: body?.via === 'relay' ? 'relay' : undefined });
   if (out.status === 404) return json(res, 404, { error: 'not signed up' });
   if (!out.ok) return json(res, 502, { error: pushVia() === 'relay' ? `the push relay refused it: ${out.reason ?? out.status}` : `Apple refused it: ${out.reason ?? out.status}` });
   return json(res, 200, { ok: true });

@@ -177,9 +177,9 @@ async function viaRelay(row, payload) {
   return { ok: res.status === 200, status: res.status, reason: body.error ?? null, dead: res.status === 410 };
 }
 
-/** Sends one push, to Apple or through the relay. A dead token's row is deleted. */
+/** Sends one push, to Apple or through the relay (`opts.via` picks). A dead token's row is deleted. */
 export async function sendPush(row, payload, opts = {}) {
-  const via = pushVia();
+  const via = opts.via === 'relay' && cfg.pushRelay ? 'relay' : pushVia();
   if (!via) return { ok: false, status: 0, reason: 'unconfigured' };
   const out = via === 'apns' ? await deliver(row, payload, opts) : await viaRelay(row, payload);
   if (out.dead) await q('DELETE FROM push_tokens WHERE token = $1', [row.token]);
@@ -269,12 +269,12 @@ export async function unregister(token) {
   return rowCount > 0;
 }
 
-/** A push to one phone to show it works. */
-export async function testPush(token) {
+/** A push to one phone to show it works; `via: 'relay'` tries the relay even on a server with its own key. */
+export async function testPush(token, { via } = {}) {
   const { rows } = await q('SELECT token, sandbox, label, pass, enc_key FROM push_tokens WHERE token = $1', [String(token).toLowerCase()]);
   if (!rows[0]) return { ok: false, status: 404, reason: 'not signed up' };
   return sendPush(rows[0], {
     aps: { alert: { title: 'hush', body: 'Notifications work: new feedback and replies arrive here.' }, sound: 'default' },
     ...(rows[0].label ? { server: rows[0].label } : {}),
-  });
+  }, { via });
 }

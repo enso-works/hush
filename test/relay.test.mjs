@@ -141,6 +141,35 @@ describe('the relay', () => {
     assert.equal(open(push.payload.sealed, p.key).title, 'hush');
   });
 
+  test('a server with a key of its own can still test the relay, and the push arrives sealed', async () => {
+    const db = await freshDatabase('hush_keyed');
+    const keyed = await startServer(db, {
+      APNS_KEY_ID: 'ABC123DEFG',
+      APNS_TEAM_ID: 'DGUZG76BA2',
+      APNS_KEY_P8: privateKey.export({ type: 'pkcs8', format: 'pem' }),
+      APNS_HOST: apple.url,
+      PUSH_RELAY: `${relaySrv.base}/push`,
+    });
+    try {
+      const t = token();
+      const pass = (await register(t)).json.pass;
+      const k = randomBytes(32);
+      await admin(keyed.base).post('/admin/push', { token: t, label: 'srv-c', pass, key: k.toString('base64') });
+      let since = apple.pushes.length;
+      assert.equal((await admin(keyed.base).post('/admin/push/test', { token: t })).status, 200);
+      let [push] = await received(1, since);
+      assert.equal(push.payload.aps.alert.title, 'hush', 'with its own key: straight to Apple, in the clear');
+      assert.equal(push.payload.sealed, undefined);
+      since = apple.pushes.length;
+      assert.equal((await admin(keyed.base).post('/admin/push/test', { token: t, via: 'relay' })).status, 200);
+      [push] = await received(1, since);
+      assert.equal(open(push.payload.sealed, k).title, 'hush', 'through the relay: sealed');
+    } finally {
+      await keyed.stop();
+      await db.drop();
+    }
+  });
+
   test('one phone is pushed at most 20 times a minute', async () => {
     const t = token();
     const pass = (await register(t)).json.pass;
