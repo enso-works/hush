@@ -267,6 +267,7 @@ private struct Card: View {
     /// Whether it opens another tab rather than a screen under this one.
     var leaves = false
     @Environment(\.redactionReasons) private var redaction
+    @ScaledMetric(relativeTo: .headline) private var symbolRow: CGFloat = 24
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -280,7 +281,7 @@ private struct Card: View {
                     .foregroundStyle(.tertiary)
             }
             // Symbols differ in height; the numbers under them line up across cards.
-            .frame(height: 24)
+            .frame(height: symbolRow)
             Text(value)
                 .font(.title2.weight(.semibold).monospacedDigit())
                 .lineLimit(1)
