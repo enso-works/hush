@@ -30,6 +30,7 @@ targets:
       - package: HushKit
       - package: HushSDK
         product: Hush
+      - target: HushNotifications
     configFiles:
       Debug: Config/App.xcconfig
       Release: Config/App.xcconfig
@@ -63,6 +64,25 @@ targets:
         # HushKit, a library, stays nonisolated.
         SWIFT_APPROACHABLE_CONCURRENCY: YES
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+  # Opens a push that came through the relay sealed, before it shows.
+  HushNotifications:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: HushNotifications
+        excludes: [Info.plist, HushNotifications.entitlements]
+    dependencies:
+      - package: HushKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bavrk.hush.notifications
+        PRODUCT_NAME: HushNotifications
+        INFOPLIST_FILE: HushNotifications/Info.plist
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: hush
+        CODE_SIGN_ENTITLEMENTS: HushNotifications/HushNotifications.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
   HushUITests:
     type: bundle.ui-testing
     platform: iOS

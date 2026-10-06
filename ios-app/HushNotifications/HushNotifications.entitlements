@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Xcode signs an App Store build with production instead. -->
-	<key>aps-environment</key>
-	<string>development</string>
-	<!-- Shared with the notification extension: the keys pushes through the relay are sealed with. -->
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)com.bavrk.hush.shared</string>

@@ -6,4 +6,9 @@
 HUSH_URL = https:/$()/telemetry.bavrk.com
 HUSH_KEY =
 
+// bavrk's push relay: how a server without an APNs key of its own notifies
+// this app (the server's src/relay.mjs). A build under another bundle id
+// sends to Apple itself with its own key, and does not need it.
+HUSH_PUSH_RELAY = https:/$()/hush.bavrk.com/push
+
 #include? "Local.xcconfig"

@@ -20,6 +20,12 @@
   <string>$(HUSH_URL)</string>
   <key>HushKey</key>
   <string>$(HUSH_KEY)</string>
+  <!-- The push relay (Config/App.xcconfig), and the keychain group the
+       notification extension reads the servers' sealing keys from. -->
+  <key>HushPushRelay</key>
+  <string>$(HUSH_PUSH_RELAY)</string>
+  <key>HushKeychainGroup</key>
+  <string>$(AppIdentifierPrefix)com.bavrk.hush.shared</string>
   <!-- Plain http only to local addresses (an IP, a .local name): a server on
        the Mac or the LAN while it is being set up. Everything else needs https. -->
   <key>NSAppTransportSecurity</key>
