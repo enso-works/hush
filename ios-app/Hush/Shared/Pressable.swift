@@ -13,3 +13,18 @@ struct Pressable: ButtonStyle {
             .animation(.spring(duration: 0.25, bounce: 0), value: configuration.isPressed)
     }
 }
+
+extension View {
+    /// Controls kept at an edge while the content scrolls under them: the
+    /// filters under the navigation bar, the reply field above the keyboard.
+    /// On iOS 26 they join the bars' scroll edge effect; a material of their
+    /// own there blurs the large title and draws a hard line. Before iOS 26
+    /// they sit on the bar material.
+    @ViewBuilder func pinnedBar<Bar: View>(_ edge: VerticalEdge, @ViewBuilder _ bar: () -> Bar) -> some View {
+        if #available(iOS 26, *) {
+            safeAreaBar(edge: edge, spacing: 0) { bar() }
+        } else {
+            safeAreaInset(edge: edge, spacing: 0) { bar().background(.bar) }
+        }
+    }
+}

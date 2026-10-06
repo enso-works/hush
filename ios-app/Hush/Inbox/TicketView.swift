@@ -43,7 +43,7 @@ struct TicketView: View {
             .defaultScrollAnchor(.top, for: .alignment)
             .scrollDismissesKeyboard(.interactively)
             .background(Color(.systemGroupedBackground))
-            .safeAreaInset(edge: .bottom, spacing: 0) {
+            .pinnedBar(.bottom) {
                 if ticket != nil { composer }
             }
             .onChange(of: pending) { _, new in
@@ -125,7 +125,6 @@ struct TicketView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(.bar)
     }
 
     // MARK: - Actions

@@ -25,7 +25,7 @@ struct OverviewView: View {
             }
             .padding(16)
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        .pinnedBar(.top) {
             FilterBar(extraActive: order != .active, reset: { order = .active }) {
                 Menu {
                     Picker("Order", selection: $order) {
@@ -37,11 +37,12 @@ struct OverviewView: View {
                 .accessibilityLabel("Order, \(order.title)")
                 .sensoryFeedback(.selection, trigger: order)
             }
-            .background(.bar)
         }
         .modifier(SearchApps(text: $search, shown: (answer?.apps.count ?? 0) > 5))
         .background(Color(.systemGroupedBackground))
         .navigationTitle(server.name)
+        // A large title under a pinned filter bar blurs into the bar on iOS 26.
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) { ServerMenu(server: server) }
         }
@@ -158,7 +159,7 @@ private struct ServerMenu: View {
     var body: some View {
         Menu {
             NavigationLink(value: InstallRoute(id: "")) {
-                Label("Look Up an Install", systemImage: "person.crop.rectangle.badge.magnifyingglass")
+                Label("Look Up an Install", systemImage: "person.text.rectangle")
             }
             if model.servers.count > 1 {
                 Section("Server") {
