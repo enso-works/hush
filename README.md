@@ -57,7 +57,8 @@ invented data: [live demo](https://hush.bavrk.com/demo/dashboard/).
 ## The dashboard
 
 Every app at a glance: installs, daily, weekly and monthly actives, open
-feedback.
+feedback. An app with no events for 30 days is flagged inactive and listed
+after the others, a row each, until its next event.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/overview-dark.png">
@@ -98,7 +99,8 @@ release.
 Phones: a QR code that signs the hush iOS app in with a token of its own
 (the admin token never leaves the server), and the phones signed in, each
 revocable on its own. The code works once, for ten minutes. On the phone the
-app shows the Overview (sorted by activity, installs, feedback or name) and
+app shows the Overview (sorted by activity, installs, feedback or name,
+inactive apps last) and
 each app's page: whether it is sending, its numbers, an activity chart to
 read day by day, and a screen each for funnels (the catalog's, or one built
 on the phone), retention and weekly cohorts, engagement, audience, and

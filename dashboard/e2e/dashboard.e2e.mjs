@@ -45,6 +45,14 @@ describe('overview', () => {
     const { page, problems } = await open('');
     await page.getByRole('heading', { name: 'Overview' }).waitFor();
     for (const name of ['Stillwater', 'Tally', 'Pace']) await page.getByText(name, { exact: true }).first().waitFor();
+    // An app without events for 30 days goes last, in its own section and the sidebar's tail.
+    const inactive = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Inactive', exact: true }) });
+    await inactive.getByRole('link', { name: /Driftwood/ }).waitFor();
+    assert.ok(await inactive.getByText(/^Last event /).isVisible());
+    assert.equal(await inactive.getByText('Stillwater', { exact: true }).count(), 0);
+    const sidebar = await page.getByRole('navigation', { name: 'Apps' }).getByRole('link').locator('span.flex-1').allTextContents();
+    assert.deepEqual(sidebar, ['Pace', 'Stillwater', 'Tally', 'Driftwood, inactive']);
+    await page.getByText(/^3 active, 1 inactive · prod/).waitFor();
     await page.getByText(/from ads/).first().waitFor();
     // The installs the server keeps: those seen in INSTALL_RETENTION_DAYS, 180 here by default (a live demo
     // may set another, and an older one says all time).
@@ -65,6 +73,18 @@ describe('overview', () => {
 });
 
 describe('an app', () => {
+  test('an inactive app says so on its page', async () => {
+    const { page, problems } = await open('#/app/driftwood');
+    await page.getByRole('heading', { name: /^Driftwood/ }).getByText('Inactive', { exact: true }).waitFor();
+    await page.getByText(/^Nothing has arrived since/).waitFor();
+    assert.equal(await page.getByRole('heading', { name: /^Inactive/ }).count(), 0);
+    const live = await open('#/app/stillwater');
+    await live.page.getByRole('heading', { name: 'Stillwater', exact: true }).waitFor();
+    assert.deepEqual([...problems, ...live.problems], []);
+    await page.close();
+    await live.page.close();
+  });
+
   test('every panel renders', async () => {
     const { page, problems } = await open('#/app/stillwater');
     for (const title of [

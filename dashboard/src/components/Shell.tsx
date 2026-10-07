@@ -1,14 +1,28 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { ExternalLink, Fingerprint, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, SlidersHorizontal, Smartphone, Sun } from 'lucide-react'
 
 import { AppMark, Logo } from '@/components/Logo'
-import { useApps } from '@/lib/apps'
+import { isInactive, useApps } from '@/lib/apps'
 import { href, type Route } from '@/lib/route'
 import { useSession } from '@/lib/session'
 import { useTheme, type Theme } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 
-function NavLink({ to, active, icon, children, badge }: { to: string; active: boolean; icon?: ReactNode; children: ReactNode; badge?: number }) {
+function NavLink({
+  to,
+  active,
+  icon,
+  children,
+  badge,
+  className,
+}: {
+  to: string
+  active: boolean
+  icon?: ReactNode
+  children: ReactNode
+  badge?: number
+  className?: string
+}) {
   return (
     <a
       href={to}
@@ -16,6 +30,7 @@ function NavLink({ to, active, icon, children, badge }: { to: string; active: bo
       className={cn(
         'flex h-8 items-center gap-2.5 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
         active && 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground',
+        className,
       )}
     >
       {icon}
@@ -115,16 +130,24 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
             <>
               <div className="mt-6 mb-1.5 px-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Apps</div>
               <nav className="flex min-h-0 flex-col gap-0.5 overflow-y-auto" aria-label="Apps">
-                {apps.map((a) => (
-                  <NavLink
-                    key={a.app}
-                    to={href.app(a.app)}
-                    active={(route.page === 'app' || route.page === 'config') && route.slug === a.app}
-                    icon={<AppMark slug={a.app} name={a.name} className="size-5 text-[10px]" />}
-                  >
-                    {a.name}
-                  </NavLink>
-                ))}
+                {apps.map((a, i) => {
+                  const quiet = isInactive(a)
+                  const here = (route.page === 'app' || route.page === 'config') && route.slug === a.app
+                  return (
+                    <Fragment key={a.app}>
+                      {quiet && !isInactive(apps[i - 1] ?? a) && <div className="mx-2 my-1.5 border-t" role="separator" />}
+                      <NavLink
+                        to={href.app(a.app)}
+                        active={here}
+                        icon={<AppMark slug={a.app} name={a.name} className={cn('size-5 text-[10px]', quiet && !here && 'opacity-50 grayscale')} />}
+                        className={cn(quiet && !here && 'font-normal text-muted-foreground/70')}
+                      >
+                        {a.name}
+                        {quiet && <span className="sr-only">, inactive</span>}
+                      </NavLink>
+                    </Fragment>
+                  )
+                })}
               </nav>
             </>
           )}

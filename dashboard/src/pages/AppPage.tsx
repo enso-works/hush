@@ -4,13 +4,14 @@ import { Area, AreaChart, CartesianGrid, Line, XAxis, YAxis } from 'recharts'
 
 import { BarList } from '@/components/BarList'
 import { AppMark } from '@/components/Logo'
+import { InactiveBadge } from '@/components/InactiveBadge'
 import { PageHeader, PeriodControls } from '@/components/PageHeader'
 import { Stat } from '@/components/Stat'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { AppDetail } from '@/lib/api'
-import { useApps } from '@/lib/apps'
+import { isInactive, useApps } from '@/lib/apps'
 import { useApi } from '@/lib/data'
 import { countryName, flag, humanize, num, pct, plural, shortDay, when } from '@/lib/format'
 import { href } from '@/lib/route'
@@ -114,7 +115,9 @@ export function AppPage({ slug }: { slug: string }) {
   // country counts are the installs seen in that window. New installs and
   // retention count only the installs first seen inside it (src/admin.mjs):
   // a longer period is cut to it, and has no earlier one to compare with.
-  const kept = useApps().data?.install_retention_days ?? null
+  const apps = useApps().data
+  const kept = apps?.install_retention_days ?? null
+  const summary = apps?.apps.find((a) => a.app === slug)
   const cut = kept !== null && kept < prefs.days ? kept : null
   const name = d?.name ?? slug
   const c = d?.current
@@ -124,7 +127,12 @@ export function AppPage({ slug }: { slug: string }) {
     <div className="flex flex-col gap-6">
       <PageHeader
         icon={<AppMark slug={slug} name={name} className="size-10 rounded-xl text-base" />}
-        title={name}
+        title={
+          <>
+            {name}
+            {summary && isInactive(summary) && <InactiveBadge className="ml-2" />}
+          </>
+        }
         sub={
           d ? (
             <>
