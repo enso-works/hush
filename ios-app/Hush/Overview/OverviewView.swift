@@ -72,12 +72,15 @@ struct OverviewView: View {
         } else if answer != nil || error == nil {
             let shown = answer ?? Placeholder.apps
             let apps = order.sorted(shown.apps).filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.app.contains(search.lowercased()) }
+            // Inactive apps go last whatever the order: their cards would be zeros.
+            let inactive = apps.filter { $0.isInactive() }
             VStack(spacing: 16) {
                 Totals(answer: shown, days: days)
                 if apps.isEmpty {
                     ContentUnavailableView.search(text: search)
                 } else {
-                    AppGrid(apps: apps, days: days)
+                    AppGrid(apps: apps.filter { !$0.isInactive() }, days: days)
+                    if !inactive.isEmpty { InactiveApps(apps: inactive, env: env) }
                 }
             }
             .placeholder(answer == nil)
@@ -155,6 +158,79 @@ private struct AppGrid: View {
                     .buttonStyle(Pressable())
             }
         }
+    }
+}
+
+/// Apps with no events for 30 days, under the others, a row each.
+private struct InactiveApps: View {
+    let apps: [AppSummary]
+    let env: Env
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Inactive").font(.headline)
+                Text("No events in \(env.rawValue) for \(AppSummary.inactiveDays) days. They come back up with their next event.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.top, 8)
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 12) {
+                ForEach(apps) { app in
+                    NavigationLink(value: app) { InactiveRow(app: app) }
+                        .buttonStyle(Pressable())
+                }
+            }
+        }
+    }
+}
+
+private struct InactiveRow: View {
+    let app: AppSummary
+
+    var body: some View {
+        HStack(spacing: 12) {
+            AppMark(slug: app.app, name: app.name, size: 32)
+                .saturation(0)
+                .opacity(0.5)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(app.name).font(.subheadline.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+                    InactiveBadge()
+                }
+                Text(app.lastEvent == nil ? "No events yet" : "Last event \(when(app.lastEvent))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if app.openTickets > 0 {
+                Label("\(app.openTickets)", systemImage: "bubble.left")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.tint.opacity(0.12), in: .capsule)
+                    .foregroundStyle(.tint)
+            }
+            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+        }
+        .padding(12)
+        .background(Color(.secondarySystemGroupedBackground).opacity(0.6), in: .rect(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.quaternary, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+        .contentShape(.rect(cornerRadius: 14))
+    }
+}
+
+/// The flag on an app with no events for 30 days.
+struct InactiveBadge: View {
+    var body: some View {
+        Label("Inactive", systemImage: "moon")
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.quaternary.opacity(0.6), in: .capsule)
     }
 }
 

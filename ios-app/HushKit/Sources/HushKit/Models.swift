@@ -55,6 +55,18 @@ public struct AppSummary: Decodable, Sendable, Identifiable, Hashable {
     }
 }
 
+extension AppSummary {
+    /// Days without an event after which an app is inactive: MAU's window, as
+    /// on the web dashboard, so an inactive app is one with no MAU.
+    public static let inactiveDays = 30
+
+    /// No event in this environment for `inactiveDays`, or none ever.
+    public func isInactive(now: Date = .now) -> Bool {
+        guard let lastEvent else { return true }
+        return now.timeIntervalSince(lastEvent) > Double(Self.inactiveDays) * 86_400
+    }
+}
+
 /// `GET /admin/apps/:app`: one app over the period, against the period before.
 public struct AppDetail: Decodable, Sendable {
     public struct Period: Decodable, Sendable, Hashable {
