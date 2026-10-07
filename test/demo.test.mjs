@@ -19,11 +19,19 @@ after(async () => {
   await db?.drop();
 });
 
-test('the showcase is seeded: three apps with installs, events and feedback', async () => {
+test('the showcase is seeded: three apps with installs, events and feedback, and one gone quiet', async () => {
   const apps = await client(srv.base).get('/admin/apps?days=30');
   assert.equal(apps.status, 200, 'readable without a token');
-  assert.deepEqual(apps.json.apps.map((a) => a.app).sort(), ['pace', 'stillwater', 'tally']);
-  for (const a of apps.json.apps) assert.ok(a.total_installs > 100 && a.events > 0, `${a.app} has data`);
+  assert.deepEqual(apps.json.apps.map((a) => a.app).sort(), ['driftwood', 'pace', 'stillwater', 'tally']);
+  for (const a of apps.json.apps.filter((x) => x.app !== 'driftwood')) assert.ok(a.total_installs > 100 && a.events > 0, `${a.app} has data`);
+  // Driftwood stopped 45 days ago: nothing in the last 30, but it has a past.
+  const quiet = apps.json.apps.find((a) => a.app === 'driftwood');
+  assert.equal(quiet.mau, 0);
+  assert.equal(quiet.events, 0);
+  assert.equal(quiet.ad_installs, 0);
+  const days = (Date.now() - Date.parse(quiet.last_event)) / 86400000;
+  assert.ok(days > 44 && days < 47, `last event ${days} days ago`);
+  assert.ok((await client(srv.base).get('/admin/apps?days=90')).json.apps.find((a) => a.app === 'driftwood').events > 100);
   const detail = await client(srv.base).get('/admin/apps/stillwater?days=30');
   assert.equal(detail.json.highlight.event, 'meditation_completed');
   assert.ok(detail.json.current.highlight > 0 && detail.json.current.highlight_done > 0);

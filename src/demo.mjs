@@ -1,7 +1,7 @@
 // DEMO=1: a public, read-only showcase of the dashboard with invented data.
 //
-// Three made-up apps, sixty days of plausible usage and a handful of feedback
-// threads, generated from a fixed seed (stable screenshots) and re-generated
+// Four made-up apps, sixty days of plausible usage and a handful of feedback
+// threads (one app went quiet weeks ago, so the dashboard shows an inactive one), generated from a fixed seed (stable screenshots) and re-generated
 // every day so "last event" never goes stale. In this mode the server opens
 // /admin reads without a token, refuses every admin write, and closes /v1, so
 // no app can ever send real data to a demo.
@@ -17,6 +17,9 @@ export const DEMO_APPS = [
   // A habit is created once, then checked off in later sessions.
   { slug: 'tally', appStoreId: '6700000102', name: 'Tally', installs: 460, start: 'habit_created', startOnce: true, highlight: 'habit_checked', first: 'First habit', events: ['onboarding_completed', 'habit_created', 'habit_checked', 'stats_viewed', 'reminder_set'] },
   { slug: 'pace', appStoreId: '6700000103', name: 'Pace', installs: 230, start: 'run_started', highlight: 'run_finished', first: 'First run', events: ['onboarding_completed', 'run_started', 'run_finished', 'route_saved'] },
+  // Last, so the installs and events of the three above stay as they were.
+  // Its usage ends quietDays ago: no events since, no ads, no feedback.
+  { slug: 'driftwood', appStoreId: '6700000104', name: 'Driftwood', installs: 140, quietDays: 45, start: 'entry_started', highlight: 'entry_saved', first: 'First entry', events: ['onboarding_completed', 'entry_started', 'entry_saved', 'reminder_set'] },
 ];
 
 // Remote config: three keys every demo app declares, and one more for
@@ -133,10 +136,12 @@ export async function seedDemo() {
   const events = [];
 
   for (const app of DEMO_APPS) {
+    // An app that went quiet: its sixty days end that long ago.
+    const end = now - (app.quietDays ?? 0) * DAY;
     for (let i = 0; i < app.installs; i++) {
       // More installs lately: a small app that is growing.
       const ageDays = Math.floor(60 * Math.pow(r(), 1.6));
-      const first = now - ageDays * DAY - Math.floor(r() * DAY * 0.9);
+      const first = end - ageDays * DAY - Math.floor(r() * DAY * 0.9);
       const platform = r() < 0.7 ? 'ios' : 'android';
       const country = weighted(r, COUNTRIES);
       const version = weighted(r, VERSIONS);
@@ -155,10 +160,10 @@ export async function seedDemo() {
       let last = first;
       for (const [n, d] of days.sort((a, b) => a - b).entries()) {
         const sessionAt = first + d * DAY + Math.floor(r() * 3600000);
-        if (sessionAt > now) continue;
+        if (sessionAt > end) continue;
         last = Math.max(last, sessionAt);
         const session = uuid(r);
-        const at = (offsetMin) => new Date(Math.min(now, sessionAt + offsetMin * 60000)).toISOString();
+        const at = (offsetMin) => new Date(Math.min(end, sessionAt + offsetMin * 60000)).toISOString();
         const ev = (name, props = {}, offset = 0) => events.push([uuid(r), app.slug, 'prod', id, session, name, true, at(offset), version, platform, JSON.stringify(props), channel]);
         if (n === 0) ev('app_first_opened');
         if (n === 0 && r() < 0.72) ev('onboarding_completed', {}, 0.5);
@@ -276,7 +281,7 @@ async function seedAttribution(r, now) {
   const DAY = 86400000;
   const postbacks = [];
   const store = [];
-  for (const app of DEMO_APPS) {
+  for (const app of DEMO_APPS.filter((a) => !a.quietDays)) {
     const campaigns = [['1204', 0.5], ['1205', 0.3], ['3310', 0.2]];
     const count = Math.round(app.installs * 0.22);
     for (let i = 0; i < count; i++) {
@@ -317,6 +322,6 @@ async function seedAttribution(r, now) {
   await tx(async (client) => {
     await insertRows(client, 'postbacks', ['dedupe', 'kind', 'app', 'apple_app_id', 'received_at', 'verified', 'development', 'version', 'ad_network', 'source_identifier', 'conversion_value', 'coarse_value', 'sequence', 'did_win', 'redownload', 'conversion_type', 'interaction', 'fidelity', 'raw'], postbacks);
     await insertRows(client, 'asc_campaigns', ['app', 'kind', 'day', 'campaign', 'source_type', 'metric', 'value', 'processing_date'], store);
-    await insertRows(client, 'asc_requests', ['app', 'request_id', 'last_sync'], DEMO_APPS.map((a) => [a.slug, 'demo', new Date(now - 3 * 3600000).toISOString()]));
+    await insertRows(client, 'asc_requests', ['app', 'request_id', 'last_sync'], DEMO_APPS.filter((a) => !a.quietDays).map((a) => [a.slug, 'demo', new Date(now - 3 * 3600000).toISOString()]));
   });
 }
