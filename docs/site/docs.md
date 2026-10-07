@@ -808,8 +808,9 @@ node src/cli.mjs config:show <app> | config:history <app> [key]
 ## The demo
 
 [The live demo](/demo/dashboard/) is a hush instance started with `DEMO=1`:
-three invented apps with sixty days of usage and a few feedback threads,
-regenerated every day, read-only, and closed to app data. You can run the same
+three invented apps with sixty days of usage and a few feedback threads, and
+a fourth that went quiet 45 days ago (the Overview lists an app with no
+events for 30 days as inactive, after the others), regenerated every day, read-only, and closed to app data. You can run the same
 thing locally to try the dashboard before wiring anything. A demo wipes its
 database on start, so it refuses to run against one that holds any write
 key.

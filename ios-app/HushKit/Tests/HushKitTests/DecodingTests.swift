@@ -26,6 +26,18 @@ func decode<T: Decodable>(_ type: T.Type, _ name: String) throws -> T {
     #expect(pace.lastEvent != nil)
 }
 
+@Test func anAppWithoutEventsFor30DaysIsInactive() throws {
+    let pace = try #require(try decode(AppsAnswer.self, "apps").apps.first)
+    let last = try #require(pace.lastEvent)
+    #expect(!pace.isInactive(now: last.addingTimeInterval(30 * 86_400 - 60)))
+    #expect(pace.isInactive(now: last.addingTimeInterval(30 * 86_400 + 60)))
+    let never = try HushJSON.decoder.decode(AppSummary.self, from: Data("""
+        {"app": "new", "name": "New", "new_installs": 0, "total_installs": 0, "dau": 0, "wau": 0, "mau": 0,
+         "sessions": 0, "events": 0, "open_tickets": 0, "last_event": null}
+        """.utf8))
+    #expect(never.isInactive(), "no event ever")
+}
+
 @Test func appDetail() throws {
     let detail = try decode(AppDetail.self, "app")
     #expect(detail.app == "stillwater")

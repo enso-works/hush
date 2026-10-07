@@ -1,5 +1,6 @@
 import { ArrowRight, MessageSquare } from 'lucide-react'
 
+import { InactiveBadge } from '@/components/InactiveBadge'
 import { AppMark } from '@/components/Logo'
 import { PageHeader, PeriodControls } from '@/components/PageHeader'
 import { Sparkline } from '@/components/Sparkline'
@@ -7,7 +8,8 @@ import { Stat } from '@/components/Stat'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { MagicCard } from '@/components/ui/magic-card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { useApps } from '@/lib/apps'
+import type { AppSummary } from '@/lib/api'
+import { INACTIVE_DAYS, isInactive, useApps } from '@/lib/apps'
 import { num, when } from '@/lib/format'
 import { href } from '@/lib/route'
 import { usePrefs } from '@/lib/session'
@@ -19,6 +21,8 @@ export function Overview() {
   const { data, error, loading } = useApps()
   const { prefs } = usePrefs()
   const apps = data?.apps ?? []
+  const active = apps.filter((a) => !isInactive(a))
+  const inactive = apps.filter(isInactive)
   const money = useRevenueByApp()
   // Installs that sent nothing for that long are deleted, so the total is
   // the installs seen in that window, not every install there ever was, and
@@ -31,7 +35,11 @@ export function Overview() {
     <div className="flex flex-col gap-8">
       <PageHeader
         title="Overview"
-        sub={data ? `${apps.length} app${apps.length === 1 ? '' : 's'} · ${prefs.env} · last ${prefs.days} days` : ' '}
+        sub={
+          data
+            ? `${inactive.length ? `${active.length} active, ${inactive.length} inactive` : `${apps.length} app${apps.length === 1 ? '' : 's'}`} · ${prefs.env} · last ${prefs.days} days`
+            : ' '
+        }
         actions={<PeriodControls />}
       />
       {error && <ErrorNote message={error} />}
@@ -68,7 +76,7 @@ export function Overview() {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {!data && loading && Array.from({ length: 3 }, (_, i) => <Skeleton key={i} className="h-64 rounded-2xl" />)}
-        {apps.map((a, i) => (
+        {active.map((a, i) => (
           <BlurFade key={a.app} delay={0.05 + i * 0.05} duration={0.35}>
             <a href={href.app(a.app)} className="group block rounded-2xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
               <MagicCard
@@ -143,6 +151,52 @@ export function Overview() {
           </BlurFade>
         ))}
       </div>
+
+      {inactive.length > 0 && (
+        <section aria-labelledby="inactive-apps" className="flex flex-col gap-3">
+          <div>
+            <h2 id="inactive-apps" className="text-sm font-semibold">
+              Inactive
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              No events in {prefs.env} for {INACTIVE_DAYS} days. They come back up with their next event.
+            </p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {inactive.map((a, i) => (
+              <BlurFade key={a.app} delay={0.05 + (active.length + i) * 0.05} duration={0.35}>
+                <InactiveCard app={a} />
+              </BlurFade>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
+  )
+}
+
+// An inactive app takes a row, not a full card: its sparkline and numbers
+// would be zeros, and its feedback still shows.
+function InactiveCard({ app: a }: { app: AppSummary }) {
+  return (
+    <a
+      href={href.app(a.app)}
+      className="group flex items-center gap-3 rounded-xl border border-dashed bg-card/40 p-3 transition-colors hover:bg-card focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+    >
+      <AppMark slug={a.app} name={a.name} className="size-8 rounded-lg text-sm opacity-50 grayscale" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate font-medium text-muted-foreground group-hover:text-foreground">{a.name}</span>
+          <InactiveBadge />
+        </div>
+        <div className="text-xs text-muted-foreground">{a.last_event ? `Last event ${when(a.last_event)}` : 'No events yet'}</div>
+      </div>
+      {a.open_tickets > 0 && (
+        <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
+          <MessageSquare className="size-3" aria-hidden /> {a.open_tickets}
+        </span>
+      )}
+      <ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-0.5" aria-hidden />
+    </a>
   )
 }

@@ -33,9 +33,10 @@ enum Placeholder {
         decode(#"{"id": "p\#(i)", "app": "app", "kind": "issue", "install": null, "rc_id": null, "email": null, "subject": "A subject line", "status": "open", "created_at": 0, "updated_at": 0, "preview": "A message about the app, as long as most are, over two lines.", "replies": 0}"#)
     }
 
+    // A recent last event, so the stand-ins take the active apps' cards.
     private static func app(_ slug: String) -> String {
         let trend = (0..<30).map { String(20 + Int(10 * sin(Double($0) / 3)) + $0) }.joined(separator: ",")
-        return #"{"app": "\#(slug)", "name": "Application", "new_installs": 100, "total_installs": 1000, "dau": 100, "wau": 300, "mau": 600, "sessions": 1000, "events": 5000, "open_tickets": 0, "last_event": null, "ad_installs": 0, "trend": [\#(trend)]}"#
+        return #"{"app": "\#(slug)", "name": "Application", "new_installs": 100, "total_installs": 1000, "dau": 100, "wau": 300, "mau": 600, "sessions": 1000, "events": 5000, "open_tickets": 0, "last_event": \#(Date.now.timeIntervalSinceReferenceDate), "ad_installs": 0, "trend": [\#(trend)]}"#
     }
 
     private static func decode<T: Decodable>(_ json: String) -> T {

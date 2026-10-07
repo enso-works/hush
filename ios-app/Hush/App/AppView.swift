@@ -155,6 +155,7 @@ private struct Health: View {
         if quiet == .infinity { return "No events yet" }
         if quiet < 3600 { return "Receiving events" }
         if quiet < 2 * 86_400 { return "Quiet for \(Int(quiet / 3600)) h" }
+        if quiet > Double(AppSummary.inactiveDays) * 86_400 { return "Inactive for \(Int(quiet / 86_400)) days" }
         return "Quiet for \(Int(quiet / 86_400)) days"
     }
 

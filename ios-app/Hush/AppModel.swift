@@ -115,10 +115,19 @@ final class AppModel {
     func addDemo() {
         if let demo = state.servers.first(where: \.isDemo) { return select(demo) }
         do {
-            try save(.demo(), token: nil, headerValue: nil)
+            try save(Self.demoServer(), token: nil, headerValue: nil)
         } catch {
             log.error("Could not add the demo: \(error, privacy: .public)")
         }
+    }
+
+    /// The public demo; in UI tests, `-demo-url` puts a local DEMO=1 server in
+    /// its place, so a test can see what the live demo does not have yet.
+    private static func demoServer() -> Server {
+        let args = ProcessInfo.processInfo.arguments
+        guard args.contains("-ui-testing"), let i = args.firstIndex(of: "-demo-url"), i + 1 < args.count,
+              let url = URL(string: args[i + 1]) else { return .demo() }
+        return Server(name: "Demo", baseURL: url, isDemo: true)
     }
 
     private func persist() {
