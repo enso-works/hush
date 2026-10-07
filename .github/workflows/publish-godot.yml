@@ -1,0 +1,109 @@
+name: publish godot
+
+# Releases the Godot add-on when a godot-v tag is pushed, e.g.
+#   (bump version in godot/addons/hush/plugin.cfg and SDK_VERSION in hush.gd, commit)
+#   git tag godot-v0.1.1 && git push origin godot-v0.1.1
+# The release carries hush-godot-<version>.zip, which holds addons/hush/ and
+# nothing else, to unzip into a project's root. With the repository variable
+# HUSH_GODOT_MIRROR set to `on` and a deploy key in the secret
+# HUSH_GODOT_MIRROR_KEY, addons/hush/ also goes to enso-works/hush-godot, the
+# repository the Godot Asset Library reads; until then that step is skipped.
+
+on:
+  push:
+    tags: ['godot-v*']
+
+permissions:
+  contents: write # the GitHub release
+
+env:
+  GODOT_VERSION: 4.7.2-stable
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: The tag matches plugin.cfg and SDK_VERSION
+        id: version
+        run: |
+          version=$(sed -nE 's/^version="(.*)"$/\1/p' godot/addons/hush/plugin.cfg)
+          sdk=$(sed -nE 's/^const SDK_VERSION := "(.*)"$/\1/p' godot/addons/hush/hush.gd)
+          echo "plugin.cfg $version, SDK_VERSION $sdk, tag $GITHUB_REF_NAME"
+          test "$version" = "${GITHUB_REF_NAME#godot-v}"
+          test "$sdk" = "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Godot
+        run: |
+          curl -sSLo godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}_linux.x86_64" /usr/local/bin/godot
+          rm godot.zip
+          godot --version
+      # --check-only exits 0 on a parse error, so the output decides.
+      - name: Every script parses
+        working-directory: godot
+        run: |
+          for f in addons/hush/*.gd tests/*.gd; do
+            out=$(godot --headless --path . --check-only -s "$f" 2>&1)
+            if grep -qE 'SCRIPT ERROR|Parse Error|Failed to load' <<<"$out"; then echo "$out"; exit 1; fi
+            echo "$f parses"
+          done
+      - name: The add-on against the real server
+        run: node --test test/godot.test.mjs
+        env:
+          REQUIRE_GODOT: '1'
+      - name: Zip addons/hush
+        working-directory: godot
+        run: |
+          zip -r "../hush-godot-${{ steps.version.outputs.version }}.zip" addons/hush -x '*.tmp'
+          unzip -l "../hush-godot-${{ steps.version.outputs.version }}.zip"
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "hush-godot-$VERSION.zip" --title "Godot add-on $VERSION" --notes "hush for Godot $VERSION. Unzip hush-godot-$VERSION.zip into your project's root (it holds addons/hush/), then enable the plugin in Project Settings > Plugins: see godot/addons/hush/README.md."
+      - name: Mirror addons/hush to enso-works/hush-godot
+        if: vars.HUSH_GODOT_MIRROR == 'on'
+        env:
+          DEPLOY_KEY: ${{ secrets.HUSH_GODOT_MIRROR_KEY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          test -n "$DEPLOY_KEY" || { echo "::error::HUSH_GODOT_MIRROR is on but HUSH_GODOT_MIRROR_KEY is empty"; exit 1; }
+          mkdir -p ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/hush_godot_mirror
+          chmod 600 ~/.ssh/hush_godot_mirror
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/hush_godot_mirror -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone git@github.com:enso-works/hush-godot.git mirror
+          cd mirror
+          git checkout -B main
+          rm -rf addons/hush
+          mkdir -p addons
+          cp -R ../godot/addons/hush addons/hush
+          # The Asset Library shows the repository's root README and LICENSE.
+          cp addons/hush/README.md addons/hush/LICENSE .
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "hush for Godot $VERSION" || echo "nothing changed"
+          git tag "v$VERSION"
+          git push origin main "v$VERSION"

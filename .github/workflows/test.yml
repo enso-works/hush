@@ -144,6 +144,53 @@ jobs:
       - run: npm run build
       - run: npm pack --dry-run
 
+  # The Godot add-on (godot/addons/hush): every script parses, and Godot runs
+  # it headless against the real server (test/godot.test.mjs, which the
+  # server job skips for want of Godot).
+  godot:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.7.2-stable
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install Godot
+        run: |
+          curl -sSLo godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}_linux.x86_64" /usr/local/bin/godot
+          rm godot.zip
+          godot --version
+      # --check-only exits 0 on a parse error, so the output decides.
+      - name: Every script parses
+        working-directory: godot
+        run: |
+          for f in addons/hush/*.gd tests/*.gd; do
+            out=$(godot --headless --path . --check-only -s "$f" 2>&1)
+            if grep -qE 'SCRIPT ERROR|Parse Error|Failed to load' <<<"$out"; then echo "$out"; exit 1; fi
+            echo "$f parses"
+          done
+      - run: node --test test/godot.test.mjs
+        env:
+          REQUIRE_GODOT: '1'
+
   image:
     runs-on: ubuntu-latest
     steps:
