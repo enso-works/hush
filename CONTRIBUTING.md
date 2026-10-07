@@ -107,6 +107,22 @@ storage, the network, the clock and the timers; with `HUSH_E2E_URL`,
 `HUSH_E2E_KEY` and `HUSH_E2E_ADMIN` it also runs against a real server.
 Released by a plain semver tag (see AGENTS.md).
 
+## The Godot add-on
+
+`godot/addons/hush/` is hush for Godot, in pure GDScript. It follows
+`sdk/src/core.ts` too, as the Swift SDK does, without remote config,
+attribution or `entry()`. `godot/` is its development project: open it in
+Godot 4 to try the add-on. `test/godot.test.mjs` starts a server, runs
+`godot/tests/run_tests.gd` headless against it, and checks what it stored;
+it needs `godot` on PATH (or `GODOT`) and the test Postgres, and skips
+without Godot:
+
+```sh
+node --test test/godot.test.mjs
+```
+
+Released by a `godot-v<version>` tag (see AGENTS.md).
+
 ## The iOS app
 
 `ios-app/` is the dashboard as an iOS app. `HushKit/` holds the `/admin`

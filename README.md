@@ -22,6 +22,7 @@
 [![npm: @bavrk/hush-expo](https://img.shields.io/npm/v/@bavrk/hush-expo?label=%40bavrk%2Fhush-expo)](https://www.npmjs.com/package/@bavrk/hush-expo)
 [![npm: @bavrk/hush-capacitor](https://img.shields.io/npm/v/@bavrk/hush-capacitor?label=%40bavrk%2Fhush-capacitor)](https://www.npmjs.com/package/@bavrk/hush-capacitor)
 [![Swift Package: Hush](https://img.shields.io/github/v/tag/enso-works/hush?filter=%21%2A-v%2A&label=Hush%20%28Swift%29&color=F05138)](swift/README.md)
+[![Godot add-on: hush](https://img.shields.io/github/v/tag/enso-works/hush?filter=godot-v%2A&label=hush%20%28Godot%29&color=478CBF)](godot/addons/hush/README.md)
 [![test](https://github.com/enso-works/hush/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/enso-works/hush/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -31,7 +32,8 @@ Expo, React Native, the web and Capacitor, with optional native iOS
 companions for Expo (`@bavrk/hush-expo`) and Capacitor
 (`@bavrk/hush-capacitor`). For native iOS apps, `Hush`, a Swift package
 installed from this repository with Swift Package Manager
-([guide](swift/README.md)).
+([guide](swift/README.md)). For Godot 4 games, an add-on in pure GDScript
+([guide](godot/addons/hush/README.md)).
 
 Built for our own apps ([bavrk](https://bavrk.com): Braele and friends), where
 it runs in production. It is public so you can read it, fork it or run it
@@ -130,6 +132,7 @@ them again.
 | [`@bavrk/hush-expo`](https://www.npmjs.com/package/@bavrk/hush-expo) | Optional, iOS, Expo development builds: Apple ad attribution, the TestFlight or App Store channel, background time for the last send. A no-op on Android, the web and in Expo Go. [Guide](expo/README.md) |
 | [`@bavrk/hush-capacitor`](https://www.npmjs.com/package/@bavrk/hush-capacitor) | Optional, iOS, Capacitor apps: the same as `@bavrk/hush-expo`, for `@bavrk/hush/web` in a Capacitor app. A no-op on Android and the web. [Guide](capacitor/README.md) |
 | [`Hush`](swift/README.md) (Swift package) | The SDK for native Swift apps on iOS 15 and later: the same events, sessions and feedback, through Swift Package Manager from this repository. No remote config or ad attribution yet. [Guide](swift/README.md) |
+| [hush for Godot](godot/addons/hush/README.md) (add-on) | For Godot 4 games, in pure GDScript, so it runs wherever Godot does: the same events, sessions and feedback, and a feedback form to drop into a scene. A zip on each `godot-v` release. No remote config or ad attribution. [Guide](godot/addons/hush/README.md) |
 | server (this repo, not on npm) | One Node 22 container with the dashboard, plus Postgres. [Run it](#run-the-server) with `docker compose` from `examples/`. |
 
 ## Install the SDK
@@ -157,6 +160,11 @@ A native Swift app adds the Swift package instead:
 `.package(url: "https://github.com/enso-works/hush", from: "0.1.0")`, then
 `import Hush`, `Hush.configure(url:key:)` and `Hush.start()`
 ([guide](swift/README.md)).
+
+A Godot 4 game unzips `hush-godot-<version>.zip` from the
+[releases](https://github.com/enso-works/hush/releases) into its root (or
+copies `godot/addons/hush/`), enables the plugin, and calls
+`Hush.configure({"url": …, "key": …})` ([guide](godot/addons/hush/README.md)).
 
 `@bavrk/hush-expo` needs an iOS deployment target of 16.4: the default on Expo
 SDK 56, set with `expo-build-properties` on 52-55 ([guide](expo/README.md)).
