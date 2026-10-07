@@ -4,8 +4,8 @@ hush is in-app feedback and anonymous usage tracking: a Node server with
 Postgres and a dashboard, an SDK on npm (`@bavrk/hush`), native iOS
 companions for Expo (`@bavrk/hush-expo`) and Capacitor
 (`@bavrk/hush-capacitor`), a Swift SDK for native iOS apps (`Hush`, through
-Swift Package Manager from this repository), and an iOS dashboard app
-(`ios-app/`). This file is for work on hush itself. Agents
+Swift Package Manager from this repository), a Godot 4 add-on (`godot/`), and
+an iOS dashboard app (`ios-app/`). This file is for work on hush itself. Agents
 that add hush to an app use the plugin in `plugins/hush/` instead.
 
 ## Layout
@@ -21,7 +21,8 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 | `capacitor/` | `@bavrk/hush-capacitor`: the same for Capacitor, iOS 15. The Swift plugin in `ios/Sources/HushCapacitorPlugin/`, `Package.swift` and `BavrkHushCapacitor.podspec` (both named as `npx cap sync` derives from the package name), the JS in `src/`. No config plugin. |
 | `ios-app/` | The iOS app (work in progress): `HushKit/`, a Swift package with the `/admin` API's models and client (`swift test`), and `Hush/`, the SwiftUI app, iOS 18. `project.yml` is the Xcode project for XcodeGen; `Hush.xcodeproj` is generated, not committed. |
 | `Package.swift`, `swift/` | `Hush`, the Swift SDK for native iOS apps (iOS 15), at the root because Swift Package Manager installs from there. `swift/Sources/Hush/`: the same rules as `sdk/src/core.ts` (events, sessions, queue, opt-out, forget, feedback); no remote config or attribution yet. Released by plain semver tags (`0.1.0`). |
-| `test/` | `node:test` suites. Server tests run the real server against real Postgres. `sdk.test.mjs` runs the SDK under Node with React Native mocked (`test/sdk/`). `expo.test.mjs`, `capacitor.test.mjs` (Capacitor's bridge mocked) and `plugin.test.mjs` need no database. `__snapshots__/v1-compat.json` freezes `/v1`. |
+| `godot/` | hush for Godot, in pure GDScript: `addons/hush/` is what ships (`hush.gd`, the `Hush` autoload, with the same rules as `sdk/src/core.ts`; `plugin.gd`, which adds it; `feedback_panel.tscn`, a form; its own README and LICENSE). `project.godot` makes `godot/` the add-on's development project; `tests/run_tests.gd` runs it headless against a server. No remote config, attribution or `entry()`. Released as a zip by `godot-v<version>` tags. |
+| `test/` | `node:test` suites. Server tests run the real server against real Postgres. `sdk.test.mjs` runs the SDK under Node with React Native mocked (`test/sdk/`). `expo.test.mjs`, `capacitor.test.mjs` (Capacitor's bridge mocked) and `plugin.test.mjs` need no database. `godot.test.mjs` runs Godot against the real server, and skips without `godot` on PATH (`GODOT` names another binary). `__snapshots__/v1-compat.json` freezes `/v1`. |
 | `examples/` | `docker-compose.yml`, `.env.example`, `catalog.example.json`, an Expo setup file. |
 | `docs/dogfood.md` | Friction found while using hush in our own apps, newest first. |
 | `docs/accounts.md` | The design for accounts (people, roles, teams), agreed before it is built. |
@@ -63,6 +64,8 @@ The packages and the dashboard, from the repository root:
 swift test                                                                # the Swift SDK; HUSH_E2E_URL, _KEY, _ADMIN add the live test
 (cd ios-app/HushKit && swift test)                                       # the iOS app's models and client; HUSH_LIVE=1 adds the live demo
 (cd ios-app && xcodegen && xcodebuild -project Hush.xcodeproj -scheme Hush -destination 'generic/platform=iOS Simulator' build)
+(cd godot && for f in addons/hush/*.gd tests/*.gd; do godot --headless --path . --check-only -s "$f"; done)   # exits 0 on a parse error: read the output
+node --test test/godot.test.mjs                                          # the Godot add-on against the real server; needs godot and the test Postgres
 (cd dashboard && npm run shots)                                          # the README's and the site's images, from the live demo; needs pngquant
 ```
 
@@ -121,9 +124,21 @@ claude plugin validate ./plugins/hush
   and creates the GitHub release; Swift Package Manager reads the tag. A
   change to `/v1` the JavaScript SDK makes, the Swift one makes too: they
   must stay indistinguishable to the server.
+- **Releasing the Godot add-on**: bump `version` in
+  `godot/addons/hush/plugin.cfg` and `SDK_VERSION` in `godot/addons/hush/hush.gd`
+  together (the workflow checks both against the tag), and the version in
+  `godot/addons/hush/README.md`, `docs/site/docs.md` and
+  `plugins/hush/skills/hush/references/godot.md`, commit, then tag
+  `godot-v<version>` and push the tag. The `publish godot` workflow tests the
+  add-on against a server, zips `addons/hush/` into
+  `hush-godot-<version>.zip` and creates the GitHub release. With the variable
+  `HUSH_GODOT_MIRROR` set to `on` and the deploy key `HUSH_GODOT_MIRROR_KEY`,
+  it also pushes `addons/hush/` to `enso-works/hush-godot`, for the Godot
+  Asset Library. A change to `/v1` the JavaScript SDK makes, the add-on makes
+  too.
 - **Keep the plugin in step.** `plugins/hush/skills/hush/SKILL.md` and its
-  `references/` describe the SDK, hush-expo, hush-capacitor, the server and
-  the catalog as they are. When any of those change, update them in the same
+  `references/` describe the SDK, hush-expo, hush-capacitor, the Godot
+  add-on, the server and the catalog as they are. When any of those change, update them in the same
   change, set `metadata.sdk-version` in `SKILL.md` to the SDK version (a test
   checks it), and bump `version` in `plugins/hush/.claude-plugin/plugin.json`:
   installed users only get a new plugin version.

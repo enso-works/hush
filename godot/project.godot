@@ -1,0 +1,18 @@
+; The add-on's development project: addons/hush is what ships, tests/ runs it
+; against a hush server (test/godot.test.mjs in the repository root).
+
+config_version=5
+
+[application]
+
+config/name="hush for Godot"
+config/version="1.2.3"
+config/features=PackedStringArray("4.3")
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/hush/plugin.cfg")
+
+[autoload]
+
+Hush="*res://addons/hush/hush.gd"

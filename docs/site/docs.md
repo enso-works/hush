@@ -33,7 +33,8 @@ needs a server with migration 007 for it: update the server before the app
 ([Feedback](#feedback)). 2.4.0 adds [remote config](#remote-config), which
 needs migration 009; against an older server every getter returns its
 fallback. A native Swift app uses the Swift package instead (`Hush` 0.1.0):
-see [Native Swift apps](#native-swift-apps).
+see [Native Swift apps](#native-swift-apps). A Godot 4 game uses the add-on,
+hush for Godot 0.1.0: see [Godot games](#godot-games).
 
 ```sh
 npx expo install @bavrk/hush @react-native-async-storage/async-storage expo-constants expo-device expo-localization
@@ -401,6 +402,49 @@ a thread key. `Hush.optOut()` and `await Hush.forget()` are the user's
 choices. The channel is `dev` in a debug build, and `testflight` or
 `app_store` as iOS reports it otherwise. Batches carry `sdk: swift-0.1.0`.
 The [Swift guide](https://github.com/enso-works/hush/blob/main/swift/README.md) has the rest.
+
+### Godot games
+
+hush for Godot is an add-on for Godot 4 (4.3 and later), in pure GDScript, so
+it runs wherever Godot does: iOS, Android, desktop and the web. The same
+events, sessions and feedback, so the dashboard reads them alike. It has no
+remote config, ad attribution or `entry()`.
+
+Unzip `hush-godot-<version>.zip` from the
+[releases](https://github.com/enso-works/hush/releases) into the project's
+root (it holds `addons/hush/`), or copy `godot/addons/hush/` from the
+repository, then enable it in Project Settings > Plugins. That adds the `Hush`
+autoload. Once, as the game starts:
+
+```gdscript
+Hush.configure({
+	"url": "https://hush.example.com",
+	"key": "hush_mygame_dev_…" if OS.is_debug_build() else "hush_mygame_prod_…",
+})
+
+Hush.screen("main_menu")
+Hush.track("level_completed", {"level": 3, "stars": 2})
+Hush.track("tutorial_finished", {}, true)            # at most once per install
+Hush.identify({"pro": true})
+var result: Dictionary = await Hush.send_feedback({"kind": "issue", "message": text, "email": email})
+```
+
+`res://addons/hush/feedback_panel.tscn` is a feedback form to drop into a
+scene: a kind, the message, an optional email and a send button, with sent and
+error states. It takes the game's theme, and its texts are exported for
+translation. `await Hush.list_tickets()` and
+`await Hush.reply_to_ticket(id, body)` are the inbox; a ticket with an email
+is kept apart from the install by a thread key, as above. `Hush.opt_out(true)` and `await Hush.forget()` are
+the player's choices.
+
+The queue lives in `user://hush/`. hush sends as the game leaves the
+foreground or quits, and keeps sending while the scene tree is paused. The
+channel is `dev` in a debug build and none in a release build: GDScript cannot
+tell TestFlight from the App Store, so give each export preset a custom
+feature (`testflight`, `app_store`, `play`) and pass the one
+`OS.has_feature()` finds as `channel`. The version is the project's (Project
+Settings > Application > Config > Version). Batches carry `sdk: godot-0.1.0`.
+The [Godot guide](https://github.com/enso-works/hush/blob/main/godot/addons/hush/README.md) has the rest.
 
 ## Configure it
 
