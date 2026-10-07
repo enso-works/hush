@@ -48,7 +48,10 @@ Read `package.json`, the lockfile, `app.json` or `app.config.*`,
 | `react-native` without `expo` | Bare React Native | `@bavrk/hush`, after Expo modules |
 | `@capacitor/core` | Capacitor | `@bavrk/hush/web` |
 | `vite`, `next`, `astro`, `@sveltejs/kit`, or plain HTML | Web | `@bavrk/hush/web` |
-| none of these (Electron, Node, a game runtime) | Other | `@bavrk/hush/core` |
+| none of these (Electron, Node, a JavaScript game runtime) | Other | `@bavrk/hush/core` |
+
+A `project.godot` at the root, with no `package.json`, is a Godot game: follow
+[godot.md](godot.md) instead of the steps below.
 
 Note also:
 

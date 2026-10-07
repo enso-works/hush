@@ -1,6 +1,6 @@
 ---
 name: hush
-description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native, web and Capacitor apps, or the Hush Swift package in native iOS apps. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, remote config (typed values with targeting and rollouts, declared in the catalog, overridden on the dashboard, evaluated on the device), the hush server and its catalog (events, highlight, funnels, breakdowns, private screens, config keys), and Apple ad attribution through @bavrk/hush-expo or @bavrk/hush-capacitor (SKAdNetwork and AdAttributionKit conversion values). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention, feature flags, remote config or campaign attribution without IP addresses, advertising ids or a consent banner.
+description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native, web and Capacitor apps, the Hush Swift package in native iOS apps, or the hush add-on in Godot games. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, remote config (typed values with targeting and rollouts, overridden on the dashboard, evaluated on the device), the hush server and its catalog (events, highlight, funnels, breakdowns, private screens, config keys), and Apple ad attribution through @bavrk/hush-expo or @bavrk/hush-capacitor (SKAdNetwork and AdAttributionKit). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention, feature flags, remote config or campaign attribution without IP addresses, advertising ids or a consent banner.
 license: MIT
 compatibility: Expo apps on React Native 0.73 or later (Expo SDK 52 or later for @bavrk/hush-expo), bare React Native 0.73 or later with Expo modules, or a web, PWA or Capacitor app (iOS 15 or later for @bavrk/hush-capacitor). Needs the URL of a running hush server and a write key minted on it.
 metadata:
@@ -57,8 +57,9 @@ What it is not:
 | Bare React Native 0.73+ | `npx install-expo-modules@latest`, the Expo line above, `npx pod-install`, rebuild | `@bavrk/hush` |
 | Web page, PWA, Capacitor | `npm install @bavrk/hush` | `@bavrk/hush/web` |
 | Capacitor, plus iOS ad attribution, TestFlight detection and background time for the flush | also `npm i @bavrk/hush-capacitor && npx cap sync ios`, then a native build | `@bavrk/hush-capacitor` |
-| Anything else (Electron, a game runtime) | `npm install @bavrk/hush` | `@bavrk/hush/core` |
+| Anything else (Electron, a JavaScript game runtime) | `npm install @bavrk/hush` | `@bavrk/hush/core` |
 | Native Swift app (SwiftUI or UIKit, iOS 15+) | Swift Package Manager: `https://github.com/enso-works/hush`, from `0.1.0` | `import Hush` |
+| Godot 4 game (`project.godot`) | the add-on at `res://addons/hush/`, from the release zip; enable the plugin | the `Hush` autoload |
 
 A native Swift app calls `Hush.configure(url:key:)` and `Hush.start()` at
 launch, then `Hush.screen(_:)`, `Hush.track(_:_:once:)`, `Hush.identify(pro:rcId:)`,
@@ -66,6 +67,12 @@ launch, then `Hush.screen(_:)`, `Hush.track(_:_:once:)`, `Hush.identify(pro:rcId
 `listTickets()` / `replyToTicket(_:body:)` for feedback, with the same rules
 as below; it has no remote config or ad attribution yet
 ([guide](https://github.com/enso-works/hush/blob/main/swift/README.md)).
+
+A Godot game calls `Hush.configure({"url": …, "key": …})` once, then
+`Hush.screen()`, `Hush.track(name, props, once)`, and
+`await Hush.send_feedback({…})` or the ready `feedback_panel.tscn`, with the
+same rules as below; no remote config, ad attribution or `entry()`. Install
+and wire it with [references/godot.md](references/godot.md), not install.md.
 
 Never import `@bavrk/hush` outside React Native: it imports `react-native` and
 three Expo modules at the top level. All five peers, `react-native` included,
@@ -427,5 +434,7 @@ Read the one the task needs:
 - [references/attribution.md](references/attribution.md): link tags, App Store
   campaigns, SKAdNetwork and AdAttributionKit end to end, and what each can
   prove.
+- [references/godot.md](references/godot.md): the Godot add-on, its install,
+  options and API.
 - [references/troubleshooting.md](references/troubleshooting.md): symptom,
   cause and fix.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
   "name": "hush",
-  "description": "The hush plugin for Claude Code. hush is self-hosted in-app feedback and anonymous usage tracking for Expo, React Native and web apps.",
+  "description": "The hush plugin for Claude Code. hush is self-hosted in-app feedback and anonymous usage tracking for Expo, React Native and web apps, native iOS apps and Godot games.",
   "owner": {
     "name": "bavrk",
     "url": "https://bavrk.com"
@@ -12,7 +12,7 @@
       "source": "./plugins/hush",
       "description": "Installs and wires @bavrk/hush in an Expo, React Native, web or Capacitor app, and plans the events, funnels and conversion values it tracks.",
       "category": "development",
-      "tags": ["analytics", "feedback", "expo", "react-native", "web", "capacitor", "self-hosted", "privacy"]
+      "tags": ["analytics", "feedback", "expo", "react-native", "web", "capacitor", "godot", "self-hosted", "privacy"]
     }
   ]
 }
