@@ -781,7 +781,8 @@ sends one. A push carries the app's name, the subject and a line of the
 message, never an email or an install id. A server without an APNs key
 pushes through bavrk's relay (`PUSH_RELAY`, on by default): sealed with a
 key only the phone has, so the relay sees a token and an opaque blob, never
-what was written. In the app, each app's page
+what was written. A key Apple refuses is logged at level `error` as `APNs
+refused this server's key`, once an hour, for an alert to match. In the app, each app's page
 shows whether it is sending, its numbers and an activity chart read day by
 day, and leads to funnels (the catalog's, and one built from any events),
 retention with weekly cohorts, engagement, audience, and every event broken

@@ -22,6 +22,10 @@ const b64url = (input) => Buffer.from(input).toString('base64url');
 const DEAD = new Set(['BadDeviceToken', 'Unregistered', 'DeviceTokenNotForTopic']);
 // Our JWT must be minted again.
 const STALE_JWT = new Set(['ExpiredProviderToken', 'InvalidProviderToken', 'MissingProviderToken']);
+// Still refused after a fresh JWT: the key, team or topic is wrong or revoked,
+// and every push fails until someone fixes the configuration.
+const KEY_REFUSED = new Set([...STALE_JWT, 'BadCertificate', 'BadCertificateEnvironment', 'Forbidden', 'TopicDisallowed', 'BadTopic']);
+let keyRefusedAt = 0;
 
 // Like alert mail: past this many pushes an hour (a script minting install ids
 // to file tickets), tickets are still stored; only the pushes stop, with one warning.
@@ -135,7 +139,14 @@ export async function deliver({ token, sandbox }, payload, { collapseId } = {}) 
     reason = res.status === 200 ? null : reasonOf(res.body);
   }
   const dead = res.status === 410 || DEAD.has(reason);
-  if (!dead && res.status !== 200) log.warn('APNs refused a push', { status: res.status, reason });
+  if (res.status === 200) keyRefusedAt = 0;
+  else if (KEY_REFUSED.has(reason)) {
+    // An error an alert can match on, once an hour rather than once a push.
+    if (Date.now() - keyRefusedAt > 3_600_000) {
+      keyRefusedAt = Date.now();
+      log.error("APNs refused this server's key: no push is delivered until APNS_KEY_ID, APNS_TEAM_ID, the key and APNS_TOPIC match an active key", { status: res.status, reason });
+    }
+  } else if (!dead) log.warn('APNs refused a push', { status: res.status, reason });
   return { ok: res.status === 200, status: res.status, reason, dead };
 }
 

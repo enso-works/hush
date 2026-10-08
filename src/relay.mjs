@@ -10,10 +10,24 @@
 // no token, no pass, no server, only counts in its log.
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-import { cfg } from './config.mjs';
+import { cfg, log } from './config.mjs';
 import { apnsConfigured, deliver } from './push.mjs';
 
 export const relayOn = () => cfg.relaySecret.length >= 32 && apnsConfigured();
+
+// What the relay did, logged once an hour when it did anything: the only
+// trace it keeps, and enough to see it is used and working.
+let hour = -1;
+let counts = {};
+export function countRelay(outcome) {
+  const now = Math.floor(Date.now() / 3_600_000);
+  if (now !== hour) {
+    if (Object.keys(counts).length) log.info('push relay: the last hour', counts);
+    hour = now;
+    counts = {};
+  }
+  counts[outcome] = (counts[outcome] ?? 0) + 1;
+}
 
 const HEX = /^[0-9a-f]{64,200}$/;
 
