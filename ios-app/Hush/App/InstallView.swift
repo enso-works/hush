@@ -13,6 +13,8 @@ struct InstallView: View {
     /// The id looked up, lowercased.
     @State private var id: String?
     @State private var detail: InstallDetail?
+    /// Counts answers to animate on (see AppData.arrivals).
+    @State private var arrivals = 0
     @State private var error: HushError?
     @State private var live = true
     @State private var forgetting = false
@@ -105,6 +107,7 @@ struct InstallView: View {
                 }
             }
         }
+        .animation(arrival(reduceMotion: reduceMotion), value: arrivals)
         .onAppear {
             Telemetry.screen("install")
             if id == nil { focused = true }
@@ -207,10 +210,9 @@ struct InstallView: View {
         guard let id else { return }
         do {
             let fresh = try await model.client(for: server).install(id)
-            withAnimation(arrival(reduceMotion: reduceMotion)) {
-                detail = fresh
-                error = nil
-            }
+            detail = fresh
+            error = nil
+            arrivals += 1
         } catch is CancellationError {
         } catch {
             if !Task.isCancelled { self.error = HushError(error) }

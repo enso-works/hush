@@ -21,6 +21,7 @@ struct AppScreen<Content: View>: View {
                 AppFilters(data: data)
                 content(scope, data.key(days: days, env: env))
             }
+            .animation(arrival(reduceMotion: reduceMotion), value: data.arrivals)
             .padding(16)
         }
         .background(Color(.systemGroupedBackground))
@@ -28,8 +29,8 @@ struct AppScreen<Content: View>: View {
         .navigationBarTitleDisplayMode(.inline)
         .scopeTitle(data, days: days, env: env)
         .onAppear { Telemetry.screen(screen) }
-        .task(id: scope) { await data.load(scope, reduceMotion: reduceMotion) }
-        .refreshable { await data.refresh(scope, reduceMotion: reduceMotion) }
+        .task(id: scope) { await data.load(scope) }
+        .refreshable { await data.refresh(scope) }
     }
 }
 

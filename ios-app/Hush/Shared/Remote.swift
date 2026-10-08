@@ -14,6 +14,8 @@ struct Remote<Key: Hashable, Value, Content: View>: View {
 
     @State private var value: Value?
     @State private var error: HushError?
+    /// Counts answers to animate on (see AppData.arrivals).
+    @State private var arrivals = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -27,16 +29,16 @@ struct Remote<Key: Hashable, Value, Content: View>: View {
                     .frame(maxWidth: .infinity, minHeight: height)
             }
         }
+        .animation(arrival(reduceMotion: reduceMotion), value: arrivals)
         .task(id: key) { await run() }
     }
 
     private func run() async {
         do {
             let fresh = try await load()
-            withAnimation(arrival(reduceMotion: reduceMotion)) {
-                value = fresh
-                error = nil
-            }
+            value = fresh
+            error = nil
+            arrivals += 1
         } catch is CancellationError {
         } catch {
             // A read given up for a newer one fails as a URL error, not a cancellation.

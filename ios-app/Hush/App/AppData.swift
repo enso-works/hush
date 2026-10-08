@@ -15,6 +15,11 @@ final class AppData {
     let kept: Int?
     var channel: String?
     private(set) var detail: AppDetail?
+    /// Counts answers, for the screens to animate on. Setting `detail` inside
+    /// `withAnimation` here lost the update now and then: the page drew the
+    /// state from before and never drew the answer (an app page stuck on its
+    /// placeholder, in about half the UI test runs on iOS 26).
+    private(set) var arrivals = 0
     private(set) var error: HushError?
     /// Counts pulls to refresh, so the parts read on their own read again too.
     private(set) var reloads = 0
@@ -45,24 +50,23 @@ final class AppData {
     /// again only when the filters changed or it has aged.
     private var loaded: (scope: Scope, at: Date)?
 
-    func load(_ scope: Scope, reduceMotion: Bool, force: Bool = false) async {
+    func load(_ scope: Scope, force: Bool = false) async {
         if !force, let loaded, loaded.scope == scope, Date.now.timeIntervalSince(loaded.at) < 60 { return }
         do {
             let fresh = try await client.app(slug, scope)
             loaded = (scope, .now)
-            withAnimation(arrival(reduceMotion: reduceMotion)) {
-                detail = fresh
-                error = nil
-            }
+            detail = fresh
+            error = nil
+            arrivals += 1
         } catch is CancellationError {
         } catch {
             if !Task.isCancelled { self.error = HushError(error) }
         }
     }
 
-    func refresh(_ scope: Scope, reduceMotion: Bool) async {
+    func refresh(_ scope: Scope) async {
         reloads += 1
-        await load(scope, reduceMotion: reduceMotion, force: true)
+        await load(scope, force: true)
     }
 
     /// The app's remote config, read by its screens and kept here so a write
