@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { after, before, describe, test } from 'node:test';
 
-import { addApp, admin, batch, client, event, freshDatabase, startServer, uuid } from './helpers.mjs';
+import { ADMIN_TOKEN, addApp, admin, batch, client, event, freshDatabase, startServer, uuid } from './helpers.mjs';
 import { CATALOG_FILE } from './fixtures.mjs';
 
 let db, srv, key;
@@ -35,6 +35,21 @@ describe('auth', () => {
   test('no token or a wrong one is 401', async () => {
     assert.equal((await client(srv.base).get('/admin/apps')).status, 401);
     assert.equal((await client(srv.base, 'Bearer wrong').get('/admin/apps')).status, 401);
+  });
+
+  test('20 wrong tokens a minute from one address, then 429, and the right token still works', async () => {
+    const ip = '203.0.113.77';
+    const guesser = client(srv.base, 'Bearer guess', { ip });
+    for (let i = 0; i < 20; i++) assert.equal((await guesser.get('/admin/apps')).status, 401);
+    assert.equal((await guesser.get('/admin/apps')).status, 429);
+    assert.equal((await client(srv.base, 'Bearer hush_dev_madeup', { ip }).get('/admin/apps')).status, 429);
+    assert.equal((await client(srv.base, `Bearer ${ADMIN_TOKEN}`, { ip }).get('/admin/apps')).status, 200);
+    assert.equal((await client(srv.base, 'Bearer guess').get('/admin/apps')).status, 401, 'another address is not limited');
+  });
+
+  test("the dashboard's first question, asked without a token, does not count", async () => {
+    const page = client(srv.base, undefined, { ip: '203.0.113.78' });
+    for (let i = 0; i < 25; i++) assert.equal((await page.get('/admin/session')).status, 401);
   });
 });
 
