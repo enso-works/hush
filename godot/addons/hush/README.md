@@ -4,8 +4,8 @@ Anonymous usage tracking and in-app feedback for Godot 4 games, sent to your
 own [hush](https://github.com/enso-works/hush) server. The same events,
 sessions and tickets as hush's JavaScript and Swift SDKs, so the dashboard
 reads them alike. Pure GDScript: no native code, no GDExtension, so it runs
-wherever Godot does (iOS, Android, desktop, the web). Written for Godot 4.3
-and later; tested on 4.7.
+wherever Godot does (iOS, Android, desktop, the web). Godot 4.3 and later;
+every change is tested on 4.3 and 4.7.
 
 ## Install
 
