@@ -17,7 +17,7 @@ import { CAMPAIGN_KEYS, campaignFunnel, cohorts, runFunnel, stepsFromQuery } fro
 import { cfg, installRetention, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { adminConfig, appExists, checkOverridesAtBoot, configAnswer, history, matchesRevision, preview, revertOverride, setOverride } from './remote-config.mjs';
-import { clientKey, dailyLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
+import { clientKey, dailyLimiter, failureLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
 import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { createPairing, deviceAuthorized, listDevices, pair, revokeDevice } from './devices.mjs';
@@ -49,6 +49,9 @@ const forgetLimit = rateLimiter(10);
 // /admin/pair is the one admin route without the token; a code is 128 random
 // bits, so this only keeps a flood of guesses off the database.
 const pairLimit = rateLimiter(10);
+// Wrong admin or phone tokens, per address: a page that lost its token asks
+// a handful of times, a guesser thousands.
+const adminFailures = failureLimiter(20);
 // The push relay's, per address and per phone: a server notifies about
 // feedback, which comes minutes apart, not many a second.
 const relayRegisterLimit = rateLimiter(20);
@@ -605,9 +608,19 @@ const server = http.createServer(async (req, res) => {
       return await route.handler(req, res, { url, params: route.params });
     }
     if (url.pathname.startsWith('/admin/')) {
+      // Checked before the phone token's database lookup, so a flood of
+      // made-up tokens costs nothing; the right token gets in all the same,
+      // or a stranger guessing could lock the owner out.
+      const admin = adminAuthorized(req.headers);
+      const caller = clientKey(req);
+      if (!admin && adminFailures.over(caller)) return json(res, 429, { error: 'rate limited' });
       // A paired phone's id goes to the handler: its push sign-up belongs to it.
-      const device = adminAuthorized(req.headers) ? null : await deviceAuthorized(req.headers);
-      if (!device && !adminAuthorized(req.headers)) return json(res, 401, { error: 'unauthorized' });
+      const device = admin ? null : await deviceAuthorized(req.headers);
+      if (!device && !admin) {
+        // The dashboard's first question is always asked without a token.
+        if (req.headers.authorization || url.pathname !== '/admin/session') adminFailures.fail(caller);
+        return json(res, 401, { error: 'unauthorized' });
+      }
       // A proxy may sign the dashboard in by adding the token itself (ops on a
       // private network does), and then the browser's requests carry it
       // whatever page sent them. So a write must be one no other site can
@@ -672,6 +685,10 @@ if (installRetention !== null && installRetention < cfg.retentionDays) {
 const proxySignIn = Boolean(cfg.adminProxyHeader && cfg.adminProxySecret.length >= 16);
 if ((cfg.adminProxyHeader || cfg.adminProxySecret) && !proxySignIn) {
   log.warn('proxy sign-in is off: ADMIN_PROXY_HEADER needs ADMIN_PROXY_SECRET of at least 16 characters');
+}
+// The failed sign-in limit slows guessing; only length makes it hopeless.
+if (cfg.adminToken && cfg.adminToken.length < 32) {
+  log.warn('ADMIN_TOKEN is shorter than 32 characters: make one with openssl rand -hex 32');
 }
 
 migrate()

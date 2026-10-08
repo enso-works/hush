@@ -674,7 +674,10 @@ server's container, and after a catalog edit it runs ahead of the server
 until the server restarts. Both are read-only).
 
 Limits are honest about what this is: rate limits are in memory, per
-process, and reset on restart. One instance is plenty for small apps.
+process, and reset on restart. One instance is plenty for small apps. An
+address that sends 20 wrong admin or phone tokens in a minute gets 429 for
+the rest of that minute; the right token still gets in. The server warns at
+boot when `ADMIN_TOKEN` is shorter than 32 characters.
 
 ## Working on it
 

@@ -113,6 +113,23 @@ export function rateLimiter(limit) {
 }
 
 /**
+ * Like rateLimiter, but only failures count: `fail(key)` records one, and
+ * `over(key)` says whether `limit` were recorded this minute.
+ */
+export function failureLimiter(limit) {
+  const hits = new Map();
+  const current = (key) => {
+    const window = Math.floor(Date.now() / 60_000);
+    for (const [k, v] of hits) if (v.window < window) hits.delete(k);
+    return hits.get(key)?.window === window ? hits.get(key).n : 0;
+  };
+  return {
+    over: (key) => current(key) >= limit,
+    fail: (key) => hits.set(key, { window: Math.floor(Date.now() / 60_000), n: current(key) + 1 }),
+  };
+}
+
+/**
  * Fixed-day counter: `limit` hits per UTC day per key. Kept in memory like
  * the per-minute ones, so it resets with the process; the whole map goes when
  * the day turns.

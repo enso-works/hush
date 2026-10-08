@@ -659,7 +659,8 @@ Put hush behind a proxy that terminates TLS, then:
 
 Rate limits are in memory and per process (120 requests a minute per address,
 5 feedback messages a day per install, or per address and app for a ticket
-with an email). One instance is plenty for small apps.
+with an email, 20 wrong admin or phone tokens a minute per address; the right
+token still gets in). One instance is plenty for small apps.
 
 ## What is collected
 
