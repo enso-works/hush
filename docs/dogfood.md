@@ -6,6 +6,19 @@ anything else, and later the evidence for what a hosted hush has to be.
 
 Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
+## 2026-10-08
+
+- **Magistrala (driving game, Godot 4.7, the hush add-on 0.1.0).** Wired in
+  with stage events and the feedback form on the title screen. Three things
+  were the game's to solve. Its bot runs (`--autopilot`, used to set par
+  times) and headless runs would have counted as players: it skips
+  `configure()` for them. Its tool scripts run without autoloads, so it
+  finds `Hush` by node path rather than by name. `feedback_panel.tscn`
+  takes the default theme's panel, which is see-through over full-screen
+  art: it gave the panel a StyleBox of its own. Open: whether the panel
+  should ship with an opaque background. The add-on's tests pass on Godot
+  4.3 as well, and CI now runs both.
+
 ## 2026-10-04
 
 - **Rallo (tennis game, Capacitor, iOS 15).** `@bavrk/hush/web` could not

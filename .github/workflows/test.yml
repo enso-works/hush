@@ -149,8 +149,14 @@ jobs:
   # server job skips for want of Godot).
   godot:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest the add-on supports, and the newest.
+        version: [4.3-stable, 4.7.2-stable]
+    name: godot (${{ matrix.version }})
     env:
-      GODOT_VERSION: 4.7.2-stable
+      GODOT_VERSION: ${{ matrix.version }}
     services:
       postgres:
         image: postgres:16-alpine
