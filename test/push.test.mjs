@@ -13,7 +13,7 @@ const { privateKey, publicKey } = generateKeyPairSync('ec', { namedCurve: 'P-256
 const KEY_ID = 'ABC123DEFG';
 const TEAM_ID = 'DGUZG76BA2';
 
-/** A stand-in for APNs: records every push, answers 410 for tokens starting with dead. */
+/** A stand-in for APNs: records every push, answers 410 for tokens starting with dead, and refuses the key for bad0. */
 function fakeApple() {
   const pushes = [];
   const server = http2.createServer();
@@ -26,6 +26,10 @@ function fakeApple() {
       if (token.startsWith('dead')) {
         stream.respond({ ':status': 410, 'content-type': 'application/json' });
         return stream.end(JSON.stringify({ reason: 'Unregistered' }));
+      }
+      if (token.startsWith('bad0')) {
+        stream.respond({ ':status': 403, 'content-type': 'application/json' });
+        return stream.end(JSON.stringify({ reason: 'InvalidProviderToken' }));
       }
       stream.respond({ ':status': 200 });
       stream.end();
@@ -189,5 +193,18 @@ describe('sending', () => {
     const [p] = await received(apple, 1, since);
     assert.equal(p.payload.aps.alert.title, 'hush');
     assert.equal((await admin(srv.base).post('/admin/push/test', { token: token() })).status, 404);
+  });
+
+  test("a key Apple refuses is an error in the log, once, for an alert to catch; the phone is kept", async () => {
+    const t = token('bad0');
+    await signUp({ token: t });
+    const refused = () => srv.logs.join('').split('\n').filter((l) => l.includes("APNs refused this server's key"));
+    assert.equal((await admin(srv.base).post('/admin/push/test', { token: t })).status, 502);
+    assert.equal((await admin(srv.base).post('/admin/push/test', { token: t })).status, 502);
+    const lines = refused();
+    assert.equal(lines.length, 1, 'said once, not for every push');
+    assert.equal(JSON.parse(lines[0]).level, 'error');
+    assert.equal(JSON.parse(lines[0]).reason, 'InvalidProviderToken');
+    assert.ok((await admin(srv.base).get(`/admin/push?token=${t}`)).json.signup, 'the key is at fault, not the phone');
   });
 });

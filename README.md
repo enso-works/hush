@@ -653,7 +653,10 @@ the server has an APNs key), `DELETE /admin/push/:token` signs it off, and
 reply go to every phone that wants it: the app's name, the kind, the subject
 and a line of the message, and the phone's `label` so it opens the right
 server. Never an email or an install id. A paired phone's sign-up goes when
-the phone is revoked; a token Apple says is gone is forgotten.
+the phone is revoked; a token Apple says is gone is forgotten. A key Apple
+refuses (revoked, or the wrong team or topic) fails every push: the server
+logs it at level `error` as `APNs refused this server's key`, once an hour,
+for an alert to match.
 
 A server without an APNs key reaches the App Store app through bavrk's push
 relay (`PUSH_RELAY`, on by default; migration 012). The phone gets a pass
@@ -662,7 +665,9 @@ for its token from the relay (`POST /push/register` `{ token, sandbox }` →
 random bytes of its own for that server. The server seals what a push says
 with the key (AES-256-GCM) and sends the relay the token, the pass and the
 sealed blob (`POST /push/send`); the relay checks the pass, forwards a
-placeholder alert with the blob, and keeps nothing. The app's notification
+placeholder alert with the blob, and keeps nothing but counts: once an hour
+it logs `push relay: the last hour` with how many it sent, found gone,
+refused, or turned away for a wrong pass. The app's notification
 extension opens it. `GET /admin/push` says `via`: `apns` or `relay`;
 `POST /admin/push/test` with `"via": "relay"` tests the relay from a server
 that has its own key.

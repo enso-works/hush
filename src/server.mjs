@@ -22,7 +22,7 @@ import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { createPairing, deviceAuthorized, listDevices, pair, revokeDevice } from './devices.mjs';
 import { pushConfigured, pushVia, register as registerPush, testPush, unregister as unregisterPush } from './push.mjs';
-import { parseRegistration, parseSend, passFor, relay, relayOn } from './relay.mjs';
+import { countRelay, parseRegistration, parseSend, passFor, relay, relayOn } from './relay.mjs';
 import { migrate } from './migrate.mjs';
 import { seedDemo } from './demo.mjs';
 import { ensureFresh, rcConfigured, revenue } from './revenuecat.mjs';
@@ -509,6 +509,7 @@ r.post('/push/send', async (req, res) => {
   if (typeof s === 'string') return json(res, 400, { error: s });
   if (!relayTokenLimit(s.token)) return json(res, 429, { error: 'too many for this phone' });
   const out = await relay(s);
+  countRelay({ 200: 'sent', 403: 'bad_pass', 410: 'gone' }[out.status] ?? 'refused');
   if (out.status === 403) return json(res, 403, { error: 'not this token\'s pass' });
   if (out.status === 410) return json(res, 410, { error: 'the phone is gone' });
   if (out.status !== 200) return json(res, 502, { error: `Apple refused it: ${out.reason ?? 'unknown'}` });
