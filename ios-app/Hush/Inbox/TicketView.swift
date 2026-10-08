@@ -11,6 +11,8 @@ struct TicketView: View {
     let deleted: () -> Void
 
     @State private var ticket: Ticket?
+    /// Counts answers to animate on (see AppData.arrivals).
+    @State private var arrivals = 0
     @State private var error: HushError?
     @State private var draft = ""
     /// A reply on its way: shown in the thread at once, dimmed until the server has it.
@@ -36,6 +38,7 @@ struct TicketView: View {
                     }
                     Color.clear.frame(height: 1).id("end")
                 }
+                .animation(arrival(reduceMotion: reduceMotion), value: arrivals)
                 .padding(16)
             }
             // A long thread opens at its newest reply; a short one sits at the top.
@@ -149,10 +152,9 @@ struct TicketView: View {
     private func load() async {
         do {
             let fresh = try await inbox.ticket(id)
-            withAnimation(arrival(reduceMotion: reduceMotion)) {
-                ticket = fresh
-                error = nil
-            }
+            ticket = fresh
+            error = nil
+            arrivals += 1
         } catch is CancellationError {
         } catch {
             self.error = HushError(error)

@@ -12,6 +12,8 @@ struct OverviewView: View {
     @AppStorage("appOrder") private var order = AppOrder.active
     @State private var answer: AppsAnswer?
     @State private var error: HushError?
+    /// Counts answers to animate on (see AppData.arrivals).
+    @State private var arrivals = 0
     @State private var search = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -23,6 +25,7 @@ struct OverviewView: View {
                 if let error { ErrorNote(error: error) { await load() } }
                 content
             }
+            .animation(arrival(reduceMotion: reduceMotion), value: arrivals)
             .padding(16)
         }
         .pinnedBar(.top) {
@@ -95,10 +98,9 @@ struct OverviewView: View {
     private func load() async {
         do {
             let fresh = try await model.client(for: server).apps(days: days, env: env)
-            withAnimation(arrival(reduceMotion: reduceMotion)) {
-                answer = fresh
-                error = nil
-            }
+            answer = fresh
+            error = nil
+            arrivals += 1
         } catch is CancellationError {
         } catch {
             if !Task.isCancelled { self.error = HushError(error) }

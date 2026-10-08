@@ -28,6 +28,7 @@ struct AppView: View {
                         .transition(.opacity)
                 }
             }
+            .animation(arrival(reduceMotion: reduceMotion), value: data.arrivals)
             .padding(16)
         }
         .background(Color(.systemGroupedBackground))
@@ -59,11 +60,11 @@ struct AppView: View {
         }
         .onAppear { Telemetry.screen("app") }
         .task(id: data.scope(days: days, env: env)) { await load() }
-        .refreshable { await data.refresh(data.scope(days: days, env: env), reduceMotion: reduceMotion) }
+        .refreshable { await data.refresh(data.scope(days: days, env: env)) }
     }
 
     private func load() async {
-        await data.load(data.scope(days: days, env: env), reduceMotion: reduceMotion)
+        await data.load(data.scope(days: days, env: env))
     }
 }
 
