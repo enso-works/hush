@@ -84,6 +84,25 @@ export ASC_KEY_ID=… ASC_ISSUER_ID=…
 fastlane ios metadata
 ```
 
+## App Privacy
+
+The answers in App Store Connect, which `Hush/PrivacyInfo.xcprivacy` and the
+SDK's own manifest (`swift/Sources/Hush/PrivacyInfo.xcprivacy`) mirror. Change
+them together. Every row is Tracking: No.
+
+| Data type | What | Purpose | Linked |
+|---|---|---|---|
+| Usage Data > Product Interaction | the app's own screens and actions, sent to bavrk's hush | Analytics | No |
+| Diagnostics > Other Diagnostic Data | app version, build, iOS version, device model, language | Analytics | No |
+| Location > Coarse Location | the country, from the connection; no IP kept | Analytics | No |
+| Contact Info > Email Address | only if typed into feedback | App Functionality | Yes |
+| User Content > Customer Support | the feedback message | App Functionality | Yes |
+
+Not linked holds because a message with an email never carries the install
+id (`swift/Sources/Hush/Tickets.swift`). The user's own servers, tokens and
+anything read from them are not collected: they never leave the device
+except to those servers.
+
 ## TestFlight
 
 ```sh
