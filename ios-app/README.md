@@ -54,6 +54,21 @@ from one of the demo's tickets, adds a look at a real install. With
 `TEST_RUNNER_SCREENSHOTS_DIR=<dir>` on the `xcodebuild test` line they save
 what each screen shows there.
 
+## App Store screenshots
+
+Made with [store-shots](https://github.com/enso-works/appstore-management-tool) from
+`store/`: the copy in `store/content/en-US.json`, the captures in `store/raw/` (iPhone 17 Pro
+Max and iPad Pro 13", `ScrollShots`' frames at rest, against the live demo) and the look in
+`store-shots.config.json` (the Paper theme in the app's accent colour).
+
+```sh
+TEST_RUNNER_SCREENSHOTS_DIR=/tmp/shots xcodebuild test -project Hush.xcodeproj -scheme Hush \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:HushUITests/ScrollShots
+store-shots generate      # fastlane/screenshots/en-US/, not committed
+```
+
+The five screens take `01-overview`, `02-app`, `03-funnels`, `04-retention` and `10-inbox`.
+
 ## TestFlight
 
 ```sh

@@ -5,3 +5,5 @@
 DerivedData/
 xcuserdata/
 build/
+# store-shots: the rendered screenshots, made again from store/ by `store-shots generate`.
+fastlane/screenshots/
