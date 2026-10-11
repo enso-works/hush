@@ -69,6 +69,21 @@ store-shots generate      # fastlane/screenshots/en-US/, not committed
 
 The five screens take `01-overview`, `02-app`, `03-funnels`, `04-retention` and `10-inbox`.
 
+## App Store listing
+
+The listing's text is in `fastlane/metadata/` (subtitle, description, keywords,
+promotional text, URLs, copyright, category). `fastlane ios metadata` uploads it
+to the version being prepared (`MARKETING_VERSION` in `project.yml`), with the
+same API key as TestFlight; it never uploads a build and never submits. The
+screenshots go up with `store-shots asc push default`. The version is submitted
+by hand in App Store Connect, after the age rating, App Privacy, price and the
+review contact are filled in there.
+
+```sh
+export ASC_KEY_ID=… ASC_ISSUER_ID=…
+fastlane ios metadata
+```
+
 ## TestFlight
 
 ```sh

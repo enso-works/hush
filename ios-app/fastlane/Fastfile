@@ -1,0 +1,53 @@
+# The App Store listing's text, from fastlane/metadata. Text only: builds go
+# through scripts/testflight.sh, screenshots through store-shots (`asc push
+# default`), and the version is submitted by hand in App Store Connect.
+#
+# Signs in with the team's App Store Connect API key, as scripts/testflight.sh
+# does: ASC_KEY_ID and ASC_ISSUER_ID set, the key at
+# ~/.appstoreconnect/private_keys/AuthKey_<ASC_KEY_ID>.p8.
+default_platform(:ios)
+
+platform :ios do
+  desc "Check every localization against the App Store's limits"
+  lane :validate_metadata do
+    limits = {
+      "name" => 30, "subtitle" => 30, "keywords" => 100, "promotional_text" => 170,
+      "description" => 4000, "release_notes" => 4000,
+      "marketing_url" => 255, "support_url" => 255, "privacy_url" => 255
+    }
+    over = []
+    Dir.glob(File.join(__dir__, "metadata", "*")).select { |d| File.directory?(d) }.sort.each do |dir|
+      limits.each do |field, limit|
+        path = File.join(dir, "#{field}.txt")
+        next unless File.exist?(path)
+        # Apple counts keywords in bytes and everything else in characters.
+        text = File.read(path).strip
+        length = field == "keywords" ? text.bytesize : text.length
+        over << "#{File.basename(dir)}/#{field} is #{length}/#{limit}" if length > limit
+      end
+    end
+    UI.user_error!("Over the App Store's limit:\n- #{over.join("\n- ")}") unless over.empty?
+    UI.success("Every field is within the App Store's limits")
+  end
+
+  desc "Upload the listing's text only: no binary, no screenshots, never submitted"
+  lane :metadata do
+    validate_metadata
+    deliver(
+      api_key: api_key,
+      skip_metadata: false,
+      skip_screenshots: true,
+      skip_binary_upload: true,
+      skip_app_version_update: true
+    )
+  end
+end
+
+def api_key
+  key_id = ENV.fetch("ASC_KEY_ID") { UI.user_error!("Set ASC_KEY_ID and ASC_ISSUER_ID") }
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: ENV.fetch("ASC_ISSUER_ID") { UI.user_error!("Set ASC_ISSUER_ID") },
+    key_filepath: File.expand_path("~/.appstoreconnect/private_keys/AuthKey_#{key_id}.p8")
+  )
+end
