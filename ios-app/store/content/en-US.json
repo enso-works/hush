@@ -1,0 +1,31 @@
+{
+  "$schema": "../../../../bavrk-apps/tools/store-shots/schema/content.schema.json",
+  "locale": "en-US",
+  "screens": {
+    "hero": {
+      "eyebrow": "YOUR APPS, YOUR SERVER",
+      "headline": "Every app's numbers in your pocket",
+      "caption": "Installs, sessions and feedback from your own hush server."
+    },
+    "feature-1": {
+      "eyebrow": "ONE APP AT A GLANCE",
+      "headline": "See what changed today",
+      "caption": "Active installs, sessions and completions, against last month."
+    },
+    "feature-2": {
+      "eyebrow": "FUNNELS",
+      "headline": "Find the step people drop",
+      "caption": "Build a funnel from your events in seconds."
+    },
+    "feature-3": {
+      "eyebrow": "RETENTION",
+      "headline": "Who comes back, week by week",
+      "caption": "Cohorts from day one to day thirty."
+    },
+    "feature-4": {
+      "eyebrow": "FEEDBACK",
+      "headline": "Answer feedback from anywhere",
+      "caption": "Reply, close and reopen, with a push when it arrives."
+    }
+  }
+}
