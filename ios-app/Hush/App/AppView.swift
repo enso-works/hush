@@ -3,8 +3,9 @@ import SwiftUI
 
 /// One app over the period, against the period before: whether it is
 /// sending, its numbers and activity, and a card for each closer look
-/// (funnels, retention, engagement, events, audience, config, feedback; a
-/// website's pages instead of funnels and config). The
+/// (funnels, campaigns, attribution, retention, engagement, events, audience,
+/// config, feedback; a website's pages in place of funnels, attribution and
+/// config). The
 /// filters stay at the top while it scrolls.
 struct AppView: View {
     @State private var data: AppData
@@ -53,6 +54,8 @@ struct AppView: View {
             case .audience: AudienceView(data: data)
             case .events: EventsView(data: data)
             case .website: WebsiteView(data: data)
+            case .campaigns: CampaignsView(data: data)
+            case .attribution: AttributionView(data: data)
             case .event(let name): EventView(data: data, name: name)
             case .config: ConfigView(data: data)
             case .configKey(let key): ConfigKeyView(data: data, name: key)
@@ -235,6 +238,9 @@ private struct Cards: View {
     @AppStorage("days") private var days = 30
     /// The catalog's first funnel, read for its card; nil while it comes or when it could not be read.
     @State private var funnel: Funnel??
+    /// Tagged campaigns this period, and installs Apple attributed to ads: read the same way.
+    @State private var campaigns: Int??
+    @State private var adInstalls: Int??
 
     var body: some View {
         let d = detail
@@ -242,6 +248,40 @@ private struct Cards: View {
             NavigationLink(value: AppRoute.website) {
                 Card(symbol: "doc.text", title: "Pages", value: (d.events.first { $0.name == "screen_viewed" }?.n ?? 0).formatted(),
                      caption: "Pageviews, top pages, referrers, store clicks")
+            }
+        }
+        NavigationLink(value: AppRoute.campaigns) {
+            switch campaigns {
+            case .some(.some(let n)):
+                Card(symbol: "megaphone", title: "Campaigns", value: n.formatted(),
+                     caption: data.isWebsite ? "Tagged campaigns this period, and referrers" : "Tagged campaigns this period")
+            case .some(.none):
+                Card(symbol: "megaphone", title: "Campaigns", value: "–", caption: "Where tagged links brought people")
+            case .none:
+                Card(symbol: "megaphone", title: "Campaigns", value: "00", caption: "Where tagged links brought people")
+                    .redacted(reason: .placeholder)
+            }
+        }
+        .task(id: data.key(days: days, env: env)) {
+            let rows = try? await data.client.campaigns(data.slug, by: .campaign, steps: [StepQuery("session_started")],
+                                                        data.scope(days: days, env: env)).rows
+            if !Task.isCancelled { campaigns = .some(rows?.count) }
+        }
+        if !data.isWebsite {
+            NavigationLink(value: AppRoute.attribution) {
+                switch adInstalls {
+                case .some(.some(let n)):
+                    Card(symbol: "chart.bar.doc.horizontal", title: "Attribution", value: n.formatted(), caption: "Installs from ads, as Apple reports them")
+                case .some(.none):
+                    Card(symbol: "chart.bar.doc.horizontal", title: "Attribution", value: "–", caption: "Ads and App Store campaigns, from Apple")
+                case .none:
+                    Card(symbol: "chart.bar.doc.horizontal", title: "Attribution", value: "00", caption: "Ads and App Store campaigns, from Apple")
+                        .redacted(reason: .placeholder)
+                }
+            }
+            .task(id: data.key(days: days, env: env)) {
+                let a = try? await data.client.attribution(data.slug, data.scope(days: days, env: env))
+                if !Task.isCancelled { adInstalls = .some(a?.postbacks.campaigns.reduce(0) { $0 + $1.installs }) }
             }
         }
         // A website has no paywall for the default funnel to follow.
