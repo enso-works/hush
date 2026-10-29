@@ -54,6 +54,13 @@ jobs:
           node -e "const c = require('./dist/cjs/core.js'); if (typeof c.createHush !== 'function') process.exit(1); console.log('cjs ok')"
           if grep -n "core\.ts" dist/esm/*.d.ts; then echo "types point at .ts files"; exit 1; fi
           npm pack --dry-run
+      # src/script/hush.js is committed, so running hush needs no build step,
+      # and served at /hush.js; it must be exactly what sdk/script builds to.
+      - run: npm run build:script
+      - name: The committed script tag build matches its source
+        run: |
+          git status --porcelain ../src/script
+          test -z "$(git status --porcelain ../src/script)"
 
   dashboard:
     runs-on: ubuntu-latest

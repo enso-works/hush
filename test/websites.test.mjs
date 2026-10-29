@@ -2,7 +2,7 @@
 // as a website and names the apps it sells, and a crawler's batch is answered
 // as stored without making a visitor of it.
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
@@ -162,5 +162,19 @@ describe('crawlers', () => {
       assert.deepEqual(r.json, { accepted: 1, duplicate: 0, rejected: 0 }, String(ua));
       assert.equal((await db.query('SELECT count(*)::int AS n FROM installs WHERE id = $1', [install])).rows[0].n, 1, String(ua));
     }
+  });
+});
+
+describe('/hush.js', () => {
+  test('the script tag build, from any site, with the SDK version it was built from', async () => {
+    const res = await fetch(`${srv.base}/hush.js`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type'), /^text\/javascript/);
+    assert.equal(res.headers.get('cross-origin-resource-policy'), 'cross-origin');
+    assert.equal(res.headers.get('access-control-allow-origin'), '*');
+    const body = await res.text();
+    const core = readFileSync(new URL('../sdk/src/core.ts', import.meta.url), 'utf8');
+    const version = /export const SDK_VERSION = '([^']+)'/.exec(core)[1];
+    assert.ok(body.includes(`"${version}"`), `built from SDK ${version}: run npm run build:script in sdk/`);
   });
 });

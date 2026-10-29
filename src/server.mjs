@@ -106,6 +106,23 @@ function serveDashboard(res, pathname) {
   return res.end(file.body);
 }
 
+// /hush.js: the SDK as one script tag, for a website without a bundler
+// (source in sdk/script/, built into src/script/ and committed). Served from
+// the server it reports to, so a site's CSP names one host for both.
+const SCRIPT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'script', 'hush.js'));
+function serveScript(res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/javascript; charset=utf-8',
+    'Content-Length': SCRIPT.length,
+    // An hour: a new SDK reaches every site within one, without a versioned URL.
+    'Cache-Control': 'public, max-age=3600',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Access-Control-Allow-Origin': '*',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  return res.end(SCRIPT);
+}
+
 r.get('/healthz', async (_req, res) => {
   try {
     await q('SELECT 1');
@@ -571,6 +588,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && (url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/'))) {
     return serveDashboard(res, url.pathname);
   }
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/hush.js') return serveScript(res);
   // /v1 answers any origin, so web apps (and Capacitor's capacitor://localhost)
   // can send too. Nothing rides on it: no cookies, and the write key it takes
   // is public anyway, shipped inside every app.
@@ -646,7 +664,6 @@ const server = http.createServer(async (req, res) => {
       // gives nothing away.
       const beaconKey = req.method === 'POST' && url.pathname === '/v1/events' ? url.searchParams.get('key') : null;
       const key = await resolveKey(req.headers.authorization ?? (beaconKey ? `Key ${beaconKey}` : undefined));
-      if (!key) return json(res, 401, { error: 'unauthorized' });
       if (!key) return json(res, 401, { error: 'unauthorized' });
       // The proxy's country header (COUNTRY_HEADER) is the only thing derived
       // from the caller's address, and it never leaves the install row.
