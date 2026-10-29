@@ -132,7 +132,7 @@
   "privacy": {
     "h1": "Privacy",
     "updated": "Last updated",
-    "short": "This website sets no cookies and runs no analytics. The server keeps a short request log for security. hush, the software, collects no personal data from app users; its own privacy model is at the end of this page.",
+    "short": "This website sets no cookies and runs no analytics. The server keeps a short request log for security. The hush app for iPhone and iPad sends its own anonymous usage to us, not linked to you (section 5). hush, the software, collects no personal data from app users; its own privacy model is in section 4.",
     "s1_h": "1. Who runs this site",
     "s1_p": "hush.bavrk.com is run by {{cfg.company}}. You can reach us at {{cfg.supportEmail}}.",
     "s2_h": "2. What this website records",
@@ -141,8 +141,10 @@
     "s3_p": "The live demo shows invented apps and data. It is read-only, stores nothing you do in it, and accepts no data from apps.",
     "s4_h": "4. hush, the software",
     "s4_p": "When you run hush for your own app, you are the one collecting data and you decide what your privacy policy says. By design hush stores a random install id, the app version, OS, device model, the device's language, the events your app sends, feedback messages, an email address only if a user typed one, and a country only if you enable it. It never stores IP addresses. Remote config collects nothing: the app asks for it with its key and the revision it holds. We never see any of it: your server, your data.",
-    "s5_h": "5. Contact",
-    "s5_p": "Questions about privacy? Email {{cfg.supportEmail}}."
+    "s5_h": "5. The hush app for iPhone and iPad",
+    "s5_p": "The app shows your own hush servers. Their addresses, the tokens it signs in with and everything it reads from them stay on your device and go only to those servers. The app sends its own anonymous usage to our hush server: the screens you open and what you do in the app (adding or removing a server, a pairing that failed), the app version, build, iOS version, device model and language, under a random install id, and the country our server reads from the connection. No IP address is kept, nothing is read from your servers, and none of it is linked to you or used for tracking or ads. Share anonymous usage in the app's Settings turns it off, and Delete my usage data there deletes what was sent. Otherwise events are deleted after 180 days, everything about an install 180 days after it last sends anything, and backups within a year. Feedback you send from Settings comes to us with your message and, only if you type one, your email address, which we use to reply. A message with an email never carries the install id.",
+    "s6_h": "6. Contact",
+    "s6_p": "Questions about privacy? Email {{cfg.supportEmail}}."
   },
   "terms": {
     "h1": "Terms and licence",
