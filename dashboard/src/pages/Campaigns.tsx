@@ -107,9 +107,9 @@ export function Campaigns({ slug }: { slug: string }) {
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="py-2 pr-3 font-medium">{BY.find((b) => b.value === by)?.label}</th>
-                <th className="px-3 py-2 text-right font-medium">Installs</th>
-                <th className="px-3 py-2 text-right font-medium" title="The link brought the install: its first open">
-                  New
+                <th className="px-3 py-2 text-right font-medium">Reached by link</th>
+                <th className="px-3 py-2 text-right font-medium" title="First open within ten minutes of the tagged session. Timing proximity is not proof that this link caused an install.">
+                  First opens nearby
                 </th>
                 {steps.map((s, i) => (
                   <th key={`${s.event}-${i}`} className="px-3 py-2 text-right font-medium">
