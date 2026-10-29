@@ -1,0 +1,64 @@
+{
+  "by": "utm_campaign",
+  "where": null,
+  "window_days": 7,
+  "steps": [
+    {
+      "event": "onboarding_completed",
+      "where": null,
+      "label": "Onboarding completed"
+    },
+    {
+      "event": "meditation_started",
+      "where": null,
+      "label": "Meditation started"
+    },
+    {
+      "event": "meditation_completed",
+      "where": null,
+      "label": "Meditation completed"
+    }
+  ],
+  "rows": [
+    {
+      "value": "autumn_update",
+      "installs": 48,
+      "new": 13,
+      "steps": [
+        18,
+        14,
+        11
+      ]
+    },
+    {
+      "value": "streaks_launch",
+      "installs": 48,
+      "new": 12,
+      "steps": [
+        17,
+        13,
+        12
+      ]
+    },
+    {
+      "value": "autumn_install",
+      "installs": 45,
+      "new": 12,
+      "steps": [
+        16,
+        14,
+        11
+      ]
+    },
+    {
+      "value": "autumn_retarget",
+      "installs": 32,
+      "new": 8,
+      "steps": [
+        13,
+        8,
+        7
+      ]
+    }
+  ]
+}

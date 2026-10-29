@@ -185,3 +185,28 @@ func dates(_ s: String) throws {
     #expect(!detail.isWebsite)
     #expect(try decode(AppDetail.self, "app").kind == nil)
 }
+
+@Test func campaigns() throws {
+    let answer = try decode(CampaignsAnswer.self, "campaigns")
+    #expect(answer.by == "utm_campaign")
+    #expect(answer.windowDays == 7)
+    #expect(answer.steps.map(\.event) == ["onboarding_completed", "meditation_started", "meditation_completed"])
+    let first = try #require(answer.rows.first)
+    #expect(first.steps.count == answer.steps.count)
+    #expect(first.new <= first.installs)
+}
+
+@Test func attribution() throws {
+    let a = try decode(AttributionAnswer.self, "attribution")
+    #expect(a.appStoreId == "6700000101")
+    #expect(a.conversionValues.last?.lock == true)
+    let meta = try #require(a.postbacks.campaigns.first)
+    #expect(meta.network == "Meta")
+    #expect(meta.kind == "skan")
+    #expect(a.postbacks.values.contains { $0.sequence == 0 })
+    #expect(a.appstore.latestDay != nil)
+    #expect(a.appstore.campaigns.contains { $0["campaign"] == .string("meta_autumn") })
+    #expect(a.milestone(0) == "Installed")
+    #expect(a.milestone(13) == "First meditation")
+    #expect(a.milestone(63) == "Purchased")
+}

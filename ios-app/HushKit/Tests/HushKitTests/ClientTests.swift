@@ -69,6 +69,26 @@ final class Stub: URLProtocol, @unchecked Sendable {
         #expect(Stub.seen.first?.value(forHTTPHeaderField: "Authorization") == nil)
     }
 
+    @Test func campaignsSplitNarrowAndTakeSteps() async throws {
+        let client = Stub.client { _ in (200, try fixture("campaigns")) }
+        let scope = Scope(days: 14, env: .prod, channel: "app_store")
+        _ = try await client.campaigns("pace", by: .campaign, source: "meta", funnel: 1, scope)
+        _ = try await client.campaigns("rallo-site", by: .referrer, steps: [StepQuery("store_clicked")], scope)
+        // A source is no filter on a split by source.
+        _ = try await client.campaigns("pace", by: .source, source: "meta", scope)
+        #expect(Stub.seen.map { $0.url?.absoluteString } == [
+            "https://hush.example.com/admin/apps/pace/campaigns?by=utm_campaign&channel=app_store&days=14&env=prod&funnel=1&where=utm_source:meta",
+            "https://hush.example.com/admin/apps/rallo-site/campaigns?by=referrer&channel=app_store&days=14&env=prod&step=store_clicked",
+            "https://hush.example.com/admin/apps/pace/campaigns?by=utm_source&channel=app_store&days=14&env=prod&funnel=0",
+        ])
+    }
+
+    @Test func attributionLeavesTheChannelOut() async throws {
+        let client = Stub.client { _ in (200, try fixture("attribution")) }
+        _ = try await client.attribution("pace", Scope(days: 7, env: .dev, channel: "testflight"))
+        #expect(Stub.seen.first?.url?.absoluteString == "https://hush.example.com/admin/apps/pace/attribution?days=7&env=dev")
+    }
+
     @Test func aPrefixAndAProxyHeaderAreKept() async throws {
         let connection = Connection(baseURL: URL(string: "https://example.com/hush")!, headers: ["X-Ops": "s3cret"])
         let client = Stub.client(connection) { _ in (200, try fixture("app")) }
