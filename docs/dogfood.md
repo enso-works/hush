@@ -8,6 +8,15 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
 ## 2026-10-29
 
+- **hush iOS app, websites.** The app showed a website as one more app:
+  visitors as installs, folded into the Overview's install totals, and no
+  way to see campaigns or Apple's attribution from the phone at all, only on
+  the web dashboard. The detail's camelCase keys (`todayActive`) beside the
+  catalog's snake_case ones (`promoted_by`) needed explicit coding keys in
+  HushKit. The demo has no website, so the new screens are only seen against
+  a local server (`WebsiteTests`). Fixed on `ios-web`: a website's mark,
+  words and Pages screen, Campaigns and Attribution screens. Open: a website
+  in the demo.
 - **Rallo (website, `@bavrk/hush/web`).** The site at `bavrk.com/rallo`
   reports into the game's slug, `tennis`, with the `landing` channel, so
   every browser that loaded a page became an install of the game: new

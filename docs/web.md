@@ -1,8 +1,9 @@
 # Websites: design
 
-A proposal, 2026-10-29, agreed the same day. Phases 1 and 2 are built; the
-rest is not. It is written down first so the model is settled before the SDK,
-the dashboard and the iOS app depend on it.
+A proposal, 2026-10-29, agreed the same day. Phases 1 and 2 are built, and
+the iOS app's part of phase 5; the rest is not. It is written down first so
+the model is settled before the SDK, the dashboard and the iOS app depend on
+it.
 
 ## Why
 
@@ -109,6 +110,14 @@ full funnel per install.
 the overview, the campaign table and the link builder. The iOS app: HushKit
 models, Website, Campaigns and Attribution screens, a website mark in the app
 list.
+- The iOS app's part is built, on today's server: `kind`, `promotes` and
+  `promoted_by` in HushKit; a globe on a website's mark, visitors and visits
+  in its words, and no install totals counting them; a Pages screen (top
+  pages, referrers, store clicks by store and campaign, links out) from
+  breakdowns; Campaigns (split by tag or referrer, a source, a funnel; a
+  website's step is its store click) and Attribution (ad postbacks, App Store
+  campaigns, conversion values). It moves to `/admin/apps/:app/web` with
+  phase 3.
 
 **6. Webshops (Amora).** Orders and revenue from the site: an `order_completed`
 event with amount and currency, a cart funnel, revenue per campaign. Designed
