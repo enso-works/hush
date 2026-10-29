@@ -523,6 +523,17 @@ match exactly, case included. List the feedback and inbox screens there
 boot and a mistake in it stops the boot; a key the server does not read,
 misspelt or from a later version, is ignored with a warning in the log.
 
+A website gets a slug of its own, marked as one, with the apps it sells:
+
+```json
+"myapp-site": { "kind": "website", "promotes": ["myapp"] }
+```
+
+On the web every browser that loads a page is an install, so a site that
+reports under its app's slug counts its visitors as the app's installs. On an
+origin it shares with a web build of the app, give the site its own
+`storagePrefix`: one install id cannot belong to two apps.
+
 ## Where installs come from
 
 Three ways, all in aggregate. Nothing fingerprints anyone, reads an

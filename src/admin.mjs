@@ -2,7 +2,7 @@
 // `installs`: at small-app volume (well under a million rows a year) a GROUP BY
 // over an indexed range is milliseconds, and rollup tables would be a second
 // source of truth to keep honest for no gain.
-import { breakdownsOf, FUNNEL, highlightOf, isPrivateScreen } from './catalog.mjs';
+import { breakdownsOf, FUNNEL, highlightOf, isPrivateScreen, kindOf, promotedBy, promotesOf } from './catalog.mjs';
 import { installRetention } from './config.mjs';
 import { q } from './db.mjs';
 
@@ -47,7 +47,13 @@ export async function summary({ days, env }) {
   });
   const byApp = new Map();
   for (const r of daily) byApp.set(`${r.app} ${r.day}`, r.n);
-  return rows.map((a) => ({ ...a, trend: dayKeys.map((k) => byApp.get(`${a.app} ${k}`) ?? 0) }));
+  return rows.map((a) => ({ ...a, ...kindFields(a.app), trend: dayKeys.map((k) => byApp.get(`${a.app} ${k}`) ?? 0) }));
+}
+
+// What the catalog says the slug is, so a client words a website's installs
+// as visitors and links it to the apps it sells.
+function kindFields(app) {
+  return { kind: kindOf(app), promotes: promotesOf(app), promoted_by: promotedBy(app) };
 }
 
 // A build-channel filter as a SQL predicate on parameter $n: NULL means every
@@ -199,6 +205,7 @@ export async function appDetail({ app, days, env, channel = null }) {
   return {
     app,
     name: (await q('SELECT name FROM apps WHERE slug = $1', [app])).rows[0]?.name ?? app,
+    ...kindFields(app),
     channel,
     highlight: hl ? { event: hl.event, done_prop: hl.doneProp } : null,
     breakdowns: breakdownsOf(app),

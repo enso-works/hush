@@ -434,6 +434,16 @@ the boot, naming the path: restart after editing it. A key the server does
 not read, misspelt or from a later version, is ignored with a warning in
 the log. Leave out `funnels` rather than writing `[]`.
 
+A website gets a slug of its own, marked `"kind": "website"`, with
+`promotes` naming the apps it sells: `{ "myapp-site": { "kind": "website",
+"promotes": ["myapp"] } }`. Every browser that loads a page is an install, so
+a site that reports under its app's slug counts its visitors as the app's
+installs. The dashboard API says which slugs are websites (`kind`,
+`promotes`, `promoted_by`). On an origin it shares with a web build of the
+app, give the site its own `storagePrefix`: one install id cannot
+belong to two apps. The rest of website support is planned in
+[docs/web.md](docs/web.md).
+
 ```json
 {
   "myapp": {
