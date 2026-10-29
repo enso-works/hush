@@ -265,6 +265,10 @@ struct BreakdownBars: View {
     let empty: String
     /// Leaves out the events without the prop (untagged sessions, say).
     var taggedOnly = false
+    /// What one install is called: `visitor` on a website.
+    var noun = "install"
+    /// Values shown as sent, in a monospaced face: a page's path, a host.
+    var code = false
 
     var body: some View {
         let shown = rows.filter { !taggedOnly || $0.value != "unset" }
@@ -273,9 +277,10 @@ struct BreakdownBars: View {
         } else {
             Bars(rows: shown.map { r in
                 Bars.Row(id: r.value,
-                         label: r.value == "unset" ? "none" : r.value.replacingOccurrences(of: "_", with: " "),
+                         label: r.value == "unset" ? "none" : code ? r.value : r.value.replacingOccurrences(of: "_", with: " "),
                          value: perInstall ? r.installs : r.n,
-                         detail: perInstall ? plural(r.n, "event") : plural(r.installs, "install"),
+                         detail: perInstall ? plural(r.n, "event") : plural(r.installs, noun),
+                         code: code && r.value != "unset",
                          muted: r.value == "unset")
             })
         }

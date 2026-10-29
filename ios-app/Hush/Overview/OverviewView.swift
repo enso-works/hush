@@ -194,7 +194,7 @@ private struct InactiveRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            AppMark(slug: app.app, name: app.name, size: 32)
+            AppMark(slug: app.app, name: app.name, size: 32, website: app.isWebsite)
                 .saturation(0)
                 .opacity(0.5)
             VStack(alignment: .leading, spacing: 2) {
@@ -269,7 +269,9 @@ private struct Totals: View {
         // Installs quiet for longer than the retention window are deleted, so
         // the total is the installs seen in it, and new installs count inside it.
         let kept = answer.installRetentionDays
-        let sum = { (key: KeyPath<AppSummary, Int>) in answer.apps.reduce(0) { $0 + $1[keyPath: key] } }
+        // A website's visitors are not installs: the totals are the apps'. Feedback is everyone's.
+        let apps = answer.apps.filter { !$0.isWebsite }
+        let sum = { (key: KeyPath<AppSummary, Int>) in apps.reduce(0) { $0 + $1[keyPath: key] } }
         LazyVGrid(columns: tileColumns(typeSize), spacing: 12) {
             Stat(label: kept.map { "Installs seen in \($0) days" } ?? "Installs, all time", value: sum(\.totalInstalls).formatted())
             Stat(label: "New in \(min(days, kept ?? days)) days", value: sum(\.newInstalls).formatted())
@@ -277,7 +279,7 @@ private struct Totals: View {
             Button {
                 model.showFeedback()
             } label: {
-                Stat(label: "Open feedback", value: sum(\.openTickets).formatted())
+                Stat(label: "Open feedback", value: answer.apps.reduce(0) { $0 + $1.openTickets }.formatted())
             }
             .buttonStyle(Pressable())
             .accessibilityHint("Shows the open feedback.")
@@ -293,10 +295,11 @@ private struct AppCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                AppMark(slug: app.app, name: app.name)
+                AppMark(slug: app.app, name: app.name, website: app.isWebsite)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.name).font(.headline).lineLimit(1)
-                    Text("Last event \(when(app.lastEvent))").font(.caption).foregroundStyle(.secondary)
+                    Text(app.isWebsite ? "Website · last event \(when(app.lastEvent))" : "Last event \(when(app.lastEvent))")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
                 if app.openTickets > 0 {
@@ -310,7 +313,7 @@ private struct AppCard: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Active installs per day")
+                    Text(app.isWebsite ? "Visitors per day" : "Active installs per day")
                         .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer()
@@ -330,7 +333,7 @@ private struct AppCard: View {
             }
             Divider()
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: typeSize.isAccessibilitySize ? 2 : 4), spacing: 10) {
-                ForEach([("Installs", app.totalInstalls), ("DAU", app.dau), ("WAU", app.wau), ("MAU", app.mau)], id: \.0) { label, value in
+                ForEach([(app.isWebsite ? "Visitors" : "Installs", app.totalInstalls), ("DAU", app.dau), ("WAU", app.wau), ("MAU", app.mau)], id: \.0) { label, value in
                     VStack(spacing: 2) {
                         Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                         Text(value, format: .number).font(.subheadline.weight(.semibold).monospacedDigit())
@@ -351,7 +354,7 @@ private struct AppCard: View {
     }
 
     private var footer: String {
-        var parts = ["\(app.sessions.formatted()) sessions", "\(app.newInstalls.formatted()) new"]
+        var parts = ["\(app.sessions.formatted()) \(app.isWebsite ? "visits" : "sessions")", "\(app.newInstalls.formatted()) new"]
         if let ads = app.adInstalls, ads > 0 { parts.append("\(ads.formatted()) from ads") }
         return parts.joined(separator: " · ")
     }
