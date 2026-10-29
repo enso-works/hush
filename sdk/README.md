@@ -556,6 +556,61 @@ hush.init();
 Where the app cannot await first, `configure()` may be called again with the
 channel before `init()`; see [its guide](https://github.com/enso-works/hush/tree/main/capacitor#readme).
 
+### A website
+
+A website (a landing page, a shop) gets a slug of its own on the server,
+marked `"kind": "website"` in the catalog: every browser that loads a page is
+an install, so a site under its app's slug counts readers as the app's
+installs. `autoTrack` tracks the site without code of its own (2.5.0):
+
+```ts
+export const hush = createWebHush({
+  platform: 'web',
+  autoTrack: true, // or { pageviews, entry, links }
+  appStore: { providerToken: '118095' }, // optional: App Store Connect's pt
+});
+hush.configure({ url: 'https://hush.example.com', key: 'hush_mysite_prod_…', channel: 'landing', remoteConfig: false });
+hush.init();
+```
+
+- `pageviews`: `screen(path)` for every page, the path without its query or
+  hash, on load and on `history.pushState` and back and forward.
+- `entry`: the visit's first session keeps its link's `utm_*` and `ref`
+  tags (`entry: 'link'`) and the referring site as `referrer`, a host
+  without `www.` (`entry: 'referral'` when the link had no tags). Never the
+  URL, never a click id such as `fbclid`.
+- `links`: `store_clicked { store, campaign }` for App Store, Google Play and
+  TestFlight links (`store`: `app_store`, `play`, `testflight`), and
+  `link_clicked { host }` for any other link off the site.
+- `appStore.providerToken`: App Store links clicked on the page get `pt` and
+  `ct`, the visit's campaign (its `utm_campaign`, else `utm_source`, else the
+  referring site, up to 40 characters), so App Store Connect's campaign report
+  counts the visit's campaign. A `ct` already on the link wins.
+  `hush.storeLink(url)` does the same for a link the page builds itself.
+
+On the web a page load within 30 minutes of the last one carries on its
+session, so a visit of five pages is one session; a link with campaign tags
+starts a new one. A browser driven by automation (`navigator.webdriver`)
+sends nothing, and a prerendered page starts when it is shown. Once the page
+is hidden, batches go by `navigator.sendBeacon`, with the key in the query:
+Chromium drops a `keepalive` fetch that needs a CORS preflight as the page
+goes, so the last page's events would wait for the next visit. The events
+stay queued and the next page sends them again; the server counts them as
+duplicates. On an origin a web build of the app shares, give the site its own
+`storagePrefix`.
+
+Without a bundler, one tag, served by the hush server:
+
+```html
+<script defer src="https://hush.example.com/hush.js" data-key="hush_mysite_prod_…" data-channel="landing"></script>
+```
+
+It is `autoTrack: true`, and leaves the client on `window.hush` for the
+page's own events. `data-url` names another server (default: where the
+script came from), `data-version` the site's version, `data-provider-token`
+the App Store's `pt`, and `data-auto-track="false"` turns the automatic
+tracking off.
+
 ## Other platforms: the core
 
 `@bavrk/hush/core` is the whole SDK without React Native or the browser:
@@ -625,6 +680,13 @@ foreground, mostly 304s with no body; a new storage key,
 `logLevel: 'debug'`, a line for each 304 or failed request; and 3.5 to
 3.7 KB gzip in the bundle. `remoteConfig: false` gives exactly 2.3's
 behaviour, the bundle aside.
+2.5.0 adds [websites](#a-website): `autoTrack`, `appStore` and
+`storeLink()` on the web entry, `referrer` in `entry()`, and `/hush.js`
+on the server. Two changes on the web for every page: a page load within 30
+minutes of the last one carries on its session instead of starting one, and
+a browser driven by automation sends nothing. A hidden page sends by beacon,
+which needs a server that takes the key in the query; an older one refuses
+it, and the events go with the next page as before.
 2.2.2 makes the order of calls at startup safe: an early `entry()` is held for
 its session, early events keep the launch's session id and the last launch's
 queue, the paid flag is left out until `identify()`, a missing `url` turns the

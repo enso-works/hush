@@ -1,6 +1,6 @@
 # Websites: design
 
-A proposal, 2026-10-29, agreed the same day. Phase 1 is being built; the
+A proposal, 2026-10-29, agreed the same day. Phases 1 and 2 are built; the
 rest is not. It is written down first so the model is settled before the SDK,
 the dashboard and the iOS app depend on it.
 
@@ -46,7 +46,8 @@ catalog:
   website's numbers through it (phase 4).
 
 Tables stay as they are: a visitor is an install row, a visit a session, a
-page a `page_viewed` event. No migration.
+page a `screen_viewed` with its path as the screen (so `private_screens` and
+the screens views work for pages as they are). No migration.
 
 On one origin, a website and a web build of its app (Rallo's `/play/`) need
 separate install ids: `installs.id` is the primary key, so one id cannot be in
@@ -60,10 +61,9 @@ the catalog, on `/admin/apps` and `/admin/apps/:app`. A batch whose request
 User-Agent is a crawler, a link preview or a headless browser is answered as
 accepted and not stored. The agent string is read, never written down.
 
-**2. The web SDK tracks a site by itself (`@bavrk/hush/web`, a minor
-release).**
-- `createWebHush({ autoTrack: { pageviews: true, links: true } })`:
-  `page_viewed { path }` on load and on client-side navigation;
+**2. The web SDK tracks a site by itself (`@bavrk/hush/web` 2.5.0).** Built.
+- `createWebHush({ autoTrack: { pageviews: true, entry: true, links: true } })`:
+  `screen(path)` on load and on client-side navigation;
   `store_clicked { store, campaign }` for App Store, Google Play and
   TestFlight links; `link_clicked { host }` for other outbound links.
 - The first session of a visit keeps its `utm_*` and `ref` tags without the
@@ -72,9 +72,19 @@ release).**
 - `hush.storeLink(url)` adds `pt` and `ct` to an App Store link, `ct` being
   the visit's campaign cut to Apple's limit, so App Store Connect's campaign
   report counts the same campaign the site saw.
-- No events from `navigator.webdriver` browsers or prerendered pages.
-- A website on an origin it shares with a web build of its app keeps its own
-  install id and reads the app's opt-out.
+- No events from `navigator.webdriver` browsers; a prerendered page starts
+  when it is shown.
+- A page load within 30 minutes of the last carries on its session; a link
+  with campaign tags starts a new one. Without this every page of a
+  multi-page site was a session.
+- Once the page is hidden, batches go by `sendBeacon` to
+  `/v1/events?key=…`: Chromium drops a `keepalive` fetch that needs a CORS
+  preflight as a page goes (checked in Chromium 153), so the last page's
+  events, a store click above all, waited for a next visit. They stay
+  queued and go again with the next page; the server drops the copies by id.
+- The Campaigns panel splits by `referrer`.
+- Not done: reading the app's opt-out from a site with its own
+  `storagePrefix`. For later, with consent.
 - `/hush.js`, a script-tag build served by the server (outside `/v1`) for
   sites without a bundler, such as a hosted webshop: the same origin as the
   events, so a site's CSP needs one host.

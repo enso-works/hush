@@ -258,6 +258,44 @@ that is the React Native entry. In Capacitor, pass
 for the iOS side. The server answers CORS on `/v1` for any origin, Capacitor's
 `capacitor://localhost` included.
 
+### A website
+
+A website, such as a landing page or a shop, gets a slug of its own
+([the catalog](#the-event-catalog)) and tracks itself: every page as a
+screen, the link and the site each visit came from, and clicks on store and
+outbound links. One tag, served by your hush server:
+
+```html
+<script defer src="https://hush.example.com/hush.js" data-key="hush_mysite_prod_…" data-channel="landing"></script>
+```
+
+Or with a bundler:
+
+```ts
+export const hush = createWebHush({ platform: 'web', autoTrack: true, appStore: { providerToken: '118095' } });
+hush.configure({ url: 'https://hush.example.com', key: 'hush_mysite_prod_…', channel: 'landing', remoteConfig: false });
+hush.init();
+```
+
+- Pages: `screen_viewed` with the path, without its query or hash, on load
+  and on client-side navigation.
+- The visit: its first session keeps the link's `utm_*` and `ref` tags and
+  the referring site's host as `referrer` (`entry` is `link`, or `referral`
+  for a link without tags). Never the URL or a click id.
+- Links: `store_clicked { store, campaign }` for App Store, Google Play and
+  TestFlight links, `link_clicked { host }` for other links off the site.
+- With `appStore.providerToken` (the script's `data-provider-token`), App
+  Store links carry `pt` and the visit's campaign as `ct`, so App Store
+  Connect's campaign report counts the same campaign. `hush.storeLink(url)`
+  does it for a link the page builds.
+
+A page load within 30 minutes of the last one carries on the session; a link
+with campaign tags starts a new one. A browser driven by automation sends
+nothing, nor does a crawler. A hidden page sends by `sendBeacon`, with the key
+in the query, as a preflighted request does not leave a page that is going.
+`window.hush` is the client for the page's own events; `data-url`,
+`data-version` and `data-auto-track="false"` change the rest.
+
 ### The native side: @bavrk/hush-expo
 
 What JavaScript cannot do on iOS: Apple's ad attribution, whether the build
@@ -751,7 +789,8 @@ Apps send `Authorization: Key <write key>`. The SDK does this for you.
 
 | Endpoint | |
 |---|---|
-| `POST /v1/events` | Up to 100 events. `200 { accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry later. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored, and so does a batch from a crawler or a headless browser (judged by a User-Agent that starts with `Mozilla/`; read, never stored). |
+| `POST /v1/events` | Up to 100 events. `200 { accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry later. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored, and so does a batch from a crawler or a headless browser (judged by a User-Agent that starts with `Mozilla/`; read, never stored). The key may come as `?key=` instead of the header, as a page's `sendBeacon` sends no headers, with a `text/plain` body. |
+| `GET /hush.js` | The SDK as a script tag for a website (`autoTrack`), from the SDK the server ships with. Cached for an hour. |
 | `POST /v1/tickets` | `{ install?, kind, message, email?, subject?, rc_id?, diag? }` → `201 { id, created_at, status }`. With an email and no install it is stored with neither install nor `rc_id`, and the answer adds `thread`, the key to that ticket. Without an email, `install` is required. |
 | `GET /v1/tickets?install=` | That install's feedback (the last 50), with replies and `unread`. Reading marks every reply read. |
 | `POST /v1/tickets/list` | `{ install }` → the same, with the install id out of the URL (SDK 2.3.0). |

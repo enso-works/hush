@@ -30,6 +30,11 @@ A link with `utm_*` tags opens the app or the page, and the app passes it to
   that session on.
 - **A Meta ad's URL parameters:**
   `utm_source=meta&utm_medium=paid_social&utm_campaign={{campaign.name}}&utm_term={{adset.name}}&utm_content={{ad.name}}`.
+- **Websites (SDK 2.5.0).** `autoTrack` adds the referring site's host as
+  `referrer` on the visit's first session, tagged or not; the Campaigns panel
+  splits by `referrer` too (`?by=referrer`). With `appStore.providerToken`,
+  App Store links on the site carry the visit's campaign as `ct`, so App
+  Store Connect's campaign report counts it under the same name.
 - **Scope.** On the web this covers the whole path from the ad. On iOS a link
   opens only an app that is already installed: the App Store does not pass the
   link into a new install. hush does not read Android's Play Install Referrer.

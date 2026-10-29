@@ -19,6 +19,18 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
   [docs/web.md](web.md); phase 1, website slugs in the catalog and crawlers
   dropped at ingest, is in. Open: the SDK side, the website reports, and
   moving Rallo's site to a slug of its own.
+- **Rallo (website), the SDK side.** Driving the site in Chromium showed
+  that nothing tracked on a page reached the server once the visitor left
+  it: the SDK sends with a `keepalive` fetch as the page hides, and with the
+  server on another origin (`telemetry.bavrk.com` from `bavrk.com`) that
+  fetch needs a CORS preflight, which Chromium drops for a page that is
+  going. A click to the App Store, the event a landing page exists for, was
+  lost for anyone who did not come back. Also, every page load of the
+  multi-page site started a session. Fixed in SDK 2.5.0: beacons with the key
+  in the query once the page is hidden, sessions carried across page loads,
+  and `autoTrack` for pages, the visit's entry and referrer, and store links.
+  The seven `landing`-only installs in `tennis` and the eight `landing`
+  events of one player were deleted (a copy is in hush-notes).
 
 ## 2026-10-08
 
