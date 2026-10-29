@@ -44,10 +44,17 @@ public struct AppSummary: Decodable, Sendable, Identifiable, Hashable {
     public let adInstalls: Int?
     /// Active installs per day over the period (servers from 2026-09 on).
     public let trend: [Int]?
+    /// `app` or `website`, from the catalog (servers from 2026-10 on; nil before, an app).
+    public let kind: AppKind?
+    /// The apps a website sells, by slug.
+    public let promotes: [String]?
+    /// The websites that sell this app, by slug.
+    public let promotedBy: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case app, name, dau, wau, mau, sessions, events, trend
+        case app, name, dau, wau, mau, sessions, events, trend, kind, promotes
         case newInstalls = "new_installs"
+        case promotedBy = "promoted_by"
         case totalInstalls = "total_installs"
         case openTickets = "open_tickets"
         case lastEvent = "last_event"
@@ -64,6 +71,30 @@ extension AppSummary {
     public func isInactive(now: Date = .now) -> Bool {
         guard let lastEvent else { return true }
         return now.timeIntervalSince(lastEvent) > Double(Self.inactiveDays) * 86_400
+    }
+
+    /// A website: its installs are visitors, its sessions visits.
+    public var isWebsite: Bool { kind == .website }
+}
+
+/// What a catalog entry is: an app, or a website (docs/web.md).
+public enum AppKind: OpenEnum {
+    case app, website, other(String)
+
+    public init?(rawValue: String) {
+        switch rawValue {
+        case "app": self = .app
+        case "website": self = .website
+        default: return nil
+        }
+    }
+
+    public var rawValue: String {
+        switch self {
+        case .app: "app"
+        case .website: "website"
+        case .other(let raw): raw
+        }
     }
 }
 
@@ -165,6 +196,20 @@ public struct AppDetail: Decodable, Sendable {
     public let breakdowns: [Pinned]?
     /// Event names this period that the catalog does not list: a typo, or a name to add.
     public let unknown: [Unknown]?
+    /// `app` or `website`, and what a website sells or which websites sell
+    /// this app (servers from 2026-10 on).
+    public let kind: AppKind?
+    public let promotes: [String]?
+    public let promotedBy: [String]?
+
+    public var isWebsite: Bool { kind == .website }
+
+    // The detail's own keys are camelCase; the catalog's three are snake_case.
+    enum CodingKeys: String, CodingKey {
+        case app, name, channel, channels, highlight, current, prior, retention, engagement, todayActive, daily,
+             versions, events, countries, tickets, lastEvent, breakdowns, unknown, kind, promotes
+        case promotedBy = "promoted_by"
+    }
 
     /// A breakdown the catalog pins: `event` by `prop`, counted per event or once per install.
     public struct Pinned: Decodable, Sendable, Hashable {

@@ -158,3 +158,30 @@ func dates(_ s: String) throws {
     let withNull = try HushJSON.decoder.decode(ConfigOverride.self, from: Data(#"{"default": null, "note": null}"#.utf8))
     #expect(withNull.default == .null)
 }
+
+@Test func aWebsiteSaysWhatItSells() throws {
+    let summary = try HushJSON.decoder.decode(AppSummary.self, from: Data("""
+        {"app": "rallo-site", "name": "Rallo site", "new_installs": 4, "total_installs": 9, "dau": 1, "wau": 3, "mau": 9,
+         "sessions": 12, "events": 40, "open_tickets": 0, "last_event": null,
+         "kind": "website", "promotes": ["tennis"], "promoted_by": []}
+        """.utf8))
+    #expect(summary.isWebsite)
+    #expect(summary.promotes == ["tennis"])
+    // An older server sends neither: an app.
+    let pace = try #require(try decode(AppsAnswer.self, "apps").apps.first)
+    #expect(pace.kind == nil && !pace.isWebsite)
+    // A kind from a newer server is kept, not an error.
+    let future = try HushJSON.decoder.decode(AppKind.self, from: Data(#""kiosk""#.utf8))
+    #expect(future == .other("kiosk"))
+}
+
+@Test func anAppsDetailNamesTheWebsitesThatSellIt() throws {
+    var json = try JSONSerialization.jsonObject(with: fixture("app")) as! [String: Any]
+    json["kind"] = "app"
+    json["promotes"] = [String]()
+    json["promoted_by"] = ["rallo-site"]
+    let detail = try HushJSON.decoder.decode(AppDetail.self, from: JSONSerialization.data(withJSONObject: json))
+    #expect(detail.promotedBy == ["rallo-site"])
+    #expect(!detail.isWebsite)
+    #expect(try decode(AppDetail.self, "app").kind == nil)
+}
