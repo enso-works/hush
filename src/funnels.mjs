@@ -137,8 +137,8 @@ export async function runFunnel({ app, env, days, channel = null, steps, windowD
   }));
 }
 
-/** The link tags a campaign can be split by, as SDK 2 keeps them on session_started. */
-export const CAMPAIGN_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref'];
+/** The link tags a campaign can be split by, as SDK 2 keeps them on session_started; `referrer` (2.5) is the referring site's host. */
+export const CAMPAIGN_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref', 'referrer'];
 
 /**
  * A funnel per campaign. Each install counts once, for the first session in

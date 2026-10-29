@@ -6,6 +6,41 @@ anything else, and later the evidence for what a hosted hush has to be.
 
 Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
+## 2026-10-29
+
+- **hush iOS app, websites.** The app showed a website as one more app:
+  visitors as installs, folded into the Overview's install totals, and no
+  way to see campaigns or Apple's attribution from the phone at all, only on
+  the web dashboard. The detail's camelCase keys (`todayActive`) beside the
+  catalog's snake_case ones (`promoted_by`) needed explicit coding keys in
+  HushKit. The demo has no website, so the new screens are only seen against
+  a local server (`WebsiteTests`). Fixed on `ios-web`: a website's mark,
+  words and Pages screen, Campaigns and Attribution screens. Open: a website
+  in the demo.
+- **Rallo (website, `@bavrk/hush/web`).** The site at `bavrk.com/rallo`
+  reports into the game's slug, `tennis`, with the `landing` channel, so
+  every browser that loaded a page became an install of the game: new
+  installs, totals, retention and countries all counted readers. An install
+  keeps the last channel it sent, so a player who later read the site turned
+  into a `landing` install. Untagged traffic (a search, a post) showed
+  nowhere, and nothing followed a campaign from the site to the App Store.
+  Braele's landing page and Amora's shop are next. Planned in
+  [docs/web.md](web.md); phase 1, website slugs in the catalog and crawlers
+  dropped at ingest, is in. Open: the SDK side, the website reports, and
+  moving Rallo's site to a slug of its own.
+- **Rallo (website), the SDK side.** Driving the site in Chromium showed
+  that nothing tracked on a page reached the server once the visitor left
+  it: the SDK sends with a `keepalive` fetch as the page hides, and with the
+  server on another origin (`telemetry.bavrk.com` from `bavrk.com`) that
+  fetch needs a CORS preflight, which Chromium drops for a page that is
+  going. A click to the App Store, the event a landing page exists for, was
+  lost for anyone who did not come back. Also, every page load of the
+  multi-page site started a session. Fixed in SDK 2.5.0: beacons with the key
+  in the query once the page is hidden, sessions carried across page loads,
+  and `autoTrack` for pages, the visit's entry and referrer, and store links.
+  The seven `landing`-only installs in `tennis` and the eight `landing`
+  events of one player were deleted (a copy is in hush-notes).
+
 ## 2026-10-08
 
 - **Magistrala (driving game, Godot 4.7, the hush add-on 0.1.0).** Wired in

@@ -3,7 +3,9 @@ import SwiftUI
 
 /// One app over the period, against the period before: whether it is
 /// sending, its numbers and activity, and a card for each closer look
-/// (funnels, retention, engagement, events, audience, feedback). The
+/// (funnels, campaigns, attribution, retention, engagement, events, audience,
+/// config, feedback; a website's pages in place of funnels, attribution and
+/// config). The
 /// filters stay at the top while it scrolls.
 struct AppView: View {
     @State private var data: AppData
@@ -12,7 +14,7 @@ struct AppView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(server: Server, app: AppSummary, client: AdminClient, kept: Int?) {
-        _data = State(initialValue: AppData(server: server, slug: app.app, name: app.name, client: client, kept: kept))
+        _data = State(initialValue: AppData(server: server, slug: app.app, name: app.name, client: client, kept: kept, website: app.isWebsite))
     }
 
     var body: some View {
@@ -51,6 +53,9 @@ struct AppView: View {
             case .engagement: EngagementView(data: data)
             case .audience: AudienceView(data: data)
             case .events: EventsView(data: data)
+            case .website: WebsiteView(data: data)
+            case .campaigns: CampaignsView(data: data)
+            case .attribution: AttributionView(data: data)
             case .event(let name): EventView(data: data, name: name)
             case .config: ConfigView(data: data)
             case .configKey(let key): ConfigKeyView(data: data, name: key)
@@ -99,7 +104,7 @@ private struct Page: View {
         let d = detail
         VStack(spacing: 16) {
             Health(detail: d, env: env)
-            Stats(detail: d, cut: data.cut(days: days))
+            Stats(detail: d, cut: data.cut(days: days), website: data.isWebsite)
             if let unknown = d.unknown, !unknown.isEmpty {
                 NavigationLink(value: AppRoute.events) {
                     Callout(symbol: "questionmark.diamond", tint: .orange,
@@ -132,7 +137,7 @@ private struct Health: View {
         let quiet = detail.lastEvent.map { Date.now.timeIntervalSince($0) } ?? .infinity
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                AppMark(slug: detail.app, name: detail.name ?? detail.app, size: 44)
+                AppMark(slug: detail.app, name: detail.name ?? detail.app, size: 44, website: detail.isWebsite)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Circle().fill(tint(quiet)).frame(width: 8, height: 8)
@@ -141,6 +146,9 @@ private struct Health: View {
                     Text("Last event \(when(detail.lastEvent))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    if let sells = sells(detail) {
+                        Text(sells).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 Spacer()
             }
@@ -150,6 +158,16 @@ private struct Health: View {
                         text: "Nothing has arrived since \(when(detail.lastEvent)). A quiet stretch, or a revoked key, a wrong URL or an SDK that stopped sending: look up an install to see one device's events.")
             }
         }
+    }
+
+    /// What a website sells, or the websites that sell this app.
+    private func sells(_ d: AppDetail) -> String? {
+        if d.isWebsite {
+            guard let apps = d.promotes, !apps.isEmpty else { return "Website" }
+            return "Website for \(apps.formatted(.list(type: .and)))"
+        }
+        guard let sites = d.promotedBy, !sites.isEmpty else { return nil }
+        return "Sold on \(sites.formatted(.list(type: .and)))"
     }
 
     private func status(_ quiet: TimeInterval) -> String {
@@ -189,15 +207,18 @@ private struct Stats: View {
     let detail: AppDetail
     /// Days new installs are counted over, when the retention window is shorter than the period.
     let cut: Int?
+    /// A website's installs are visitors, its sessions visits.
+    let website: Bool
 
     var body: some View {
         let c = detail.current, p = detail.prior
+        let noun = website ? "visitors" : "installs"
         LazyVGrid(columns: tileColumns(typeSize), spacing: 12) {
-            Stat(label: "Active installs", value: c.active.formatted(), change: change(c.active, p.active))
-            Stat(label: cut.map { "New installs, last \($0) days" } ?? "New installs", value: c.newInstalls.formatted(),
+            Stat(label: website ? "Visitors" : "Active installs", value: c.active.formatted(), change: change(c.active, p.active))
+            Stat(label: cut.map { "New \(noun), last \($0) days" } ?? "New \(noun)", value: c.newInstalls.formatted(),
                  change: cut == nil ? change(c.newInstalls, p.newInstalls) : nil)
-            Stat(label: "Sessions", value: c.sessions.formatted(), change: change(c.sessions, p.sessions))
-            Stat(label: "Active today", value: detail.todayActive.formatted())
+            Stat(label: website ? "Visits" : "Sessions", value: c.sessions.formatted(), change: change(c.sessions, p.sessions))
+            Stat(label: website ? "Visitors today" : "Active today", value: detail.todayActive.formatted())
             if let h = detail.highlight {
                 Stat(label: eventLabel(h.event), value: c.highlight.formatted(), change: change(c.highlight, p.highlight))
                 if h.doneProp != nil {
@@ -217,37 +238,83 @@ private struct Cards: View {
     @AppStorage("days") private var days = 30
     /// The catalog's first funnel, read for its card; nil while it comes or when it could not be read.
     @State private var funnel: Funnel??
+    /// Tagged campaigns this period, and installs Apple attributed to ads: read the same way.
+    @State private var campaigns: Int??
+    @State private var adInstalls: Int??
 
     var body: some View {
         let d = detail
-        NavigationLink(value: AppRoute.funnels) {
-            switch funnel {
-            case .some(.some(let f)):
-                Card(symbol: "line.3.horizontal.decrease", title: "Funnels",
-                     value: percent(f.steps.last?.installs ?? 0, of: f.steps.first?.installs ?? 0), caption: "\(f.name), first step to last")
+        if data.isWebsite {
+            NavigationLink(value: AppRoute.website) {
+                Card(symbol: "doc.text", title: "Pages", value: (d.events.first { $0.name == "screen_viewed" }?.n ?? 0).formatted(),
+                     caption: "Pageviews, top pages, referrers, store clicks")
+            }
+        }
+        NavigationLink(value: AppRoute.campaigns) {
+            switch campaigns {
+            case .some(.some(let n)):
+                Card(symbol: "megaphone", title: "Campaigns", value: n.formatted(),
+                     caption: data.isWebsite ? "Tagged campaigns this period, and referrers" : "Tagged campaigns this period")
             case .some(.none):
-                Card(symbol: "line.3.horizontal.decrease", title: "Funnels", value: "–", caption: "Where installs drop off")
+                Card(symbol: "megaphone", title: "Campaigns", value: "–", caption: "Where tagged links brought people")
             case .none:
-                Card(symbol: "line.3.horizontal.decrease", title: "Funnels", value: "00%", caption: "Where installs drop off")
+                Card(symbol: "megaphone", title: "Campaigns", value: "00", caption: "Where tagged links brought people")
                     .redacted(reason: .placeholder)
             }
         }
         .task(id: data.key(days: days, env: env)) {
-            let fresh = try? await data.client.funnels(data.slug, data.scope(days: days, env: env)).first
-            if !Task.isCancelled { funnel = .some(fresh) }
+            let rows = try? await data.client.campaigns(data.slug, by: .campaign, steps: [StepQuery("session_started")],
+                                                        data.scope(days: days, env: env)).rows
+            if !Task.isCancelled { campaigns = .some(rows?.count) }
+        }
+        if !data.isWebsite {
+            NavigationLink(value: AppRoute.attribution) {
+                switch adInstalls {
+                case .some(.some(let n)):
+                    Card(symbol: "chart.bar.doc.horizontal", title: "Attribution", value: n.formatted(), caption: "Installs from ads, as Apple reports them")
+                case .some(.none):
+                    Card(symbol: "chart.bar.doc.horizontal", title: "Attribution", value: "–", caption: "Ads and App Store campaigns, from Apple")
+                case .none:
+                    Card(symbol: "chart.bar.doc.horizontal", title: "Attribution", value: "00", caption: "Ads and App Store campaigns, from Apple")
+                        .redacted(reason: .placeholder)
+                }
+            }
+            .task(id: data.key(days: days, env: env)) {
+                let a = try? await data.client.attribution(data.slug, data.scope(days: days, env: env))
+                if !Task.isCancelled { adInstalls = .some(a?.postbacks.campaigns.reduce(0) { $0 + $1.installs }) }
+            }
+        }
+        // A website has no paywall for the default funnel to follow.
+        if !data.isWebsite {
+            NavigationLink(value: AppRoute.funnels) {
+                switch funnel {
+                case .some(.some(let f)):
+                    Card(symbol: "line.3.horizontal.decrease", title: "Funnels",
+                         value: percent(f.steps.last?.installs ?? 0, of: f.steps.first?.installs ?? 0), caption: "\(f.name), first step to last")
+                case .some(.none):
+                    Card(symbol: "line.3.horizontal.decrease", title: "Funnels", value: "–", caption: "Where installs drop off")
+                case .none:
+                    Card(symbol: "line.3.horizontal.decrease", title: "Funnels", value: "00%", caption: "Where installs drop off")
+                        .redacted(reason: .placeholder)
+                }
+            }
+            .task(id: data.key(days: days, env: env)) {
+                let fresh = try? await data.client.funnels(data.slug, data.scope(days: days, env: env)).first
+                if !Task.isCancelled { funnel = .some(fresh) }
+            }
         }
         NavigationLink(value: AppRoute.retention) {
             Card(symbol: "arrow.uturn.backward.circle", title: "Retention",
                  value: d.retention.d7.rate?.formatted(.percent.precision(.fractionLength(0))) ?? "–",
-                 caption: "Back a week after the first open")
+                 caption: data.isWebsite ? "Back a week after the first visit" : "Back a week after the first open")
         }
         NavigationLink(value: AppRoute.engagement) {
             if let e = d.engagement, e.measured > 0 {
-                Card(symbol: "timer", title: "Engagement", value: duration(e.medianSeconds), caption: "Median session")
+                Card(symbol: "timer", title: "Engagement", value: duration(e.medianSeconds), caption: data.isWebsite ? "Median visit" : "Median session")
             } else {
                 Card(symbol: "timer", title: "Engagement",
                      value: d.engagement?.sessionsPerInstall?.formatted(.number.precision(.fractionLength(0...1))) ?? "–",
-                     caption: "Sessions per install")
+                     caption: data.isWebsite ? "Visits per visitor" : "Sessions per install")
             }
         }
         NavigationLink(value: AppRoute.events) {
@@ -260,16 +327,19 @@ private struct Cards: View {
             Card(symbol: "globe", title: "Audience", value: d.versions.first?.version ?? "–",
                  caption: "Top of \(d.versions.count) versions, \(d.countries.count) countries")
         }
-        NavigationLink(value: AppRoute.config) {
-            if let config = data.config {
-                let overridden = config.keys.filter(\.overridden).count
-                Card(symbol: "slider.horizontal.3", title: "Remote config", value: config.keys.count.formatted(),
-                     caption: config.keys.isEmpty ? "No keys in the catalog" : overridden == 0 ? "Keys, as the catalog says" : "Keys, \(overridden) overridden")
-            } else {
-                Card(symbol: "slider.horizontal.3", title: "Remote config", value: "–", caption: "Values the app reads at launch")
+        // A page reads no remote config.
+        if !data.isWebsite {
+            NavigationLink(value: AppRoute.config) {
+                if let config = data.config {
+                    let overridden = config.keys.filter(\.overridden).count
+                    Card(symbol: "slider.horizontal.3", title: "Remote config", value: config.keys.count.formatted(),
+                         caption: config.keys.isEmpty ? "No keys in the catalog" : overridden == 0 ? "Keys, as the catalog says" : "Keys, \(overridden) overridden")
+                } else {
+                    Card(symbol: "slider.horizontal.3", title: "Remote config", value: "–", caption: "Values the app reads at launch")
+                }
             }
+            .task { if data.config == nil { await data.loadConfig() } }
         }
-        .task { if data.config == nil { await data.loadConfig() } }
         Button {
             model.showFeedback(app: data.slug)
         } label: {

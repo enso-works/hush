@@ -18,7 +18,7 @@ import { cfg, installRetention, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { adminConfig, appExists, checkOverridesAtBoot, configAnswer, history, matchesRevision, preview, revertOverride, setOverride } from './remote-config.mjs';
 import { clientKey, dailyLimiter, failureLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
-import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
+import { isCrawler, MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { createPairing, deviceAuthorized, listDevices, pair, revokeDevice } from './devices.mjs';
 import { pushConfigured, pushVia, register as registerPush, testPush, unregister as unregisterPush } from './push.mjs';
@@ -106,6 +106,23 @@ function serveDashboard(res, pathname) {
   return res.end(file.body);
 }
 
+// /hush.js: the SDK as one script tag, for a website without a bundler
+// (source in sdk/script/, built into src/script/ and committed). Served from
+// the server it reports to, so a site's CSP names one host for both.
+const SCRIPT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'script', 'hush.js'));
+function serveScript(res) {
+  res.writeHead(200, {
+    'Content-Type': 'text/javascript; charset=utf-8',
+    'Content-Length': SCRIPT.length,
+    // An hour: a new SDK reaches every site within one, without a versioned URL.
+    'Cache-Control': 'public, max-age=3600',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Access-Control-Allow-Origin': '*',
+    'X-Content-Type-Options': 'nosniff',
+  });
+  return res.end(SCRIPT);
+}
+
 r.get('/healthz', async (_req, res) => {
   try {
     await q('SELECT 1');
@@ -123,6 +140,9 @@ r.post('/v1/events', async (req, res, { key, country }) => {
   const body = await readJson(req, MAX_BODY);
   const batch = parseBatch(body, { app: key.app, env: key.env, country });
   if (typeof batch === 'string') return json(res, 400, { error: `invalid ${batch}`, max_events: MAX_EVENTS });
+  // Answered as stored, so a crawler that keeps its queue gets nothing to
+  // retry, and no install row is made for it.
+  if (isCrawler(req.headers['user-agent'])) return json(res, 200, { accepted: batch.events.length + batch.discarded, duplicate: 0, rejected: batch.rejected });
   const result = await store(batch);
   return json(res, 200, result);
 });
@@ -568,6 +588,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && (url.pathname === '/dashboard' || url.pathname.startsWith('/dashboard/'))) {
     return serveDashboard(res, url.pathname);
   }
+  if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/hush.js') return serveScript(res);
   // /v1 answers any origin, so web apps (and Capacitor's capacitor://localhost)
   // can send too. Nothing rides on it: no cookies, and the write key it takes
   // is public anyway, shipped inside every app.
@@ -637,7 +658,12 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname.startsWith('/v1/')) {
       if (!v1Limit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
-      const key = await resolveKey(req.headers.authorization);
+      // A page that is leaving can only send a beacon, which carries no
+      // header: its key comes in the query, for events only. Write keys are
+      // public, shipped in every page and app, so a proxy log holding one
+      // gives nothing away.
+      const beaconKey = req.method === 'POST' && url.pathname === '/v1/events' ? url.searchParams.get('key') : null;
+      const key = await resolveKey(req.headers.authorization ?? (beaconKey ? `Key ${beaconKey}` : undefined));
       if (!key) return json(res, 401, { error: 'unauthorized' });
       // The proxy's country header (COUNTRY_HEADER) is the only thing derived
       // from the caller's address, and it never leaves the install row.

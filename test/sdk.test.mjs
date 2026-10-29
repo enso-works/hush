@@ -319,6 +319,224 @@ test('the web entry: localStorage, the page hiding as leaving, the device from t
   }
 });
 
+// A website in a browser: one page load is one process, with fresh globals
+// over the same localStorage (the origin's) and sessionStorage (the tab's).
+const site = { local: new Map(), tab: new Map() };
+const asStorage = (m) => ({ getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, String(v)), removeItem: (k) => void m.delete(k) });
+async function pageLoad(href, { referrer = '', webdriver = false, prerendering = false, beacons = null, ...app } = {}) {
+  const now = Date.now();
+  mock.timers.reset();
+  mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now });
+  const url = new URL(href);
+  const listeners = {};
+  const on = (type, fn) => (listeners[type] ??= []).push(fn);
+  const fire = (type, e = {}) => {
+    for (const fn of listeners[type] ?? []) fn(e);
+  };
+  const doc = { visibilityState: 'visible', referrer, prerendering, addEventListener: on };
+  const loc = { get href() { return url.href; }, get host() { return url.host; }, get hostname() { return url.hostname; }, get pathname() { return url.pathname; }, get search() { return url.search; } };
+  const hist = {
+    pushState: (_s, _t, to) => void (url.href = new URL(to, url).href),
+    replaceState: (_s, _t, to) => void (url.href = new URL(to, url).href),
+  };
+  Object.assign(globalThis, { localStorage: asStorage(site.local), sessionStorage: asStorage(site.tab), document: doc, location: loc, history: hist, addEventListener: on });
+  const nav = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', languages: ['en-US'], webdriver };
+  if (beacons) nav.sendBeacon = (to, blob) => (beacons.push({ to, blob }), true);
+  Object.defineProperty(globalThis, 'navigator', { value: nav, configurable: true, writable: true });
+  const { createWebHush } = await import(`../sdk/src/web.ts?launch=${++launches}`);
+  const hush = createWebHush({ platform: 'web', ...app });
+  hush.configure({ url: 'https://hush.test', key: 'hush_site_prod_x', channel: 'web', remoteConfig: false });
+  const ready = hush.init();
+  await settle();
+  const click = (to, type = 'click') => {
+    const a = { href: new URL(to, url).href };
+    fire(type, { target: { closest: (sel) => (sel === 'a[href]' ? a : null) } });
+    return a;
+  };
+  return { hush, ready, url, fire, click, doc };
+}
+const leavePage = async (page) => {
+  page.doc.visibilityState = 'hidden';
+  page.fire('visibilitychange');
+  page.fire('pagehide');
+  await settle();
+};
+function clearSite() {
+  site.local.clear();
+  site.tab.clear();
+}
+function restoreGlobals() {
+  for (const k of ['localStorage', 'sessionStorage', 'document', 'location', 'history', 'addEventListener']) delete globalThis[k];
+}
+
+test('a website visit: one session over many pages, from its link and the site that sent it, every page a screen', async () => {
+  clearSite();
+  try {
+    let page = await pageLoad('https://rallo.example/rallo/?utm_source=hn&utm_campaign=launch&fbclid=abc#top', {
+      referrer: 'https://news.ycombinator.com/item?id=1',
+      autoTrack: true,
+    });
+    await page.ready;
+    page.hush.track('cta_seen');
+    await leavePage(page);
+    const [start] = named('session_started');
+    assert.deepEqual(start.props, { entry: 'link', n: 1, utm_source: 'hn', utm_campaign: 'launch', referrer: 'news.ycombinator.com' }, 'no click id, no URL');
+    assert.deepEqual(named('screen_viewed').map((e) => e.props.screen), ['/rallo/'], 'the path, without query or hash');
+
+    // The next page, five minutes on: the same session, and no new entry.
+    minutes(5);
+    page = await pageLoad('https://rallo.example/rallo/download/', { referrer: 'https://rallo.example/rallo/', autoTrack: true });
+    await page.ready;
+    page.url.href = 'https://rallo.example/rallo/play/';
+    history.pushState({}, '', '/rallo/play/');
+    history.replaceState({}, '', '/rallo/play/?tab=2');
+    page.url.href = 'https://rallo.example/rallo/download/';
+    page.fire('popstate');
+    await leavePage(page);
+    assert.equal(named('session_started').length, 1, 'one visit');
+    assert.deepEqual(named('screen_viewed').map((e) => e.props.screen), ['/rallo/', '/rallo/download/', '/rallo/play/', '/rallo/download/']);
+    assert.ok(events().every((e) => e.session === start.session), 'every page in the first page\'s session');
+
+    // Half an hour later it is a new visit, straight to the site.
+    minutes(31);
+    page = await pageLoad('https://rallo.example/rallo/', { autoTrack: true });
+    await page.ready;
+    await leavePage(page);
+    const starts = named('session_started');
+    assert.equal(starts.length, 2);
+    assert.equal(starts[1].props.entry, 'launch');
+    assert.equal(starts[1].props.referrer, undefined);
+    assert.notEqual(starts[1].session, start.session);
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test('a website: an ad clicked again mid-visit is a new visit; another site without tags is a referral', async () => {
+  clearSite();
+  try {
+    let page = await pageLoad('https://rallo.example/', { referrer: 'https://www.Google.com/', autoTrack: true });
+    await page.ready;
+    await leavePage(page);
+    assert.deepEqual(named('session_started')[0].props, { entry: 'referral', n: 1, referrer: 'google.com' });
+
+    minutes(2);
+    page = await pageLoad('https://rallo.example/?utm_source=meta&utm_campaign=autumn', { autoTrack: true });
+    await page.ready;
+    await leavePage(page);
+    const starts = named('session_started');
+    assert.equal(starts.length, 2, 'the tagged link starts a session of its own');
+    assert.equal(starts[1].props.utm_campaign, 'autumn');
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test('a website: store links carry the visit\'s campaign to the App Store, other links say only their host', async () => {
+  clearSite();
+  try {
+    const page = await pageLoad('https://rallo.example/?utm_source=meta&utm_campaign=Autumn sale/2026', { autoTrack: true, appStore: { providerToken: '118095' } });
+    await page.ready;
+    const store = page.click('https://apps.apple.com/app/rallo/id6740000000');
+    const kept = page.click('https://apps.apple.com/app/id6740000000?ct=newsletter');
+    page.click('https://play.google.com/store/apps/details?id=com.rallo');
+    page.click('https://www.instagram.com/rallo/', 'auxclick');
+    page.click('/rallo/faq');
+    page.click('mailto:hi@rallo.example');
+    await leavePage(page);
+    assert.equal(store.href, 'https://apps.apple.com/app/rallo/id6740000000?pt=118095&ct=Autumn_sale_2026');
+    assert.equal(kept.href, 'https://apps.apple.com/app/id6740000000?ct=newsletter&pt=118095', 'a ct the link has wins');
+    assert.deepEqual(named('store_clicked').map((e) => e.props), [
+      { store: 'app_store', campaign: 'Autumn_sale_2026' },
+      { store: 'app_store', campaign: 'Autumn_sale_2026' },
+      { store: 'play', campaign: 'Autumn_sale_2026' },
+    ]);
+    assert.deepEqual(named('link_clicked').map((e) => e.props), [{ host: 'instagram.com' }]);
+    assert.equal(page.hush.storeLink('https://apps.apple.com/app/id1?mt=8'), 'https://apps.apple.com/app/id1?mt=8&pt=118095&ct=Autumn_sale_2026');
+    assert.equal(page.hush.storeLink('https://example.com/x'), 'https://example.com/x');
+
+    const { COMMON } = await import('../src/common.mjs');
+    assert.ok(['store_clicked', 'link_clicked', 'screen_viewed'].every((n) => COMMON.includes(n)), 'the server knows them for any app');
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test('a website: without a provider token store links are left alone; without autoTrack nothing is tracked by itself', async () => {
+  clearSite();
+  try {
+    let page = await pageLoad('https://rallo.example/?utm_campaign=x', { autoTrack: { links: true } });
+    await page.ready;
+    const a = page.click('https://apps.apple.com/app/id1');
+    await leavePage(page);
+    assert.equal(a.href, 'https://apps.apple.com/app/id1');
+    assert.equal(named('screen_viewed').length, 0, 'pageviews were not asked for');
+    assert.equal(named('session_started')[0].props.entry, 'launch', 'nor the entry');
+
+    clearSite();
+    sent.length = 0;
+    page = await pageLoad('https://rallo.example/?utm_campaign=x', { referrer: 'https://google.com/' });
+    await page.ready;
+    page.click('https://apps.apple.com/app/id1');
+    await leavePage(page);
+    assert.deepEqual([...new Set(events().map((e) => e.name))].sort(), ['app_first_opened', 'session_started']);
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test('a page that is going sends by beacon, and the next page sends the same events again', async () => {
+  clearSite();
+  try {
+    const beacons = [];
+    let page = await pageLoad('https://rallo.example/', { autoTrack: true, beacons });
+    await page.ready;
+    const fetched = sent.length;
+    page.click('https://apps.apple.com/app/id1');
+    await leavePage(page);
+    assert.equal(sent.length, fetched, 'no fetch once the page is hidden: Chromium drops a preflighted one as the page goes');
+    assert.equal(beacons.length, 1);
+    const { to, blob } = beacons[0];
+    assert.equal(to, 'https://hush.test/v1/events?key=hush_site_prod_x', 'a beacon takes no header: the key goes in the query');
+    assert.equal(blob.type, 'text/plain', 'any other type is preflighted too');
+    const body = JSON.parse(await blob.text());
+    const beaconed = body.events.map((e) => e.name).sort();
+    assert.ok(beaconed.includes('store_clicked'));
+
+    // The beacon's answer is never seen: the next page sends them again, and the server counts duplicates.
+    minutes(1);
+    page = await pageLoad('https://rallo.example/faq', { autoTrack: true, beacons });
+    await page.ready;
+    const again = new Set(body.events.map((e) => e.id));
+    assert.deepEqual(events().filter((e) => again.has(e.id)).map((e) => e.name).sort(), beaconed);
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test('a website: an automated browser sends nothing, a prerendered page waits until it is shown', async () => {
+  clearSite();
+  try {
+    let page = await pageLoad('https://rallo.example/', { autoTrack: true, webdriver: true });
+    await page.ready;
+    page.hush.track('cta_seen');
+    await leavePage(page);
+    assert.equal(sent.length, 0);
+
+    page = await pageLoad('https://rallo.example/', { autoTrack: true, prerendering: true });
+    await advance(5000);
+    assert.equal(events().length, 0, 'nothing while prerendered');
+    page.doc.prerendering = false;
+    page.fire('prerenderingchange');
+    await page.ready;
+    await leavePage(page);
+    assert.deepEqual(named('screen_viewed').map((e) => e.props.screen), ['/']);
+    assert.equal(named('session_started').length, 1);
+  } finally {
+    restoreGlobals();
+  }
+});
+
 test("Apple's conversion value: registered at 0 once, raised as the catalog's milestones happen, never lowered", async () => {
   milestones = [
     { value: 1, coarse: 'low', event: 'onboarding_completed', where: null, lock: false },

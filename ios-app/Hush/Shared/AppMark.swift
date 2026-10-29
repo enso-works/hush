@@ -1,11 +1,13 @@
 import SwiftUI
 
 /// An app's initial on its colour: the same hue for the same slug as on the
-/// web dashboard (`oklch(0.62 0.16 h)`, h from the slug).
+/// web dashboard (`oklch(0.62 0.16 h)`, h from the slug). A website's
+/// carries a globe in its corner.
 struct AppMark: View {
     let slug: String
     let name: String
     var size: CGFloat = 36
+    var website = false
     @Environment(\.redactionReasons) private var redaction
     // Grows with the name beside it, so a large text size keeps the proportion.
     @ScaledMetric(relativeTo: .headline) private var scale: CGFloat = 1
@@ -17,6 +19,16 @@ struct AppMark: View {
             .foregroundStyle(.white)
             .frame(width: side, height: side)
             .background(redaction.isEmpty ? Self.color(for: slug) : Color(.systemFill), in: .rect(cornerRadius: side * 0.28))
+            .overlay(alignment: .bottomTrailing) {
+                if website {
+                    Image(systemName: "globe")
+                        .font(.system(size: side * 0.3, weight: .semibold))
+                        .foregroundStyle(redaction.isEmpty ? Self.color(for: slug) : Color(.systemFill))
+                        .padding(side * 0.04)
+                        .background(Color(.secondarySystemGroupedBackground), in: .circle)
+                        .offset(x: side * 0.12, y: side * 0.12)
+                }
+            }
             .accessibilityHidden(true)
     }
 

@@ -47,6 +47,10 @@
 // dashboard, and rules the device evaluates in order (config-schema.mjs has
 // the rules, remote-config.mjs what the server does with them; the
 // dashboard may override a key's default and rules, never declare a key).
+// `kind` is "app" (the default) or "website": a website's installs are
+// visitors, one per browser, and never count as an app's installs; it
+// names the apps it sells in `promotes` ("promotes": ["myapp"]), whose
+// campaigns read the website's visits (docs/web.md).
 // All optional; an app
 // missing from the file still works, with only the common names known, no
 // highlight, and the default paywall funnel.
@@ -67,7 +71,11 @@ const NAME = /^[a-z][a-z0-9_]{1,63}$/;
 // The keys an app's entry is read for. Any other is ignored with a warning:
 // a misspelt one, or one from a later version (an older server ignored
 // private_screens without a word), would otherwise do nothing unseen.
-const KEYS = new Set(['events', 'highlight', 'funnels', 'breakdowns', 'app_store_id', 'conversion_values', 'private_screens', 'config']);
+const KEYS = new Set(['events', 'highlight', 'funnels', 'breakdowns', 'app_store_id', 'conversion_values', 'private_screens', 'config', 'kind', 'promotes']);
+
+const APP_KINDS = ['app', 'website'];
+// An app's slug, as APPS in config.mjs accepts it.
+const SLUG = /^[a-z][a-z0-9-]{0,39}$/;
 
 /** Parses and checks a catalog; throws with the offending path so a bad file stops the boot, not a request. */
 export function parseCatalog(raw) {
@@ -103,7 +111,10 @@ export function parseCatalog(raw) {
     const conversionValues = parseConversionValues(spec.conversion_values, `catalog.${app}.conversion_values`);
     const privateScreens = parsePrivateScreens(spec.private_screens, `catalog.${app}.private_screens`);
     const config = parseConfig(spec.config, `catalog.${app}.config`);
-    out[app] = { events, highlight, funnels, breakdowns, appStoreId, conversionValues, privateScreens, config };
+    const kind = spec.kind ?? 'app';
+    if (!APP_KINDS.includes(kind)) throw new Error(`catalog.${app}.kind: "app" or "website"`);
+    const promotes = parsePromotes(spec.promotes, kind, app, `catalog.${app}.promotes`);
+    out[app] = { events, highlight, funnels, breakdowns, appStoreId, conversionValues, privateScreens, config, kind, promotes };
   }
   return out;
 }
@@ -140,6 +151,20 @@ function parsePrivateScreens(raw, path) {
   }
   const slash = raw.find((s) => s.endsWith('/'));
   if (slash) throw new Error(`${path}: "${slash}" ends with /; write the screen name, and the screens under it are included`);
+  return [...new Set(raw)];
+}
+
+/**
+ * The apps a website sells, by slug. Only a website promotes: an app that
+ * names another would mix two apps' installs in one campaign view.
+ */
+function parsePromotes(raw, kind, app, path) {
+  if (raw == null) return [];
+  if (kind !== 'website') throw new Error(`${path}: only a website promotes apps; add "kind": "website"`);
+  if (!Array.isArray(raw) || raw.length > 12 || !raw.every((s) => typeof s === 'string' && SLUG.test(s))) {
+    throw new Error(`${path}: expected up to 12 app slugs`);
+  }
+  if (raw.includes(app)) throw new Error(`${path}: a website cannot promote itself`);
   return [...new Set(raw)];
 }
 
@@ -203,6 +228,15 @@ export const conversionValuesOf = (app) => catalog[app]?.conversionValues ?? [];
 
 /** The app's remote config keys, normalized and sorted by key: { key: { type, default, description, rules } }; {} when none. */
 export const configOf = (app) => catalog[app]?.config ?? {};
+
+/** "website" or "app": what the catalog says the slug is, "app" when it says nothing. */
+export const kindOf = (app) => catalog[app]?.kind ?? 'app';
+
+/** The apps a website sells, in the catalog's order; none for an app. */
+export const promotesOf = (app) => catalog[app]?.promotes ?? [];
+
+/** The websites that sell this app, by slug. */
+export const promotedBy = (app) => Object.entries(catalog).filter(([, v]) => v.promotes.includes(app)).map(([slug]) => slug).sort();
 
 /** Every app whose catalog names private screens, with those names. */
 export const privateScreensByApp = () =>

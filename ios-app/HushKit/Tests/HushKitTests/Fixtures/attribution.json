@@ -1,0 +1,201 @@
+{
+  "app_store_id": "6700000101",
+  "conversion_values": [
+    {
+      "value": 1,
+      "coarse": "low",
+      "event": "onboarding_completed",
+      "where": null,
+      "label": "Onboarded",
+      "lock": false
+    },
+    {
+      "value": 4,
+      "coarse": "low",
+      "event": "meditation_started",
+      "where": null,
+      "label": "Started",
+      "lock": false
+    },
+    {
+      "value": 12,
+      "coarse": "medium",
+      "event": "meditation_completed",
+      "where": {
+        "completed": "true"
+      },
+      "label": "First meditation",
+      "lock": false
+    },
+    {
+      "value": 24,
+      "coarse": "medium",
+      "event": "paywall_viewed",
+      "where": null,
+      "label": "Saw the paywall",
+      "lock": false
+    },
+    {
+      "value": 60,
+      "coarse": "high",
+      "event": "purchase_result",
+      "where": {
+        "result": "purchased"
+      },
+      "label": "Purchased",
+      "lock": true
+    }
+  ],
+  "postbacks": {
+    "campaigns": [
+      {
+        "kind": "skan",
+        "ad_network": "v9wttpbfk9.skadnetwork",
+        "source_identifier": "1204",
+        "installs": 60,
+        "redownloads": 2,
+        "views": 14,
+        "last": "2026-10-27T15:14:45.691Z"
+      },
+      {
+        "kind": "skan",
+        "ad_network": "v9wttpbfk9.skadnetwork",
+        "source_identifier": "1205",
+        "installs": 32,
+        "redownloads": 2,
+        "views": 7,
+        "last": "2026-10-27T12:54:05.891Z"
+      },
+      {
+        "kind": "skan",
+        "ad_network": "v9wttpbfk9.skadnetwork",
+        "source_identifier": "3310",
+        "installs": 22,
+        "redownloads": 0,
+        "views": 6,
+        "last": "2026-10-27T17:46:50.718Z"
+      }
+    ],
+    "values": [
+      {
+        "sequence": 0,
+        "conversion_value": 0,
+        "coarse_value": null,
+        "n": 25
+      },
+      {
+        "sequence": 0,
+        "conversion_value": 1,
+        "coarse_value": null,
+        "n": 19
+      },
+      {
+        "sequence": 0,
+        "conversion_value": 4,
+        "coarse_value": null,
+        "n": 17
+      },
+      {
+        "sequence": 0,
+        "conversion_value": 12,
+        "coarse_value": null,
+        "n": 12
+      },
+      {
+        "sequence": 0,
+        "conversion_value": 24,
+        "coarse_value": null,
+        "n": 10
+      },
+      {
+        "sequence": 0,
+        "conversion_value": 60,
+        "coarse_value": null,
+        "n": 9
+      },
+      {
+        "sequence": 0,
+        "conversion_value": null,
+        "coarse_value": "low",
+        "n": 17
+      },
+      {
+        "sequence": 0,
+        "conversion_value": null,
+        "coarse_value": "medium",
+        "n": 5
+      },
+      {
+        "sequence": 1,
+        "conversion_value": null,
+        "coarse_value": "low",
+        "n": 24
+      },
+      {
+        "sequence": 1,
+        "conversion_value": null,
+        "coarse_value": "medium",
+        "n": 11
+      },
+      {
+        "sequence": 1,
+        "conversion_value": null,
+        "coarse_value": "high",
+        "n": 4
+      }
+    ],
+    "unverified": 0
+  },
+  "appstore": {
+    "configured": false,
+    "app_store_id": "6700000101",
+    "request": {
+      "created_at": "2026-10-29T17:49:03.024Z",
+      "last_sync": "2026-10-29T14:49:01.200Z",
+      "last_error": null
+    },
+    "latest_day": "2026-10-26",
+    "campaigns": [
+      {
+        "campaign": "",
+        "page_views": 8859,
+        "redownloads": 172,
+        "sessions": 7395,
+        "first_downloads": 2175,
+        "proceeds_usd": 2400.21,
+        "purchases": 113,
+        "impressions": 53154
+      },
+      {
+        "campaign": "meta_autumn",
+        "page_views": 2529,
+        "sessions": 2018,
+        "proceeds_usd": 679.68,
+        "purchases": 32,
+        "first_downloads": 594,
+        "impressions": 15174,
+        "redownloads": 49
+      },
+      {
+        "campaign": "meta_retarget",
+        "impressions": 6156,
+        "purchases": 7,
+        "proceeds_usd": 148.68,
+        "page_views": 1026,
+        "redownloads": 25,
+        "first_downloads": 246,
+        "sessions": 837
+      },
+      {
+        "campaign": "newsletter",
+        "page_views": 665,
+        "purchases": 0,
+        "proceeds_usd": 0,
+        "sessions": 524,
+        "first_downloads": 154,
+        "redownloads": 7,
+        "impressions": 3990
+      }
+    ]
+  }
+}

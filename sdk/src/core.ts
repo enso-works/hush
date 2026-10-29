@@ -43,6 +43,12 @@ export type HushPlatform = {
   isDev(): boolean;
   /** Defaults to the global fetch, looked up at every request. */
   fetch?: typeof fetch;
+  /**
+   * A launch within the session gap of the last activity carries on its
+   * session instead of starting one. On the web each page load is a launch:
+   * without this a visit of five pages would be five sessions.
+   */
+  resumeSessions?: boolean;
 };
 export type HushConfig = {
   /** The hush server, e.g. https://hush.example.com (no trailing slash). */
@@ -221,7 +227,7 @@ export type FlushResult = {
 };
 
 /** Sent with every batch, and stored on the install: which SDK spoke. */
-export const SDK_VERSION = '2.4.0';
+export const SDK_VERSION = '2.5.0';
 
 const CHANNEL_RE = /^[a-z][a-z0-9_]{0,23}$/;
 // The server's rule for event names; anything else is dropped there anyway.
@@ -283,6 +289,7 @@ const FLUSH_SOON_MS = 3_000;
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 // A return after this long is a new session rather than a continuation.
 const SESSION_GAP_MS = 30 * 60 * 1000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const uuid = (): string => {
   const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
@@ -316,6 +323,12 @@ export type Entry = 'launch' | 'widget' | 'quick_action' | 'siri' | 'notificatio
 // The campaign tags worth keeping from a link that opened the app, and
 // nothing else from it: the URL itself may carry anything.
 const CAMPAIGN_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'ref'];
+
+/** A referring page as its host, without "www.": the rest of a URL may carry anything. '' when it is not a host. */
+function referrerHost(value: string): string {
+  const host = value.trim().toLowerCase().replace(/^www\./, '');
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host.slice(0, 64) : '';
+}
 
 function campaignOf(url: string): Props {
   const out: Props = {};
@@ -491,7 +504,7 @@ export function createHush(platform: HushPlatform) {
   // widget that arrives before init() has read storage, or a warm return's
   // URL that iOS delivers before 'active'. The next session takes it: one
   // made before init() always, a later one within ENTRY_WINDOW_MS.
-  let heldEntry: { source: Entry; url?: string; at: number; beforeInit: boolean } | null = null;
+  let heldEntry: { source: Entry; url?: string; referrer?: string; at: number; beforeInit: boolean } | null = null;
   function context() {
     return {
       ...platform.device(),
@@ -503,8 +516,12 @@ export function createHush(platform: HushPlatform) {
 
   const foregroundSoFar = () => foregroundMs + (activeSince ? Date.now() - activeSince : 0);
 
+  // `id` and `at`, when the app was last in the foreground, let a launch
+  // soon after carry on its session (resumeSessions). Not the time of the
+  // write: a page left in a background tab keeps writing.
   function persistSessions() {
-    void storage.setItem(SESSIONS_KEY, JSON.stringify({ n: sessionCount, fg: foregroundSoFar() })).catch(() => {});
+    const at = activeSince || !backgroundedAt ? Date.now() : backgroundedAt;
+    void storage.setItem(SESSIONS_KEY, JSON.stringify({ n: sessionCount, fg: foregroundSoFar(), id: sessionId, at })).catch(() => {});
   }
 
   function persistOnce() {
@@ -1105,7 +1122,21 @@ export function createHush(platform: HushPlatform) {
     const at = first ? createdAt : new Date().toISOString();
     const event: QueuedEvent = { id: uuid(), name: 'session_started', at, session: sessionId, props };
     pendingSession = { event, timer: setTimeout(commitSession, ENTRY_WINDOW_MS) };
-    if (claim && (claim.beforeInit || Date.now() - claim.at <= ENTRY_WINDOW_MS)) entry(claim.source, { url: claim.url });
+    if (claim && (claim.beforeInit || Date.now() - claim.at <= ENTRY_WINDOW_MS)) entry(claim.source, { url: claim.url, referrer: claim.referrer });
+  }
+
+  /**
+   * Carries on the last launch's session (resumeSessions): the next page of a
+   * visit. Its early events move to that session, and an entry made for this
+   * page is dropped: the visit already has one.
+   */
+  function resumeSession(id: string) {
+    const early = sessionId;
+    sessionId = id;
+    for (const e of queue) if (e.session === early) e.session = id;
+    heldEntry = null;
+    activeSince = Date.now();
+    persistSessions();
   }
 
   /**
@@ -1115,19 +1146,22 @@ export function createHush(platform: HushPlatform) {
    * the tap is an action inside the session, not its entry. A claim with no
    * session yet waits for the next one (see heldEntry).
    */
-  function entry(source: Entry, options?: { url?: string } | null): void {
+  function entry(source: Entry, options?: { url?: string; referrer?: string } | null): void {
     if (typeof source !== 'string' || !source) return;
     const url = typeof options?.url === 'string' ? options.url : undefined;
+    const referrer = typeof options?.referrer === 'string' ? referrerHost(options.referrer) : '';
     if (!pendingSession) {
       // The first claim wins, as it does on a session: a later one replaces it only once it has expired.
       if (!heldEntry || (!heldEntry.beforeInit && Date.now() - heldEntry.at > ENTRY_WINDOW_MS)) {
-        heldEntry = { source, url, at: Date.now(), beforeInit: !ready };
+        heldEntry = { source, url, referrer, at: Date.now(), beforeInit: !ready };
       }
       return;
     }
     pendingSession.event.props.entry = source;
-    // A link's campaign tags (utm_*, ref) join the session, never the URL.
+    // A link's campaign tags (utm_*, ref) join the session, never the URL;
+    // the page that sent it, as its host.
     if (url) Object.assign(pendingSession.event.props, campaignOf(url));
+    if (referrer) pendingSession.event.props.referrer = referrer;
     commitSession();
   }
 
@@ -1240,10 +1274,15 @@ export function createHush(platform: HushPlatform) {
       persistOnce();
 
       // The previous launch's last session reports its foreground time with this one's start.
+      let resumed = '';
       if (storedSessions && typeof storedSessions === 'object') {
-        const saved = storedSessions as { n?: unknown; fg?: unknown };
+        const saved = storedSessions as { n?: unknown; fg?: unknown; id?: unknown; at?: unknown };
         sessionCount = typeof saved.n === 'number' ? saved.n : 0;
         foregroundMs = typeof saved.fg === 'number' ? saved.fg : 0;
+        const at = typeof saved.at === 'number' ? saved.at : 0;
+        if (platform.resumeSessions && typeof saved.id === 'string' && UUID_RE.test(saved.id) && sessionCount > 0 && Date.now() - at <= SESSION_GAP_MS && at <= Date.now()) {
+          resumed = saved.id;
+        }
       }
       activeSince = 0;
 
@@ -1265,7 +1304,11 @@ export function createHush(platform: HushPlatform) {
         enqueue('app_first_opened');
         void storage.setItem(FIRST_KEY, new Date().toISOString()).catch(() => {});
       }
-      startSession(true);
+      // A tagged link starts a session of its own: an ad clicked again
+      // mid-visit is a new visit from that ad.
+      const tagged = !!heldEntry?.url && Object.keys(campaignOf(heldEntry.url)).length > 0;
+      if (resumed && !tagged) resumeSession(resumed);
+      else startSession(true);
       // An earlier init() that failed has the config already, maybe newer
       // than storage; the install id is new to it, and with it the buckets.
       if (configOn && !configStarted) loadConfig(storedConfig);

@@ -1,11 +1,11 @@
 ---
 name: hush
-description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native, web and Capacitor apps, the Hush Swift package in native iOS apps, or the hush add-on in Godot games. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, remote config (typed values with targeting and rollouts, overridden on the dashboard, evaluated on the device), the hush server and its catalog (events, highlight, funnels, breakdowns, private screens, config keys), and Apple ad attribution through @bavrk/hush-expo or @bavrk/hush-capacitor (SKAdNetwork and AdAttributionKit). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention, feature flags, remote config or campaign attribution without IP addresses, advertising ids or a consent banner.
+description: Installs, wires and uses hush, self-hosted in-app feedback and anonymous usage tracking, through the @bavrk/hush SDK in Expo, React Native, web and Capacitor apps, the Hush Swift package in native iOS apps, or the hush add-on in Godot games. Covers the configure and init order, screens, events and props within the server's limits, once-events, entry() for links and notifications, identify() with RevenueCat, feedback tickets, opt-out and forget, remote config (typed values with targeting and rollouts, overridden on the dashboard, evaluated on the device), the hush server and its catalog (events, highlight, funnels, breakdowns, private screens, config keys, websites), and Apple ad attribution through @bavrk/hush-expo or @bavrk/hush-capacitor (SKAdNetwork and AdAttributionKit). Use when the user mentions hush or @bavrk/hush, or wants in-app feedback, anonymous analytics, funnels, retention, feature flags, remote config or campaign attribution without IP addresses, advertising ids or a consent banner.
 license: MIT
 compatibility: Expo apps on React Native 0.73 or later (Expo SDK 52 or later for @bavrk/hush-expo), bare React Native 0.73 or later with Expo modules, or a web, PWA or Capacitor app (iOS 15 or later for @bavrk/hush-capacitor). Needs the URL of a running hush server and a write key minted on it.
 metadata:
   sdk: "@bavrk/hush"
-  sdk-version: "2.4.0"
+  sdk-version: "2.5.0"
   homepage: "https://hush.bavrk.com"
 ---
 

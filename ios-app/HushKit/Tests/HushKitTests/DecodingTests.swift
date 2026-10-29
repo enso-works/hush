@@ -158,3 +158,55 @@ func dates(_ s: String) throws {
     let withNull = try HushJSON.decoder.decode(ConfigOverride.self, from: Data(#"{"default": null, "note": null}"#.utf8))
     #expect(withNull.default == .null)
 }
+
+@Test func aWebsiteSaysWhatItSells() throws {
+    let summary = try HushJSON.decoder.decode(AppSummary.self, from: Data("""
+        {"app": "rallo-site", "name": "Rallo site", "new_installs": 4, "total_installs": 9, "dau": 1, "wau": 3, "mau": 9,
+         "sessions": 12, "events": 40, "open_tickets": 0, "last_event": null,
+         "kind": "website", "promotes": ["tennis"], "promoted_by": []}
+        """.utf8))
+    #expect(summary.isWebsite)
+    #expect(summary.promotes == ["tennis"])
+    // An older server sends neither: an app.
+    let pace = try #require(try decode(AppsAnswer.self, "apps").apps.first)
+    #expect(pace.kind == nil && !pace.isWebsite)
+    // A kind from a newer server is kept, not an error.
+    let future = try HushJSON.decoder.decode(AppKind.self, from: Data(#""kiosk""#.utf8))
+    #expect(future == .other("kiosk"))
+}
+
+@Test func anAppsDetailNamesTheWebsitesThatSellIt() throws {
+    var json = try JSONSerialization.jsonObject(with: fixture("app")) as! [String: Any]
+    json["kind"] = "app"
+    json["promotes"] = [String]()
+    json["promoted_by"] = ["rallo-site"]
+    let detail = try HushJSON.decoder.decode(AppDetail.self, from: JSONSerialization.data(withJSONObject: json))
+    #expect(detail.promotedBy == ["rallo-site"])
+    #expect(!detail.isWebsite)
+    #expect(try decode(AppDetail.self, "app").kind == nil)
+}
+
+@Test func campaigns() throws {
+    let answer = try decode(CampaignsAnswer.self, "campaigns")
+    #expect(answer.by == "utm_campaign")
+    #expect(answer.windowDays == 7)
+    #expect(answer.steps.map(\.event) == ["onboarding_completed", "meditation_started", "meditation_completed"])
+    let first = try #require(answer.rows.first)
+    #expect(first.steps.count == answer.steps.count)
+    #expect(first.new <= first.installs)
+}
+
+@Test func attribution() throws {
+    let a = try decode(AttributionAnswer.self, "attribution")
+    #expect(a.appStoreId == "6700000101")
+    #expect(a.conversionValues.last?.lock == true)
+    let meta = try #require(a.postbacks.campaigns.first)
+    #expect(meta.network == "Meta")
+    #expect(meta.kind == "skan")
+    #expect(a.postbacks.values.contains { $0.sequence == 0 })
+    #expect(a.appstore.latestDay != nil)
+    #expect(a.appstore.campaigns.contains { $0["campaign"] == .string("meta_autumn") })
+    #expect(a.milestone(0) == "Installed")
+    #expect(a.milestone(13) == "First meditation")
+    #expect(a.milestone(63) == "Purchased")
+}

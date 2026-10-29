@@ -233,6 +233,19 @@ if (browser && /[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link',
   (step 11).
 - Next.js uses `NEXT_PUBLIC_` variables and `process.env.NODE_ENV` instead of
   `import.meta.env`.
+- **A website** (a landing page, a marketing site, a shop) rather than a web
+  app: it gets a slug of its own on the server, marked `"kind": "website"`
+  with `"promotes": ["<app slug>"]` in the catalog, and its own keys. Never
+  the app's slug: every browser that loads a page is an install, and the
+  app's installs would count readers. Pass `autoTrack: true` and
+  `platform: 'web'` to `createWebHush()` (and `remoteConfig: false` to
+  `configure()`), and drop the `entry()` line: autoTrack claims it, with the
+  referring site. With the App Store provider token, add
+  `appStore: { providerToken }` so store links carry the campaign. A site
+  without a bundler uses one tag instead of this module:
+  `<script defer src="https://hush.example.com/hush.js" data-key="hush_mysite_prod_…" data-channel="landing"></script>`.
+  On an origin a web build of the app shares, give the site its own
+  `storagePrefix`.
 - For another runtime, `createHush()` from `@bavrk/hush/core` takes a storage,
   lifecycle callbacks, device info and a dev flag. See [sdk-api.md](sdk-api.md).
 

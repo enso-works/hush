@@ -434,6 +434,18 @@ the boot, naming the path: restart after editing it. A key the server does
 not read, misspelt or from a later version, is ignored with a warning in
 the log. Leave out `funnels` rather than writing `[]`.
 
+A website gets a slug of its own, marked `"kind": "website"`, with
+`promotes` naming the apps it sells: `{ "myapp-site": { "kind": "website",
+"promotes": ["myapp"] } }`. Every browser that loads a page is an install, so
+a site that reports under its app's slug counts its visitors as the app's
+installs. The dashboard API says which slugs are websites (`kind`,
+`promotes`, `promoted_by`). On an origin it shares with a web build of the
+app, give the site its own `storagePrefix`: one install id cannot
+belong to two apps. The site tracks itself with one tag,
+`<script defer src="https://hush.example.com/hush.js" data-key="hush_mysite_prod_…"></script>`,
+or the web SDK's `autoTrack` ([SDK guide](sdk/README.md#a-website)). What
+comes next is planned in [docs/web.md](docs/web.md).
+
 ```json
 {
   "myapp": {
@@ -606,7 +618,8 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 
 | | |
 |---|---|
-| `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored. |
+| `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored, and so does a batch from a crawler or a headless browser (a User-Agent that starts with `Mozilla/` and names a bot, a spider, Lighthouse, a preview or a headless browser; read, never stored). The key may come as `?key=` instead of the header, with a `text/plain` body: a page's `sendBeacon` sends no headers. |
+| `GET /hush.js` | The SDK as one script tag, for a website: pages, where each visit came from, store and outbound links ([SDK guide](sdk/README.md#a-website)). Built from `sdk/script/` into `src/script/`, committed. |
 | `POST /v1/tickets` | feedback: `{ install?, kind: issue\|feature\|love, message, email?, subject?, rc_id?, diag? }` → 201 `{ id, created_at, status }`. With an email and no install, stored with neither install nor `rc_id`, and the answer adds `thread`: the key to that ticket. Without an email, `install` is required. Five a day per install, or per caller address without one; 400 on validation (message 1-4000, subject ≤120, email ≤160). |
 | `GET /v1/tickets?install=` | that install's feedback (last 50), with replies and `unread`; reading marks every reply read |
 | `POST /v1/tickets/list` | `{ install }` → the same, with the install out of the URL (SDK 2.3.0) |

@@ -13,6 +13,8 @@ final class AppData {
     let client: AdminClient
     /// The server's install retention, when installs are deleted after it.
     let kept: Int?
+    /// From the app list, until the detail says.
+    private let website: Bool
     var channel: String?
     private(set) var detail: AppDetail?
     /// Counts answers, for the screens to animate on. Setting `detail` inside
@@ -24,13 +26,20 @@ final class AppData {
     /// Counts pulls to refresh, so the parts read on their own read again too.
     private(set) var reloads = 0
 
-    init(server: Server, slug: String, name: String, client: AdminClient, kept: Int?) {
+    init(server: Server, slug: String, name: String, client: AdminClient, kept: Int?, website: Bool = false) {
         self.server = server
         self.slug = slug
         self.name = name
         self.client = client
         self.kept = kept
+        self.website = website
     }
+
+    /// A website: its installs are visitors, its sessions visits (docs/web.md).
+    var isWebsite: Bool { detail?.isWebsite ?? website }
+
+    /// What one install is called on this app's screens.
+    var visitor: String { isWebsite ? "visitor" : "install" }
 
     func scope(days: Int, env: Env) -> Scope {
         Scope(days: days, env: env, channel: channel)
@@ -102,6 +111,7 @@ final class AppData {
 /// The screens under an app's page.
 enum AppRoute: Hashable {
     case funnels, retention, engagement, audience, events
+    case website, campaigns, attribution
     case event(String)
     case config, configKey(String), configHistory(key: String?), configPreview
 }

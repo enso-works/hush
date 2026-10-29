@@ -7,3 +7,6 @@ xcuserdata/
 build/
 # store-shots: the rendered screenshots, made again from store/ by `store-shots generate`.
 fastlane/screenshots/
+# fastlane's own output: its generated lane list and run reports.
+fastlane/README.md
+fastlane/report.xml

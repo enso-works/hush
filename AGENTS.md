@@ -14,6 +14,7 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 |---|---|
 | `src/` | The server: plain Node 22 ESM, no framework, one runtime dependency (`pg`). `server.mjs` routes, `ingest.mjs` events, `catalog.mjs` the catalog, `sweep.mjs` what the server deletes on its own (retention, private screens), `attribution.mjs` Apple postbacks, `remote-config.mjs` remote config (`/v1/config`, overrides, history, preview), `devices.mjs` phones signed in with a token of their own (pairing codes for the dashboard's QR code), `config-schema.mjs` its validation, `evaluate.mjs` the config evaluator (a copy of the SDK's), `cli.mjs` the admin CLI. |
 | `src/dashboard/` | The built dashboard, committed so running hush needs no build step. Never edit by hand. |
+| `src/script/` | `hush.js`, the web SDK as one script tag for websites, served at `/hush.js`. Built from `sdk/script/hush.ts` (`cd sdk && npm run build:script`), committed. Never edit by hand. |
 | `migrations/` | SQL, applied in file-name order at every boot, each in a transaction. |
 | `dashboard/` | The dashboard's source (React, Tailwind, shadcn, Magic UI, Vite). Builds into `src/dashboard/`. `e2e/` drives it in Chromium. |
 | `sdk/` | `@bavrk/hush`: `src/core.ts` (platform-free), `src/index.ts` (React Native and Expo), `src/web.ts` (browser), `src/evaluate.js` (the remote config evaluator). |
@@ -26,6 +27,7 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 | `examples/` | `docker-compose.yml`, `.env.example`, `catalog.example.json`, an Expo setup file. |
 | `docs/dogfood.md` | Friction found while using hush in our own apps, newest first. |
 | `docs/accounts.md` | The design for accounts (people, roles, teams), agreed before it is built. |
+| `docs/web.md` | The design for websites (visitors, pages, referrers, site-to-App Store campaigns), in phases. |
 | `docs/img/` | The README's images: `logo.svg` (a copy of `dashboard/public/favicon.svg`), and the hero and dashboard images, in light and dark, taken from hush.bavrk.com by `dashboard/e2e/readme-shots.mjs`. |
 | `docs/site/` | The content of hush.bavrk.com: `docs.md` (its docs page), `en.json` (every string), `site.config.json` (features' icons, showcase), `shots/`. The site's code is in the private `enso-works/bavrk` repo under `hush/`, which copies these in at build; `test/site.test.mjs` checks them. |
 | `.claude-plugin/marketplace.json`, `plugins/hush/` | The Claude Code marketplace and plugin shipped to users: the `hush` skill (also installable with `npx skills add enso-works/hush`), the `installer` and `tracking-planner` agents, and `/hush:install`. |
@@ -105,7 +107,8 @@ claude plugin validate ./plugins/hush
 - **Migrations**: add a new `migrations/NNN_name.sql`; never edit one that has
   shipped.
 - **Dashboard**: after changing `dashboard/`, rebuild and commit
-  `src/dashboard/` with it; CI fails when they differ. The page runs under a
+  `src/dashboard/` with it; CI fails when they differ. The same for
+  `src/script/hush.js` after changing `sdk/src/` or `sdk/script/`. The page runs under a
   strict CSP: nothing may inject a `<style>` element or an inline script.
 - **Releasing the SDK**: bump `sdk/package.json` and `SDK_VERSION` in
   `sdk/src/core.ts` together (a test fails when they differ), commit, then tag

@@ -17,6 +17,15 @@ const CHANNEL = /^[a-z][a-z0-9_]{0,23}$/;
 
 const cleanProps = (props) => flatObject(props, { maxBytes: MAX_PROPS_BYTES });
 
+// Crawlers, link previews and headless browsers that run a page's scripts:
+// on a website each would be a visitor. Only agents that present as a
+// browser ("Mozilla/...") are judged, so a native app is never dropped for
+// its name (a "Chatbot/3 CFNetwork/..." is an app). "Cubot" is a phone brand.
+const CRAWLER = /(?<!cu)bot\b|crawl|spider|slurp|headless|lighthouse|facebookexternalhit|meta-externalagent|preview|prerender|phantomjs|pingdom/i;
+
+/** True for a request's User-Agent that is a crawler posing as a browser. The agent string is only read, never stored. */
+export const isCrawler = (userAgent) => typeof userAgent === 'string' && userAgent.startsWith('Mozilla/') && CRAWLER.test(userAgent);
+
 /**
  * Returns { events, installs } of validated rows, or a string naming the first
  * invalid field. Malformed events inside an otherwise valid batch are dropped

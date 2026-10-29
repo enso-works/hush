@@ -15,5 +15,5 @@
       "@bavrk/hush": ["./src/index.ts"]
     }
   },
-  "include": ["src", "types", "../examples/expo"]
+  "include": ["src", "script", "types", "../examples/expo"]
 }
