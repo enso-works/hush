@@ -532,7 +532,8 @@ A website gets a slug of its own, marked as one, with the apps it sells:
 On the web every browser that loads a page is an install, so a site that
 reports under its app's slug counts its visitors as the app's installs. On an
 origin it shares with a web build of the app, give the site its own
-`storagePrefix`: one install id cannot belong to two apps.
+`storagePrefix`: one install id cannot belong to two apps. A batch from a
+crawler or a headless browser is answered as accepted and not stored.
 
 ## Where installs come from
 
@@ -750,7 +751,7 @@ Apps send `Authorization: Key <write key>`. The SDK does this for you.
 
 | Endpoint | |
 |---|---|
-| `POST /v1/events` | Up to 100 events. `200 { accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry later. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored. |
+| `POST /v1/events` | Up to 100 events. `200 { accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry later. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored, and so does a batch from a crawler or a headless browser (judged by a User-Agent that starts with `Mozilla/`; read, never stored). |
 | `POST /v1/tickets` | `{ install?, kind, message, email?, subject?, rc_id?, diag? }` → `201 { id, created_at, status }`. With an email and no install it is stored with neither install nor `rc_id`, and the answer adds `thread`, the key to that ticket. Without an email, `install` is required. |
 | `GET /v1/tickets?install=` | That install's feedback (the last 50), with replies and `unread`. Reading marks every reply read. |
 | `POST /v1/tickets/list` | `{ install }` → the same, with the install id out of the URL (SDK 2.3.0). |

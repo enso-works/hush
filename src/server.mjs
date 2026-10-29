@@ -18,7 +18,7 @@ import { cfg, installRetention, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { adminConfig, appExists, checkOverridesAtBoot, configAnswer, history, matchesRevision, preview, revertOverride, setOverride } from './remote-config.mjs';
 import { clientKey, dailyLimiter, failureLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
-import { MAX_EVENTS, parseBatch, store } from './ingest.mjs';
+import { isCrawler, MAX_EVENTS, parseBatch, store } from './ingest.mjs';
 import { adminAuthorized, resolveKey } from './keys.mjs';
 import { createPairing, deviceAuthorized, listDevices, pair, revokeDevice } from './devices.mjs';
 import { pushConfigured, pushVia, register as registerPush, testPush, unregister as unregisterPush } from './push.mjs';
@@ -123,6 +123,9 @@ r.post('/v1/events', async (req, res, { key, country }) => {
   const body = await readJson(req, MAX_BODY);
   const batch = parseBatch(body, { app: key.app, env: key.env, country });
   if (typeof batch === 'string') return json(res, 400, { error: `invalid ${batch}`, max_events: MAX_EVENTS });
+  // Answered as stored, so a crawler that keeps its queue gets nothing to
+  // retry, and no install row is made for it.
+  if (isCrawler(req.headers['user-agent'])) return json(res, 200, { accepted: batch.events.length + batch.discarded, duplicate: 0, rejected: batch.rejected });
   const result = await store(batch);
   return json(res, 200, result);
 });

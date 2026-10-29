@@ -616,7 +616,7 @@ Apps send `Authorization: Key <write key>`; the SDK does this for you.
 
 | | |
 |---|---|
-| `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored. |
+| `POST /v1/events` | up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429 means never: drop the batch. 429 and 5xx: retry. A view of a screen in the catalog's `private_screens` counts as accepted and is not stored, and so does a batch from a crawler or a headless browser (a User-Agent that starts with `Mozilla/` and names a bot, a spider, Lighthouse, a preview or a headless browser; read, never stored). |
 | `POST /v1/tickets` | feedback: `{ install?, kind: issue\|feature\|love, message, email?, subject?, rc_id?, diag? }` → 201 `{ id, created_at, status }`. With an email and no install, stored with neither install nor `rc_id`, and the answer adds `thread`: the key to that ticket. Without an email, `install` is required. Five a day per install, or per caller address without one; 400 on validation (message 1-4000, subject ≤120, email ≤160). |
 | `GET /v1/tickets?install=` | that install's feedback (last 50), with replies and `unread`; reading marks every reply read |
 | `POST /v1/tickets/list` | `{ install }` → the same, with the install out of the URL (SDK 2.3.0) |

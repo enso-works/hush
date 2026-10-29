@@ -217,7 +217,7 @@ Apps send `Authorization: Key <write key>`. The SDK does this.
 
 | Route | Body and answer |
 |---|---|
-| `POST /v1/events` | `{ sent_at, sdk, context, events }`, up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429: drop the batch. 429 and 5xx: retry. A view of a screen in `private_screens` counts as accepted and is not stored. |
+| `POST /v1/events` | `{ sent_at, sdk, context, events }`, up to 100 events. 200 `{ accepted, duplicate, rejected }`. Any 4xx but 429: drop the batch. 429 and 5xx: retry. A view of a screen in `private_screens` counts as accepted and is not stored, and so does a batch from a crawler or a headless browser (a User-Agent that starts with `Mozilla/`; read, never stored). |
 | `POST /v1/tickets` | `{ install?, kind, message, email?, subject?, rc_id?, diag? }`. 201 `{ id, created_at, status }`. With an email and no install (SDK 2.3.0): stored with no install and no `rc_id`, and the answer adds `thread`, the key for that ticket (only its sha256 is stored). Without an email, `install` is required. 429 after five a day, per install, or per caller address and app without one. |
 | `GET /v1/tickets?install=` | That install's tickets under this app, with replies and `unread`. Marks replies read. |
 | `POST /v1/tickets/list` | `{ install }`. The same as the GET, with the install out of the URL and the access log (SDK 2.3.0). |
