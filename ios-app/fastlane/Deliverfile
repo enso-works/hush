@@ -1,0 +1,9 @@
+# What every `deliver` run needs; the Fastfile's lanes decide what is uploaded.
+app_identifier("com.bavrk.hush")
+# The version being prepared: MARKETING_VERSION in project.yml.
+app_version(File.read(File.expand_path("../project.yml", FastlaneCore::FastlaneFolder.path))[/MARKETING_VERSION: "([^"]+)"/, 1])
+skip_binary_upload(true)
+run_precheck_before_submit(false)
+submit_for_review(false)
+automatic_release(false)
+force(true)

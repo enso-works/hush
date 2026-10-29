@@ -1,0 +1,39 @@
+{
+  "$schema": "../../bavrk-apps/tools/store-shots/schema/project.schema.json",
+  "projectName": "hush",
+  "bundleId": "com.bavrk.hush",
+  "defaultLocale": "en-US",
+  "locales": [
+    "en-US"
+  ],
+  "targets": [
+    "iphone-6.9-1320x2868",
+    "iphone-6.1-1206x2622",
+    "ipad-13-2064x2752"
+  ],
+  "brand": {
+    "font": {
+      "family": "Inter",
+      "source": "google",
+      "weights": [
+        400,
+        600,
+        700
+      ]
+    },
+    "headlineFont": {
+      "family": "Instrument Serif",
+      "source": "google",
+      "weights": [
+        400
+      ]
+    },
+    "primary": "#F5F1E8",
+    "onPrimary": "#181926",
+    "accent": "#4744AB",
+    "background": {
+      "background": "#F5F1E8",
+      "backgroundImage": "none"
+    }
+  }
+}

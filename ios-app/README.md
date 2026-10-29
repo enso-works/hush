@@ -54,6 +54,55 @@ from one of the demo's tickets, adds a look at a real install. With
 `TEST_RUNNER_SCREENSHOTS_DIR=<dir>` on the `xcodebuild test` line they save
 what each screen shows there.
 
+## App Store screenshots
+
+Made with [store-shots](https://github.com/enso-works/appstore-management-tool) from
+`store/`: the copy in `store/content/en-US.json`, the captures in `store/raw/` (iPhone 17 Pro
+Max and iPad Pro 13", `ScrollShots`' frames at rest, against the live demo) and the look in
+`store-shots.config.json` (the Paper theme in the app's accent colour).
+
+```sh
+TEST_RUNNER_SCREENSHOTS_DIR=/tmp/shots xcodebuild test -project Hush.xcodeproj -scheme Hush \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -only-testing:HushUITests/ScrollShots
+store-shots generate      # fastlane/screenshots/en-US/, not committed
+```
+
+The five screens take `01-overview`, `02-app`, `03-funnels`, `04-retention` and `10-inbox`.
+
+## App Store listing
+
+The listing's text is in `fastlane/metadata/` (subtitle, description, keywords,
+promotional text, URLs, copyright, category). `fastlane ios metadata` uploads it
+to the version being prepared (`MARKETING_VERSION` in `project.yml`), with the
+same API key as TestFlight; it never uploads a build and never submits. The
+screenshots go up with `store-shots asc push default`. The version is submitted
+by hand in App Store Connect, after the age rating, App Privacy, price and the
+review contact are filled in there.
+
+```sh
+export ASC_KEY_ID=… ASC_ISSUER_ID=…
+fastlane ios metadata
+```
+
+## App Privacy
+
+The answers in App Store Connect, which `Hush/PrivacyInfo.xcprivacy` and the
+SDK's own manifest (`swift/Sources/Hush/PrivacyInfo.xcprivacy`) mirror. Change
+them together. Every row is Tracking: No.
+
+| Data type | What | Purpose | Linked |
+|---|---|---|---|
+| Usage Data > Product Interaction | the app's own screens and actions, sent to bavrk's hush | Analytics | No |
+| Diagnostics > Other Diagnostic Data | app version, build, iOS version, device model, language | Analytics | No |
+| Location > Coarse Location | the country, from the connection; no IP kept | Analytics | No |
+| Contact Info > Email Address | only if typed into feedback | App Functionality | Yes |
+| User Content > Customer Support | the feedback message | App Functionality | Yes |
+
+Not linked holds because a message with an email never carries the install
+id (`swift/Sources/Hush/Tickets.swift`). The user's own servers, tokens and
+anything read from them are not collected: they never leave the device
+except to those servers.
+
 ## TestFlight
 
 ```sh

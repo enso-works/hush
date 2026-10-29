@@ -1,0 +1,22 @@
+The hush dashboard on your iPhone and iPad. hush is in-app feedback and anonymous usage tracking for mobile and web apps, on a server you run. This app reads that server, so you can answer feedback and check your numbers away from your desk.
+
+Feedback
+- Read, answer, close, reopen and delete feedback, with filters, search and quick replies.
+- A notification when new feedback or a reply arrives; answer or close it from the notification.
+
+Each app's numbers
+- The Overview: installs, active users and open feedback for every app on the server.
+- An app's page: active installs, sessions, new installs and how they compare with the month before.
+- Funnels, and a funnel builder from your own events.
+- Retention and weekly cohorts, engagement, audience (versions, countries, build channels) and every event with its properties.
+- Look up a single install by its id.
+
+Remote config
+- Edit keys and their rules, see what a device gets before you change anything, and revert from the history.
+
+Servers and phones
+- Add a server by scanning the QR code on your dashboard's Phones page, or by hand. Each phone gets its own token, which you can revoke.
+- Not running a server yet? Try the live demo.
+
+Privacy
+hush counts installs, not people. A ticket with an email is never linked to an install. Your server's data stays on your server and on this device; the app only sends its own anonymous usage, and you can turn that off in Settings.

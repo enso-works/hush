@@ -1,0 +1,100 @@
+{
+  "$schema": "../../../bavrk-apps/tools/store-shots/schema/manifest.schema.json",
+  "screens": [
+    {
+      "id": "hero",
+      "order": 1,
+      "enabled": true,
+      "template": "hero-top",
+      "source": {
+        "filePattern": "{order}-{id}.png",
+        "localized": true
+      },
+      "overrides": {
+        "background": "linear-gradient(180deg, #F5F1E8 0%, #F1F3FF 100%)",
+        "backgroundImage": "none",
+        "textColor": "#181926",
+        "accentColor": "#4744AB",
+        "textAlign": "start",
+        "shell": "dark",
+        "screenshotScale": 0.8
+      }
+    },
+    {
+      "id": "feature-1",
+      "order": 2,
+      "enabled": true,
+      "template": "hero-top",
+      "source": {
+        "filePattern": "{order}-{id}.png",
+        "localized": true
+      },
+      "overrides": {
+        "background": "linear-gradient(180deg, #F5F1E8 0%, #F1F3FF 100%)",
+        "backgroundImage": "none",
+        "textColor": "#181926",
+        "accentColor": "#4744AB",
+        "textAlign": "start",
+        "shell": "dark",
+        "screenshotScale": 0.8
+      }
+    },
+    {
+      "id": "feature-2",
+      "order": 3,
+      "enabled": true,
+      "template": "hero-top",
+      "source": {
+        "filePattern": "{order}-{id}.png",
+        "localized": true
+      },
+      "overrides": {
+        "background": "linear-gradient(180deg, #F5F1E8 0%, #F1F3FF 100%)",
+        "backgroundImage": "none",
+        "textColor": "#181926",
+        "accentColor": "#4744AB",
+        "textAlign": "start",
+        "shell": "dark",
+        "screenshotScale": 0.8
+      }
+    },
+    {
+      "id": "feature-3",
+      "order": 4,
+      "enabled": true,
+      "template": "hero-top",
+      "source": {
+        "filePattern": "{order}-{id}.png",
+        "localized": true
+      },
+      "overrides": {
+        "background": "linear-gradient(180deg, #F5F1E8 0%, #F1F3FF 100%)",
+        "backgroundImage": "none",
+        "textColor": "#181926",
+        "accentColor": "#4744AB",
+        "textAlign": "start",
+        "shell": "dark",
+        "screenshotScale": 0.8
+      }
+    },
+    {
+      "id": "feature-4",
+      "order": 5,
+      "enabled": true,
+      "template": "hero-top",
+      "source": {
+        "filePattern": "{order}-{id}.png",
+        "localized": true
+      },
+      "overrides": {
+        "background": "linear-gradient(180deg, #F5F1E8 0%, #F1F3FF 100%)",
+        "backgroundImage": "none",
+        "textColor": "#181926",
+        "accentColor": "#4744AB",
+        "textAlign": "start",
+        "shell": "dark",
+        "screenshotScale": 0.8
+      }
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+analytics,metrics,insights,retention,funnel,cohort,events,remote config,self-hosted,privacy,indie
