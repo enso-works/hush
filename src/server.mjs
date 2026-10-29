@@ -640,7 +640,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname.startsWith('/v1/')) {
       if (!v1Limit(clientKey(req))) return json(res, 429, { error: 'rate limited' });
-      const key = await resolveKey(req.headers.authorization);
+      // A page that is leaving can only send a beacon, which carries no
+      // header: its key comes in the query, for events only. Write keys are
+      // public, shipped in every page and app, so a proxy log holding one
+      // gives nothing away.
+      const beaconKey = req.method === 'POST' && url.pathname === '/v1/events' ? url.searchParams.get('key') : null;
+      const key = await resolveKey(req.headers.authorization ?? (beaconKey ? `Key ${beaconKey}` : undefined));
+      if (!key) return json(res, 401, { error: 'unauthorized' });
       if (!key) return json(res, 401, { error: 'unauthorized' });
       // The proxy's country header (COUNTRY_HEADER) is the only thing derived
       // from the caller's address, and it never leaves the install row.

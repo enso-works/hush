@@ -135,6 +135,25 @@ describe('crawlers', () => {
     assert.equal(r.status, 400);
   });
 
+  test('a beacon, with the key in the query and a text/plain body, is stored once however often it comes', async () => {
+    const install = uuid();
+    const body = JSON.stringify(batch([event(install, 'session_started'), event(install, 'store_clicked', { props: { store: 'app_store' } })], { platform: 'web' }));
+    const post = () => fetch(`${srv.base}/v1/events?key=${encodeURIComponent(siteKey)}`, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8', 'CF-Connecting-IP': '198.51.100.7' }, body });
+    let r = await post();
+    assert.equal(r.status, 200);
+    assert.deepEqual(await r.json(), { accepted: 2, duplicate: 0, rejected: 0 });
+    r = await post();
+    assert.deepEqual(await r.json(), { accepted: 0, duplicate: 2, rejected: 0 });
+    assert.equal((await db.query('SELECT count(*)::int AS n FROM events WHERE install = $1', [install])).rows[0].n, 2);
+  });
+
+  test('a key in the query opens nothing but events', async () => {
+    const r = await fetch(`${srv.base}/v1/config?key=${encodeURIComponent(siteKey)}`);
+    assert.equal(r.status, 401);
+    const bad = await fetch(`${srv.base}/v1/events?key=hush_nobody_prod_x`, { method: 'POST', body: '{}' });
+    assert.equal(bad.status, 401);
+  });
+
   test('people and native apps are stored', async () => {
     for (const ua of PEOPLE) {
       const install = uuid();
