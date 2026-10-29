@@ -19,6 +19,8 @@ const BY = [
   { value: 'utm_campaign', label: 'Campaign' },
   { value: 'utm_term', label: 'Ad set' },
   { value: 'utm_content', label: 'Ad' },
+  // The site that sent the visit (SDK 2.5, websites), tagged link or not.
+  { value: 'referrer', label: 'Referrer' },
 ] as const
 
 /** What to paste into a Meta ad's URL parameters, so every click says which campaign, ad set and ad it came from. */
@@ -88,7 +90,13 @@ export function Campaigns({ slug }: { slug: string }) {
         )}
       </div>
 
-      {data && rows.length === 0 ? (
+      {data && rows.length === 0 && by === 'referrer' ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          No visits from other sites in this period. A website on SDK 2.5 with{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">autoTrack</code>, or the{' '}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">/hush.js</code> tag, records the site each visit came from.
+        </p>
+      ) : data && rows.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
           No sessions from tagged links in this period. Links need utm_ tags (in a Meta ad: the <CopyParams />), and the app passes the link to{' '}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">entry('link', {'{ url }'})</code>.
