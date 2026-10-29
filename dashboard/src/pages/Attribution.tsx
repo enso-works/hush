@@ -157,7 +157,7 @@ function StoreCampaigns({ a }: { a: Attribution }) {
               <td className={td}>{c.campaign ? <span className="font-medium">{String(c.campaign)}</span> : <span className="text-muted-foreground italic">no campaign</span>}</td>
               {cols.map(([k, , unit]) => (
                 <td key={k} className={td}>
-                  {c[k] == null ? '–' : unit === 'usd' ? money(Math.round(Number(c[k])), '$', 'USD') : num(Number(c[k]))}
+                  {c[k] == null ? '–' : unit === 'usd' ? money(Number(c[k]), '$', 'USD') : num(Number(c[k]))}
                 </td>
               ))}
             </tr>

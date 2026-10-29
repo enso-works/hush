@@ -275,7 +275,7 @@ const serveApple = () =>
           ['meta_autumn', 'Page view', DAY, 'Web referrer', '30', '28', 'Default'],
           ['meta_autumn', 'Tap', DAY, 'Web referrer', '9', '9', 'Default'],
         ]),
-        '/f/buy.gz': tsv([['Date', 'Campaign', 'Source Type', 'Purchases', 'Proceeds in USD', 'Paying Users'], [DAY, 'meta_autumn', 'Web referrer', '2', '42.50', '2'], [DAY, 'meta_autumn', 'Web referrer', '1', '1,000.25', '1']]),
+        '/f/buy.gz': tsv([['Date', 'Campaign', 'Source Type', 'Purchases', 'Proceeds in USD', 'Paying Users'], [DAY, 'meta_autumn', 'Web referrer', '2', '42.50', '2'], [DAY, 'meta_autumn', 'Web referrer', '1', '1,000.25', '1'], [DAY, 'suppressed', 'Web referrer', '', '', '42'], [DAY, 'refund', 'Web referrer', '-1', '-2.50', '1']]),
         '/f/ses.gz': tsv([['Date', 'Campaign', 'Source Type', 'Sessions', 'Unique Devices'], [DAY, 'meta_autumn', 'Web referrer', '14', '6']]),
         '/f/new.gz': tsv([['Date', 'Campaign', 'Source Type', 'Download Type', 'Counts'], [DAY, 'meta_autumn', 'Web referrer', 'First-time Download', '8']]),
         '/f/old.gz': tsv([['Date', 'Campaign', 'Source Type', 'Download Type', 'Counts'], [DAY, 'meta_autumn', 'Web referrer', 'First-time Download', '5']]),
@@ -353,8 +353,20 @@ describe('App Store Connect', () => {
     const c = (await admin(srv.base).get('/admin/apps/shop/attribution?days=30')).json.appstore.campaigns.find((x) => x.campaign === 'meta_autumn');
     assert.deepEqual(
       { impressions: c.impressions, page_views: c.page_views, taps: c.taps, purchases: c.purchases, proceeds_usd: c.proceeds_usd, paying_users: c.paying_users, sessions: c.sessions, first_downloads: c.first_downloads },
-      { impressions: 120, page_views: 30, taps: 9, purchases: 3, proceeds_usd: 1042.75, paying_users: 3, sessions: 14, first_downloads: 8 },
+      { impressions: 120, page_views: 30, taps: 9, purchases: 3, proceeds_usd: 1042.75, paying_users: undefined, sessions: 14, first_downloads: 8 },
     );
+  });
+
+  test('suppressed metrics stay unknown, refunds remain negative, and unique counts are never summed', async () => {
+    const campaigns = (await admin(srv.base).get('/admin/apps/shop/attribution?days=30')).json.appstore.campaigns;
+    assert.equal(campaigns.some((c) => c.campaign === 'suppressed'), false);
+    const refund = campaigns.find((c) => c.campaign === 'refund');
+    assert.equal(refund.purchases, -1);
+    assert.equal(refund.proceeds_usd, -2.5);
+    for (const c of campaigns) {
+      assert.equal(c.paying_users, undefined);
+      assert.equal(c.session_devices, undefined);
+    }
   });
 
   test('an app without an App Store id is skipped, and asc:request says so', async () => {

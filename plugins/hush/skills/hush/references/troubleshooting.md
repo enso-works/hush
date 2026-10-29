@@ -94,7 +94,7 @@ duplicate, rejected, willRetry }` after every send.
 | A lower milestone is never reported | A higher one was reached first: values only rise. | Reorder the ladder ([attribution.md](attribution.md#4-designing-conversion-values)). |
 | No postbacks on the dashboard | No `app_store_id` in the catalog (postbacks are stored under no app); the `.well-known` routes are not public or point at the website; `attributionEndpoint` is not on the registrable domain; the build has no endpoint in `Info.plist`; or they are Apple's test postbacks, shown only under dev. | Check each; `curl -X POST -d '{}'` to the route must reach hush. |
 | Unverified postbacks counted as zero | They are stored and never counted, by design. | Nothing to fix unless every postback is unverified; then check the proxy is not rewriting bodies. |
-| App Store campaigns empty | `ASC_*` unset, or `ASC_PRIVATE_KEY_FILE` not mounted into the container; `asc:request` never ran; no `app_store_id`; the first data takes a day or two; under five users are hidden. | Set, request, wait; `asc:sync <app>` by hand. |
+| App Store campaigns empty | `ASC_*` unset, or `ASC_PRIVATE_KEY_FILE` not mounted into the container; `ASC_APPS` set without the app's slug; `asc:request` never ran; no `app_store_id`; the first data takes a day or two; under five users are hidden. | Set, request, wait; `asc:sync <app>` by hand. |
 
 ## 7. Install and build errors
 

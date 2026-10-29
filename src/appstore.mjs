@@ -115,19 +115,25 @@ const kindOf = (name) => (/detailed/i.test(name) && !/pre-?order/i.test(name) ? 
 
 /** Metrics from one report row: [metric, value] pairs, by what the row's columns say. */
 function metricsOf(kind, row) {
-  const n = (col) => Number(String(row[col] ?? '').replace(/,/g, '')) || 0;
+  // Missing/suppressed values are unknown, not zero. Refunds may be negative.
+  const n = (col) => {
+    const raw = String(row[col] ?? '').trim().replace(/,/g, '');
+    return raw && /^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : null;
+  };
+  const reported = (pairs) => pairs.filter(([, value]) => value !== null);
   if (kind === 'engagement') {
     const event = String(row.event ?? '').toLowerCase();
     const metric = event.startsWith('impression') ? 'impressions' : event.startsWith('page view') ? 'page_views' : event.startsWith('tap') ? 'taps' : null;
-    return metric ? [[metric, n('counts')]] : [];
+    return metric ? reported([[metric, n('counts')]]) : [];
   }
   if (kind === 'downloads') {
     const type = String(row['download type'] ?? '').toLowerCase();
     const metric = type.startsWith('first-time') ? 'first_downloads' : type.startsWith('redownload') ? 'redownloads' : null;
-    return metric ? [[metric, n('counts')]] : [];
+    return metric ? reported([[metric, n('counts')]]) : [];
   }
-  if (kind === 'purchases') return [['purchases', n('purchases')], ['proceeds_usd', n('proceeds in usd')], ['paying_users', n('paying users')]];
-  if (kind === 'sessions') return [['sessions', n('sessions')], ['session_devices', n('unique devices')]];
+  // Apple's distinct user/device counts cannot be summed across report rows.
+  if (kind === 'purchases') return reported([['purchases', n('purchases')], ['proceeds_usd', n('proceeds in usd')]]);
+  if (kind === 'sessions') return reported([['sessions', n('sessions')]]);
   return [];
 }
 
@@ -163,6 +169,7 @@ export function parseReport(buf) {
 async function importInstance(app, kind, instance) {
   const segments = await all(`/v1/analyticsReportInstances/${instance.id}/segments`);
   const sums = new Map();
+  const observedDays = new Set();
   let rows = 0;
   for (const seg of segments) {
     // The segment URL is pre-signed and lasts five minutes: fetched at once, without our token.
@@ -172,6 +179,7 @@ async function importInstance(app, kind, instance) {
       rows++;
       const day = row.date;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(day ?? '')) continue;
+      observedDays.add(day);
       const campaign = (row.campaign ?? '').slice(0, 40);
       const source = (row['source type'] ?? '').slice(0, 40);
       for (const [metric, value] of metricsOf(kind, row)) {
@@ -181,7 +189,9 @@ async function importInstance(app, kind, instance) {
     }
   }
   const processing = instance.attributes.processingDate;
-  const byDay = new Map();
+  // A restated day containing only suppressed values must clear old totals,
+  // otherwise an earlier visible number would remain falsely current.
+  const byDay = new Map([...observedDays].map((day) => [day, []]));
   for (const [k, value] of sums) {
     const [day, campaign, source, metric] = k.split('\u0000');
     if (!byDay.has(day)) byDay.set(day, []);
@@ -238,7 +248,7 @@ export async function syncApp(app) {
 /** Every app with an App Store id, one after another. */
 export async function syncAll(apps) {
   const out = [];
-  for (const app of apps) if (appStoreIdOf(app)) out.push(await syncApp(app));
+  for (const app of apps) if (appStoreIdOf(app) && (!cfg.ascApps.length || cfg.ascApps.includes(app))) out.push(await syncApp(app));
   return out;
 }
 
@@ -250,7 +260,8 @@ export async function appStoreCampaigns({ app, days }) {
   const status = (await q('SELECT request_id, created_at, last_sync, last_error FROM asc_requests WHERE app = $1', [app])).rows[0] ?? null;
   const { rows } = await q(
     `SELECT campaign, metric, sum(value)::float8 AS value, to_char(max(day), 'YYYY-MM-DD') AS last_day
-     FROM asc_campaigns WHERE app = $1 AND day >= current_date - make_interval(days => $2)
+     FROM asc_campaigns WHERE app = $1 AND day >= current_date - make_interval(days => $2 - 1)
+       AND metric NOT IN ('paying_users', 'session_devices')
      GROUP BY 1, 2`,
     [app, days],
   );
@@ -263,7 +274,7 @@ export async function appStoreCampaigns({ app, days }) {
   }
   const campaigns = [...byCampaign.values()].sort((a, b) => (b.first_downloads ?? 0) - (a.first_downloads ?? 0));
   return {
-    configured: ascConfigured(),
+    configured: ascConfigured() && (!cfg.ascApps.length || cfg.ascApps.includes(app)),
     app_store_id: appStoreIdOf(app),
     request: status && { created_at: status.created_at, last_sync: status.last_sync, last_error: status.last_error },
     latest_day: latest,

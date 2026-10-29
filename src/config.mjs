@@ -72,6 +72,7 @@ export const cfg = {
   ascPrivateKey: env('ASC_PRIVATE_KEY'),
   ascPrivateKeyFile: env('ASC_PRIVATE_KEY_FILE'),
   ascApiBase: env('ASC_API_BASE', 'https://api.appstoreconnect.apple.com'),
+  ascApps: env('ASC_APPS').split(',').map((app) => app.trim()).filter(Boolean),
   // Push to the hush iOS app (src/push.mjs) for new feedback and replies:
   // an APNs auth key (Apple Developer, Keys, APNs) of the team that signs the
   // app. One key serves every app of a team. The .p8 inline (\n allowed) or
