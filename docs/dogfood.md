@@ -6,6 +6,19 @@ anything else, and later the evidence for what a hosted hush has to be.
 
 Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
+## 2026-10-30
+
+- **Braele, App Store campaigns.** The report request existed on the server
+  but its `ASC_*` key was not set, so nothing was imported. Two things then
+  read wrong: a value Apple hid was stored as 0, and paying users and unique
+  devices were summed across rows and days, which counts people twice. The
+  fix was made in bavrk's copy of hush first and is now here: a hidden value
+  is unknown, refunds stay negative, those two counts are not kept, and
+  `ASC_APPS` limits the imports to chosen apps. Campaigns' columns say
+  "Reached by link" and "First opens nearby", since a first open close to a
+  tagged session does not prove the link caused the install. Fixed in this
+  change.
+
 ## 2026-10-29
 
 - **hush iOS app, websites.** The app showed a website as one more app:

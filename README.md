@@ -401,7 +401,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `RC_API_KEY`, `RC_PROJECTS`, `RC_CURRENCY` | RevenueCat v2 secret key with read-only scopes; see `src/revenuecat.mjs`. `RC_STALE_MINUTES` (10), `RC_FLOOR_SECONDS` (60) and `RC_RATE_PER_MINUTE` (20) pace its refreshes. |
 | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` (or `_BASE64`) | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app. `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
 | `PUSH_RELAY` | Without an APNs key, pushes to the App Store hush app go through bavrk's relay (default `https://hush.bavrk.com/push`), sealed with a key only the phone has: the relay sees a token and an opaque blob. Used only for phones that turned notifications on. `off` turns it off. `PUSH_RELAY_SECRET` (32 characters or more, with an APNs key) runs a server as such a relay. |
-| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` (or `_FILE`) | An App Store Connect API key, for campaign reports (below). The Admin role once, to create each app's report request; Sales and Reports after. `ASC_API_BASE` changes Apple's address, for tests. |
+| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` (or `_FILE`) | An App Store Connect API key, for campaign reports (below). The Admin role once, to create each app's report request; Sales and Reports after. `ASC_APPS` (slugs, comma-separated) limits the automatic imports to those apps; empty imports every app with an `app_store_id`. `ASC_API_BASE` changes Apple's address, for tests. |
 | `DEMO` | `1`: a public read-only showcase with invented data. It wipes its database daily, so give it one of its own; it refuses a database with write keys. |
 | `PORT`, `MAIL_DRY_RUN` | `3000`; `1` logs mail instead of sending it. |
 
@@ -489,6 +489,9 @@ reads an advertising id, or needs an App Tracking Transparency prompt.
   With `ASC_*` set and the app's `app_store_id` in the catalog, hush imports
   those reports every six hours (`node src/cli.mjs asc:request <app>` once,
   `asc:sync` by hand). Apple hides anything under five users and adds noise.
+  A hidden value stays unknown, not zero; refunds stay negative. Apple's
+  paying users and unique devices are not kept: they cannot be added up
+  across rows or days.
 - **Ad attribution (SKAdNetwork, AdAttributionKit).** Apple tells the ad
   network which campaign won an install, with a conversion value the app
   sets through [`@bavrk/hush-expo`](expo/README.md) or

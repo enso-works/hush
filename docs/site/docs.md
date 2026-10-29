@@ -503,7 +503,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `RC_API_KEY` | RevenueCat v2 secret key with read-only scopes, for revenue on the dashboard. |
 | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app. Or `APNS_KEY_P8_BASE64`; `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
 | `PUSH_RELAY` | Without an APNs key, pushes to the App Store hush app go through bavrk's relay (default `https://hush.bavrk.com/push`), sealed with a key only the phone has: the relay sees a token and an opaque blob. Used only for phones that turned notifications on. `off` turns it off. `PUSH_RELAY_SECRET` (32 characters or more, with an APNs key) runs a server as such a relay. |
-| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` | An App Store Connect API key, for App Store campaign reports. The Admin role once; Sales and Reports after. Or `ASC_PRIVATE_KEY_FILE`, a path inside the container, in place of `ASC_PRIVATE_KEY`. |
+| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` | An App Store Connect API key, for App Store campaign reports. The Admin role once; Sales and Reports after. Or `ASC_PRIVATE_KEY_FILE`, a path inside the container, in place of `ASC_PRIVATE_KEY`. `ASC_APPS` (slugs, comma-separated) limits the imports to those apps. |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header and secret a trusted proxy sets instead of the token, so the dashboard opens signed in on a private network. |
 
 ### The event catalog

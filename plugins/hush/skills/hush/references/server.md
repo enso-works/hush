@@ -63,7 +63,7 @@ what its `environment:` block lists.
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16 characters or more), accepted on `/admin/*` in place of the token. Both or neither. |
 | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` or `APNS_KEY_P8_BASE64`, `APNS_TOPIC` | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app; `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
 | `PUSH_RELAY` | Without an APNs key, pushes to the App Store hush app go through bavrk's relay (default `https://hush.bavrk.com/push`), sealed with a key only the phone has: the relay sees a token and an opaque blob. Used only for phones that turned notifications on. `off` turns it off. `PUSH_RELAY_SECRET` (32 characters or more, with an APNs key) runs a server as such a relay. |
-| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` or `ASC_PRIVATE_KEY_FILE`, `ASC_API_BASE` | App Store Connect API key for campaign reports; see [attribution.md](attribution.md). `ASC_PRIVATE_KEY_FILE` is a path inside the container: mount the `.p8` there. |
+| `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` or `ASC_PRIVATE_KEY_FILE`, `ASC_API_BASE` | App Store Connect API key for campaign reports; see [attribution.md](attribution.md). `ASC_PRIVATE_KEY_FILE` is a path inside the container: mount the `.p8` there. `ASC_APPS` (slugs, comma-separated) limits the imports to those apps. |
 | `MAIL_DRY_RUN` | `1` logs mail instead of sending it. |
 | `DEMO` | `1`: a public, read-only showcase with invented data. Wipes its database daily and refuses a database that has write keys; `/v1` returns 403. |
 | `PORT` | Default 3000. |
