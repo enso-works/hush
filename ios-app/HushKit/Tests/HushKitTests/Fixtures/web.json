@@ -1,0 +1,313 @@
+{
+ "app": "stillwater-site",
+ "goal": {
+  "event": "store_clicked"
+ },
+ "current": {
+  "visitors": 1151,
+  "visits": 1626,
+  "engaged": 1133,
+  "pageviews": 2744,
+  "goal_visits": 224,
+  "goal_visitors": 207,
+  "new_visitors": 1026
+ },
+ "prior": {
+  "visitors": 672,
+  "visits": 765,
+  "engaged": 550,
+  "pageviews": 1301,
+  "goal_visits": 113,
+  "goal_visitors": 112,
+  "new_visitors": 674
+ },
+ "daily": [
+  {
+   "day": "2026-10-24",
+   "visitors": 71,
+   "visits": 71,
+   "goal_visits": 11,
+   "new_visitors": 39
+  },
+  {
+   "day": "2026-10-25",
+   "visitors": 70,
+   "visits": 70,
+   "goal_visits": 6,
+   "new_visitors": 50
+  },
+  {
+   "day": "2026-10-26",
+   "visitors": 83,
+   "visits": 87,
+   "goal_visits": 6,
+   "new_visitors": 44
+  },
+  {
+   "day": "2026-10-27",
+   "visitors": 85,
+   "visits": 88,
+   "goal_visits": 12,
+   "new_visitors": 51
+  },
+  {
+   "day": "2026-10-28",
+   "visitors": 100,
+   "visits": 106,
+   "goal_visits": 14,
+   "new_visitors": 58
+  },
+  {
+   "day": "2026-10-29",
+   "visitors": 108,
+   "visits": 115,
+   "goal_visits": 17,
+   "new_visitors": 57
+  },
+  {
+   "day": "2026-10-30",
+   "visitors": 84,
+   "visits": 92,
+   "goal_visits": 11,
+   "new_visitors": 52
+  }
+ ],
+ "sources": [
+  {
+   "source": "direct",
+   "kind": "direct",
+   "visits": 480,
+   "visitors": 434,
+   "engaged": 324,
+   "goal_visits": 62
+  },
+  {
+   "source": "google.com",
+   "kind": "referrer",
+   "visits": 332,
+   "visitors": 309,
+   "engaged": 223,
+   "goal_visits": 46
+  },
+  {
+   "source": "meta",
+   "kind": "tag",
+   "visits": 296,
+   "visitors": 271,
+   "engaged": 209,
+   "goal_visits": 45
+  },
+  {
+   "source": "newsletter",
+   "kind": "tag",
+   "visits": 174,
+   "visitors": 167,
+   "engaged": 122,
+   "goal_visits": 27
+  },
+  {
+   "source": "instagram.com",
+   "kind": "referrer",
+   "visits": 136,
+   "visitors": 133,
+   "engaged": 101,
+   "goal_visits": 24
+  },
+  {
+   "source": "reddit.com",
+   "kind": "referrer",
+   "visits": 119,
+   "visitors": 114,
+   "engaged": 85,
+   "goal_visits": 8
+  },
+  {
+   "source": "producthunt.com",
+   "kind": "referrer",
+   "visits": 89,
+   "visitors": 88,
+   "engaged": 69,
+   "goal_visits": 12
+  }
+ ],
+ "campaigns": [
+  {
+   "campaign": "meta_autumn",
+   "source": "meta",
+   "visits": 296,
+   "visitors": 271,
+   "engaged": 209,
+   "goal_visits": 45
+  },
+  {
+   "campaign": "autumn_launch",
+   "source": "newsletter",
+   "visits": 174,
+   "visitors": 167,
+   "engaged": 122,
+   "goal_visits": 27
+  }
+ ],
+ "landing": [
+  {
+   "page": "/",
+   "visits": 1347,
+   "engaged": 939,
+   "goal_visits": 185
+  },
+  {
+   "page": "/features",
+   "visits": 151,
+   "engaged": 107,
+   "goal_visits": 24
+  },
+  {
+   "page": "/blog/morning-routine",
+   "visits": 128,
+   "engaged": 87,
+   "goal_visits": 15
+  }
+ ],
+ "pages": [
+  {
+   "page": "/",
+   "views": 1347,
+   "visitors": 996
+  },
+  {
+   "page": "/features",
+   "views": 359,
+   "visitors": 292
+  },
+  {
+   "page": "/blog/morning-routine",
+   "views": 328,
+   "visitors": 263
+  },
+  {
+   "page": "/download",
+   "views": 256,
+   "visitors": 206
+  },
+  {
+   "page": "/about",
+   "views": 232,
+   "visitors": 194
+  },
+  {
+   "page": "/pricing",
+   "views": 222,
+   "visitors": 189
+  }
+ ],
+ "devices": [
+  {
+   "device": "phone",
+   "visits": 976,
+   "visitors": 692,
+   "engaged": 706,
+   "goal_visits": 190
+  },
+  {
+   "device": "desktop",
+   "visits": 530,
+   "visitors": 373,
+   "engaged": 343,
+   "goal_visits": 15
+  },
+  {
+   "device": "tablet",
+   "visits": 120,
+   "visitors": 86,
+   "engaged": 84,
+   "goal_visits": 19
+  }
+ ],
+ "countries": [
+  {
+   "country": "US",
+   "visitors": 381
+  },
+  {
+   "country": "DE",
+   "visitors": 188
+  },
+  {
+   "country": "GB",
+   "visitors": 152
+  },
+  {
+   "country": "FR",
+   "visitors": 73
+  },
+  {
+   "country": "CA",
+   "visitors": 63
+  },
+  {
+   "country": "NL",
+   "visitors": 61
+  },
+  {
+   "country": "ES",
+   "visitors": 54
+  },
+  {
+   "country": "AU",
+   "visitors": 52
+  },
+  {
+   "country": "DK",
+   "visitors": 35
+  },
+  {
+   "country": "SE",
+   "visitors": 34
+  },
+  {
+   "country": "IT",
+   "visitors": 30
+  },
+  {
+   "country": "JP",
+   "visitors": 28
+  }
+ ],
+ "stores": [
+  {
+   "value": "app_store",
+   "clicks": 187,
+   "visitors": 173
+  },
+  {
+   "value": "play",
+   "clicks": 37,
+   "visitors": 34
+  }
+ ],
+ "links": [
+  {
+   "value": "youtube.com",
+   "clicks": 30,
+   "visitors": 30
+  },
+  {
+   "value": "x.com",
+   "clicks": 28,
+   "visitors": 28
+  },
+  {
+   "value": "instagram.com",
+   "clicks": 22,
+   "visitors": 22
+  }
+ ],
+ "events": [
+  {
+   "name": "newsletter_signed_up",
+   "known": true,
+   "n": 45,
+   "visitors": 45
+  }
+ ]
+}

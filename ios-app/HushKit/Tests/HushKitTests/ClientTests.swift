@@ -89,6 +89,16 @@ final class Stub: URLProtocol, @unchecked Sendable {
         #expect(Stub.seen.first?.url?.absoluteString == "https://hush.example.com/admin/apps/pace/attribution?days=7&env=dev")
     }
 
+    @Test func aWebsitesPageKeepsTheChannelAndItsAppsDoNot() async throws {
+        let client = Stub.client { r in (200, try fixture(r.url!.path.hasSuffix("/web") ? "web" : "websites")) }
+        _ = try await client.web("stillwater-site", Scope(days: 7, env: .prod, channel: "landing"))
+        _ = try await client.websites("stillwater", Scope(days: 7, env: .prod, channel: "app_store"))
+        #expect(Stub.seen.map { $0.url?.absoluteString } == [
+            "https://hush.example.com/admin/apps/stillwater-site/web?channel=landing&days=7&env=prod",
+            "https://hush.example.com/admin/apps/stillwater/websites?days=7&env=prod",
+        ])
+    }
+
     @Test func aPrefixAndAProxyHeaderAreKept() async throws {
         let connection = Connection(baseURL: URL(string: "https://example.com/hush")!, headers: ["X-Ops": "s3cret"])
         let client = Stub.client(connection) { _ in (200, try fixture("app")) }
