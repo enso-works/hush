@@ -245,7 +245,11 @@ if (browser && /[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link',
   without a bundler uses one tag instead of this module:
   `<script defer src="https://hush.example.com/hush.js" data-key="hush_mysite_prod_…" data-channel="landing"></script>`.
   On an origin a web build of the app shares, give the site its own
-  `storagePrefix`.
+  `storagePrefix` (`data-storage-prefix` on the tag, which also keeps the
+  app's opt-out). The site's goal is the catalog's `highlight` event, a store
+  click when it names none: a shop sets `"highlight": { "event":
+  "order_completed" }`. Its events stay within the rules: no email, name,
+  address or order id in a prop.
 - For another runtime, `createHush()` from `@bavrk/hush/core` takes a storage,
   lifecycle callbacks, device info and a dev flag. See [sdk-api.md](sdk-api.md).
 

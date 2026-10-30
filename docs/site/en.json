@@ -81,7 +81,7 @@
     "f8_h": "Wired by your coding agent",
     "f8_p": "A Claude Code plugin, and a skill for Cursor, Codex and other agents, add hush to your app, plan its events and funnels, and answer questions about it, following the rules on the docs page.",
     "f9_h": "Websites too",
-    "f9_p": "One script tag on a landing page or a shop tracks its pages, the link or site each visit came from, and clicks to the App Store, which carry the campaign so App Store Connect counts the same one. Crawlers are left out.",
+    "f9_p": "One script tag on a landing page or a shop. Its own page shows visitors, never installs: where they came from, what they landed on, the device, and how many visits reached the goal, a store click or an order. Store links carry the campaign so App Store Connect counts the same one. Crawlers are left out.",
     "proTag": "Pro"
   },
   "collected": {

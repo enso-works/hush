@@ -84,40 +84,71 @@ accepted and not stored. The agent string is read, never written down.
   events, a store click above all, waited for a next visit. They stay
   queued and go again with the next page; the server drops the copies by id.
 - The Campaigns panel splits by `referrer`.
-- Not done: reading the app's opt-out from a site with its own
-  `storagePrefix`. For later, with consent.
+- The app's opt-out on a site with its own storage prefix: `/hush.js` with
+  `data-storage-prefix` sends nothing while the default prefix (the app's)
+  is opted out (2.6.0). The bundled SDK leaves it to the page.
+- `visit_engaged` (2.6.0): once a visit has had a page in view for ten
+  seconds. A one-page landing site has no second page to tell a reader from
+  a bounce.
 - `/hush.js`, a script-tag build served by the server (outside `/v1`) for
   sites without a bundler, such as a hosted webshop: the same origin as the
   events, so a site's CSP needs one host.
 
-**3. Website reports (server).** `/admin/apps/:app/web`: visitors, visits,
-pageviews, bounce (visits with one page), top pages, entry pages, referrers,
-utm splits, devices, countries (fewer than ten folded into other), store
-clicks.
+**3. Website reports (server).** Built. `/admin/apps/:app/web`, `src/web.mjs`.
+
+What matters for a site, in order, and so what the page leads with:
+- Visitors and visits, new against returning, against the period before.
+- Its goal, and the rate of visits that reach it. The goal is the catalog's
+  `highlight` event, or `store_clicked` when it names none: a site that
+  sells an app is there to send people to the store; a shop names
+  `order_completed`. Visits, not visitors, are the base: a source or a page
+  is judged per visit it brought.
+- Engaged visits: a second page, any click or event of the site's own, or
+  `visit_engaged`. The rest are bounces.
+- Sources: `utm_source`, else the referring host, else direct. Campaigns:
+  `utm_campaign`. Landing pages: a visit's first page. Each with visits,
+  engaged and goal visits, so the rate says which is worth more of.
+- Devices: phone, tablet or desktop, from the device the SDK read. A desktop
+  visitor cannot install from a store link, so a campaign heavy on desktops
+  shows a low rate for that reason; the split shows it.
+- Then pages, countries (fewer than ten folded into other), store clicks,
+  links out, and the site's own events.
+
+Not counted: time on page as a figure (only the ten-second mark), scroll
+depth, click maps, session replays: none says more about whether the site
+works than the goal rate, and each needs more of the visitor.
+
+The overview's summary carries a website's `goal` (`event`, `visits`).
 
 **4. From the site to the App Store.** On the promoted app, one row per
 campaign: site visits, store clicks (hush), App Store page views and installs
 (App Store Connect, by `ct`), ad installs (SKAdNetwork, AdAttributionKit). A
 link builder writes a URL with utm tags and the matching `ct`. URL parameter
 templates for Google Ads, TikTok and Reddit beside Meta's.
+- Built: `/admin/apps/:app/websites`, the websites that promote the app with
+  their visitors, visits and store clicks, and App Store clicks by campaign
+  beside App Store Connect's page views and first downloads for that `ct`.
+- Not built: ad installs per campaign beside them, the link builder, the
+  other networks' templates.
 
 What it cannot show: in-app steps of a new install per web campaign. That
 needs the visitor's id in the app, which the rule above forbids; Apple's
 counts stay aggregate. A web build of the app on the site's origin keeps its
 full funnel per install.
 
-**5. Dashboard and iOS app.** A Website page for website apps, visitors in
-the overview, the campaign table and the link builder. The iOS app: HushKit
-models, Website, Campaigns and Attribution screens, a website mark in the app
-list.
-- The iOS app's part is built, on today's server: `kind`, `promotes` and
-  `promoted_by` in HushKit; a globe on a website's mark, visitors and visits
-  in its words, and no install totals counting them; a Pages screen (top
-  pages, referrers, store clicks by store and campaign, links out) from
-  breakdowns; Campaigns (split by tag or referrer, a source, a funnel; a
-  website's step is its store click) and Attribution (ad postbacks, App Store
-  campaigns, conversion values). It moves to `/admin/apps/:app/web` with
-  phase 3.
+**5. Dashboard and iOS app.** Built. An app and a website never look alike:
+- The overview: apps, then a Websites section with its own totals (visitors
+  in the last day, visits, visits that reached the goal) and cards (a round
+  mark with a globe, visitors per day, visits, new, goal and rate). The
+  apps' install totals never count a visitor. The sidebar lists Apps and
+  Websites apart; Remote config lists apps only.
+- A website's page: the order in phase 3. No funnels, retention, versions,
+  remote config, attribution or feedback: a site has none of them.
+- An app a site promotes: a "From its websites" panel (the iOS app: a
+  Websites card) with phase 4's table.
+- The demo has `stillwater-site`, which sells Stillwater: search, a Meta ad
+  and a newsletter, store clicks by campaign that match the demo's App Store
+  campaign `meta_autumn`.
 
 **6. Webshops (Amora).** Orders and revenue from the site: an `order_completed`
 event with amount and currency, a cart funnel, revenue per campaign. Designed
@@ -132,5 +163,5 @@ Each phase updates the README, `docs/site/docs.md` and the plugin.
   storing it. The stored id is device storage under ePrivacy.
 - Android: Google Play's install referrer, carried from the store link into
   the React Native SDK.
-- Moving Rallo's site from `tennis` to its own slug, and deleting the
-  `tennis` installs that only ever sent `landing` events (counted first).
+- Deleting the `tennis` installs that only ever sent `landing` events, once
+  Rallo's site reports to `rallo-site` (counted first).

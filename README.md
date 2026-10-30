@@ -440,11 +440,27 @@ A website gets a slug of its own, marked `"kind": "website"`, with
 a site that reports under its app's slug counts its visitors as the app's
 installs. The dashboard API says which slugs are websites (`kind`,
 `promotes`, `promoted_by`). On an origin it shares with a web build of the
-app, give the site its own `storagePrefix`: one install id cannot
-belong to two apps. The site tracks itself with one tag,
+app, give the site its own `storagePrefix` (`data-storage-prefix` on the
+tag): one install id cannot belong to two apps. The site tracks itself with
+one tag,
 `<script defer src="https://hush.example.com/hush.js" data-key="hush_mysite_prod_…"></script>`,
-or the web SDK's `autoTrack` ([SDK guide](sdk/README.md#a-website)). What
-comes next is planned in [docs/web.md](docs/web.md).
+or the web SDK's `autoTrack` ([SDK guide](sdk/README.md#a-website)).
+
+The dashboard and the iOS app show a website apart from the apps, in its own
+words: visitors and visits, never installs, and never in the apps' totals.
+Its page has visitors, new visitors and visits against the period before;
+engaged visits (a second page, a click, or ten seconds in view: a bounce is
+none of them); and the site's goal, the visits that reached it and the rate.
+The goal is the catalog's `highlight` event, or a click to an app store when
+it names none. Sources (a link's `utm_source`, else the site that sent the
+visit, else direct), campaigns, landing pages and devices each show their
+visits, engaged share and goal rate: a phone can install from a store link
+and a desktop cannot, so the device split says which rate to read. Then
+pages, countries, store clicks, links out and the site's own events. An app
+that a website `promotes` gets a card with that site's App Store clicks by
+campaign beside App Store Connect's count for the same campaign: the link
+carries the visit's campaign as `ct`. What comes next is planned in
+[docs/web.md](docs/web.md).
 
 ```json
 {
@@ -641,7 +657,10 @@ The operator side, `Authorization: Bearer <ADMIN_TOKEN>` (or a phone's own
 token, below), is what the dashboard reads: `/admin/session` (asked first, to know whether to show the
 sign-in), `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`),
 `/admin/apps/:app/breakdown`, `/props`, `/funnels`, `/funnel?step=…`,
-`/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`,
+`/cohorts`, `/campaigns?by=&where=&funnel=`, `/attribution`, `/web` (a
+website's page: totals, `daily`, `sources`, `campaigns`, `landing`, `pages`,
+`devices`, `countries`, `stores`, `links`, `events`), `/websites` (an app's
+websites and their store clicks by campaign beside App Store Connect's),
 `/admin/installs/:id` (+ `/forget`), `/admin/tickets`
 (`?status=&kind=&app=&q=&limit=&offset=`; `q` matches the subject, the message,
 the email, a reply or `#id`; the answer has `more` and each status's `counts`),
