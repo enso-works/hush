@@ -2,6 +2,7 @@ import { Fragment, type ReactNode } from 'react'
 import { ExternalLink, Fingerprint, LayoutGrid, LogOut, MessageSquare, Monitor, Moon, SlidersHorizontal, Smartphone, Sun } from 'lucide-react'
 
 import { AppMark, Logo } from '@/components/Logo'
+import { isWebsite, type AppSummary } from '@/lib/api'
 import { isInactive, useApps } from '@/lib/apps'
 import { href, type Route } from '@/lib/route'
 import { useSession } from '@/lib/session'
@@ -88,6 +89,11 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
   const { data } = useApps()
   const apps = data?.apps ?? []
   const open = apps.reduce((n, a) => n + a.open_tickets, 0)
+  // Websites apart from apps: a visitor is not an install.
+  const groups: [string, AppSummary[]][] = [
+    ['Apps', apps.filter((a) => !isWebsite(a))],
+    ['Websites', apps.filter(isWebsite)],
+  ]
 
   const nav = (
     <>
@@ -126,30 +132,34 @@ export function Shell({ route, children }: { route: Route; children: ReactNode }
           <nav className="flex flex-col gap-0.5" aria-label="Main">
             {nav}
           </nav>
-          {apps.length > 0 && (
-            <>
-              <div className="mt-6 mb-1.5 px-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Apps</div>
-              <nav className="flex min-h-0 flex-col gap-0.5 overflow-y-auto" aria-label="Apps">
-                {apps.map((a, i) => {
-                  const quiet = isInactive(a)
-                  const here = (route.page === 'app' || route.page === 'config') && route.slug === a.app
-                  return (
-                    <Fragment key={a.app}>
-                      {quiet && !isInactive(apps[i - 1] ?? a) && <div className="mx-2 my-1.5 border-t" role="separator" />}
-                      <NavLink
-                        to={href.app(a.app)}
-                        active={here}
-                        icon={<AppMark slug={a.app} name={a.name} className={cn('size-5 text-[10px]', quiet && !here && 'opacity-50 grayscale')} />}
-                        className={cn(quiet && !here && 'font-normal text-muted-foreground/70')}
-                      >
-                        {a.name}
-                        {quiet && <span className="sr-only">, inactive</span>}
-                      </NavLink>
-                    </Fragment>
-                  )
-                })}
-              </nav>
-            </>
+          {groups.map(([label, group]) =>
+            group.length > 0 ? (
+              <Fragment key={label}>
+                <div className="mt-6 mb-1.5 px-2 text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">{label}</div>
+                <nav className="flex min-h-0 flex-col gap-0.5 overflow-y-auto" aria-label={label}>
+                  {group.map((a, i, list) => {
+                    const quiet = isInactive(a)
+                    const here = (route.page === 'app' || route.page === 'config') && route.slug === a.app
+                    return (
+                      <Fragment key={a.app}>
+                        {quiet && !isInactive(list[i - 1] ?? a) && <div className="mx-2 my-1.5 border-t" role="separator" />}
+                        <NavLink
+                          to={href.app(a.app)}
+                          active={here}
+                          icon={
+                            <AppMark slug={a.app} name={a.name} website={isWebsite(a)} className={cn('size-5 text-[10px]', quiet && !here && 'opacity-50 grayscale')} />
+                          }
+                          className={cn(quiet && !here && 'font-normal text-muted-foreground/70')}
+                        >
+                          {a.name}
+                          {quiet && <span className="sr-only">, inactive</span>}
+                        </NavLink>
+                      </Fragment>
+                    )
+                  })}
+                </nav>
+              </Fragment>
+            ) : null,
           )}
           <div className="mt-auto flex items-center justify-between gap-2 px-1 pt-4">
             <ThemeSwitch />

@@ -1,3 +1,5 @@
+import { Globe } from 'lucide-react'
+
 export function Logo({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 1024 1024" className={className} aria-hidden>
@@ -11,17 +13,20 @@ export function Logo({ className }: { className?: string }) {
   )
 }
 
-/** A letter tile for an app, tinted from its slug so each app keeps its colour. */
-export function AppMark({ slug, name, className }: { slug: string; name: string; className?: string }) {
+/**
+ * A letter tile for an app, tinted from its slug so each app keeps its colour.
+ * A website's is round with a globe, so it never passes for an app.
+ */
+export function AppMark({ slug, name, className, website }: { slug: string; name: string; className?: string; website?: boolean }) {
   let h = 0
   for (const c of slug) h = (h * 31 + c.charCodeAt(0)) % 360
   return (
     <span
       aria-hidden
-      className={`grid shrink-0 place-items-center rounded-md text-xs font-semibold text-white ${className ?? 'size-6'}`}
+      className={`relative grid shrink-0 place-items-center rounded-md text-xs font-semibold text-white ${className ?? 'size-6'} ${website ? 'rounded-full!' : ''}`}
       style={{ background: `oklch(0.62 0.16 ${h})` }}
     >
-      {name.slice(0, 1).toUpperCase()}
+      {website ? <Globe className="size-[55%]" strokeWidth={2.25} /> : name.slice(0, 1).toUpperCase()}
     </span>
   )
 }

@@ -22,6 +22,7 @@ import { ErrorNote } from '@/pages/ErrorNote'
 import { AttributionPanel } from '@/pages/Attribution'
 import { Campaigns } from '@/pages/Campaigns'
 import { RevenuePanel } from '@/pages/Revenue'
+import { FromWebsites } from '@/pages/Website'
 
 export function Panel({ title, sub, children, className }: { title: string; sub?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -249,6 +250,12 @@ export function AppPage({ slug }: { slug: string }) {
           <Panel title="Attribution" sub="New installs from ads and campaign links, as Apple reports them: aggregate, never one install">
             <AttributionPanel slug={slug} />
           </Panel>
+
+          {(d.promoted_by?.length ?? 0) > 0 && (
+            <Panel title="From its websites" sub="The sites that sell this app: their visitors, and App Store clicks by campaign beside Apple's counts">
+              <FromWebsites slug={slug} />
+            </Panel>
+          )}
 
           {d.breakdowns.length > 0 && (
             <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">

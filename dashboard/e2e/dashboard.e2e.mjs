@@ -41,6 +41,26 @@ const panel = (page, title) => page.locator('section').filter({ has: page.getByR
 const radio = (scope, name) => scope.getByRole('radio', { name, exact: true });
 
 describe('overview', () => {
+  test("a website's page: visitors, sources and its goal, never installs; an app's page lists the sites that sell it", async () => {
+    const { page, problems } = await open('#/app/stillwater-site');
+    await page.getByRole('heading', { name: 'Stillwater website' }).waitFor();
+    for (const label of ['Visitors', 'New visitors', 'Visits', 'Engaged visits', 'Visits with a store click', 'store click rate']) {
+      await page.getByText(label, { exact: true }).first().waitFor();
+    }
+    assert.equal(await page.getByRole('main').getByText(/install/i).count(), 0, 'no installs anywhere on a website');
+    for (const heading of ['Sources', 'Campaigns', 'Landing pages', 'Devices', 'Pages', 'Countries', 'Store clicks', 'Links out']) {
+      await page.getByRole('heading', { name: heading, exact: true }).waitFor();
+    }
+    await page.getByText('google.com', { exact: true }).first().waitFor();
+    await page.getByText('/features', { exact: true }).first().waitFor();
+    await page.getByRole('main').getByRole('link', { name: 'Stillwater', exact: true }).click();
+    const from = page.locator('section').filter({ has: page.getByRole('heading', { name: 'From its websites' }) });
+    await from.getByText('meta_autumn', { exact: true }).waitFor();
+    assert.ok(await from.getByRole('link', { name: /Stillwater website/ }).isVisible());
+    assert.deepEqual(problems, []);
+    await page.close();
+  });
+
   test('three apps with their numbers, ads counted, feedback badged', async () => {
     const { page, problems } = await open('');
     await page.getByRole('heading', { name: 'Overview' }).waitFor();
@@ -52,7 +72,12 @@ describe('overview', () => {
     assert.equal(await inactive.getByText('Stillwater', { exact: true }).count(), 0);
     const sidebar = await page.getByRole('navigation', { name: 'Apps' }).getByRole('link').locator('span.flex-1').allTextContents();
     assert.deepEqual(sidebar, ['Pace', 'Stillwater', 'Tally', 'Driftwood, inactive']);
-    await page.getByText(/^3 active, 1 inactive · prod/).waitFor();
+    await page.getByText(/^4 apps · 1 website · 1 inactive · prod/).waitFor();
+    // A website apart: its own section and sidebar group, visitors rather than installs.
+    const sites = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Websites', exact: true }) });
+    await sites.getByRole('link', { name: /Stillwater website/ }).waitFor();
+    assert.ok(await sites.getByText('Sells Stillwater', { exact: false }).isVisible());
+    assert.deepEqual(await page.getByRole('navigation', { name: 'Websites' }).getByRole('link').locator('span.flex-1').allTextContents(), ['Stillwater website']);
     await page.getByText(/from ads/).first().waitFor();
     // The installs the server keeps: those seen in INSTALL_RETENTION_DAYS, 180 here by default (a live demo
     // may set another, and an older one says all time).

@@ -85,6 +85,52 @@ export type AppSummary = {
   trend?: number[]
   /** Installs Apple attributed to an ad this period (verified postbacks). */
   ad_installs: number
+  /** "website" for a site (its installs are visitors, its sessions visits); absent on servers before 2026-10. */
+  kind?: 'app' | 'website'
+  /** The apps a website sells. */
+  promotes?: string[]
+  /** The websites that sell an app. */
+  promoted_by?: string[]
+  /** A website's goal event and the visits that reached it this period; null for an app. */
+  goal?: { event: string; visits: number } | null
+}
+
+export const isWebsite = (a: { kind?: string } | undefined) => a?.kind === 'website'
+
+export type WebTotals = {
+  visitors: number
+  new_visitors: number
+  visits: number
+  engaged: number
+  pageviews: number
+  goal_visits: number
+  goal_visitors: number
+}
+/** One row of a split: its visits, how many were engaged (not a bounce), and how many reached the goal. */
+export type WebSplit = { visits: number; visitors?: number; engaged: number; goal_visits: number }
+
+/** /admin/apps/:app/web: a website's page. */
+export type WebReport = {
+  app: string
+  goal: { event: string }
+  current: WebTotals
+  prior: WebTotals
+  daily: { day: string; visitors: number; new_visitors: number; visits: number; goal_visits: number }[]
+  sources: (WebSplit & { source: string; kind: 'tag' | 'referrer' | 'direct' })[]
+  campaigns: (WebSplit & { campaign: string; source: string })[]
+  landing: (WebSplit & { page: string })[]
+  pages: { page: string; views: number; visitors: number }[]
+  devices: (WebSplit & { device: 'phone' | 'tablet' | 'desktop' })[]
+  countries: { country: string; visitors: number }[]
+  stores: { value: string; clicks: number; visitors: number }[]
+  links: { value: string; clicks: number; visitors: number }[]
+  events: { name: string; known: boolean; n: number; visitors: number }[]
+}
+
+/** /admin/apps/:app/websites: the sites that sell an app, and their store clicks beside Apple's counts. */
+export type WebsitesForApp = {
+  websites: { app: string; name: string; visitors: number; visits: number; store_clicks: number; store_visits: number }[]
+  campaigns: { campaign: string; store_clicks: number; visits: number; app_store: { page_views: number | null; first_downloads: number | null } | null }[]
 }
 
 export type Period = { new_installs: number; sessions: number; active: number; highlight: number; highlight_done: number }
@@ -92,6 +138,9 @@ export type Period = { new_installs: number; sessions: number; active: number; h
 export type AppDetail = {
   app: string
   name?: string
+  kind?: 'app' | 'website'
+  promotes?: string[]
+  promoted_by?: string[]
   /** The channel this detail is filtered to (added with SDK 2), or null for all. */
   channel?: string | null
   channels?: { channel: string; installs: number }[]

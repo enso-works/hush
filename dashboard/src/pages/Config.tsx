@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
-import { api, ApiError, type ConfigAnswer, type ConfigKeyView, type ConfigOverride } from '@/lib/api'
+import { api, ApiError, type ConfigAnswer, type ConfigKeyView, type ConfigOverride, isWebsite } from '@/lib/api'
 import { useApps } from '@/lib/apps'
 import {
   canonical,
@@ -239,7 +239,8 @@ function AppConfigRow({ slug, name }: { slug: string; name: string }) {
 /** #/config: every app's remote config at a glance, each row opening that app's keys. */
 export function ConfigApps() {
   const { data, error, loading } = useApps()
-  const apps = data?.apps ?? []
+  // A website reads no remote config: the tag turns it off.
+  const apps = (data?.apps ?? []).filter((a) => !isWebsite(a))
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
