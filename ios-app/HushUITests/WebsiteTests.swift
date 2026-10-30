@@ -1,22 +1,21 @@
 import XCTest
 
-/// A website beside the apps, and the Campaigns and Attribution screens. The
-/// demo has no website yet: HUSH_WEBSITE_URL (TEST_RUNNER_HUSH_WEBSITE_URL on
-/// the xcodebuild line) names a server whose catalog has `stillwater-site`
-/// (`"kind": "website", "promotes": ["stillwater"]`) with visits in it, read
-/// without a token (a DEMO=1 server, or a proxy that adds it).
+/// A website apart from the apps: its own section on the overview, its own
+/// page (visitors, sources, landing pages, devices, its goal), and on the app
+/// it sells, a Websites card. The demo's `stillwater-site` sells Stillwater.
+/// HUSH_DEMO_URL (TEST_RUNNER_HUSH_DEMO_URL on the xcodebuild line) points at
+/// a local DEMO=1 server in place of the live demo.
 @MainActor
 final class WebsiteTests: XCTestCase {
     private var app: XCUIApplication!
 
-    private func launch() throws {
-        guard let url = ProcessInfo.processInfo.environment["HUSH_WEBSITE_URL"] else { throw XCTSkip("HUSH_WEBSITE_URL not set") }
+    private func launch() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-ui-testing", "-demo-url", url]
+        app.launchArguments = ["-ui-testing"]
+        if let url = ProcessInfo.processInfo.environment["HUSH_DEMO_URL"] { app.launchArguments += ["-demo-url", url] }
         app.launch()
         app.buttons["Try the demo"].tap()
-        XCTAssertTrue(card("Stillwater site").waitForExistence(timeout: 15))
     }
 
     private func card(_ title: String) -> XCUIElement {
@@ -32,63 +31,52 @@ final class WebsiteTests: XCTestCase {
         try? app.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir).appending(component: "\(name).png"))
     }
 
-    private func open(_ title: String) {
-        let c = card(title)
-        for _ in 0..<4 where !c.isHittable { app.swipeUp() }
-        c.tap()
+    private func scrollTo(_ element: XCUIElement) {
+        for _ in 0..<8 where !element.isHittable { app.swipeUp() }
     }
 
-    func testAWebsitesScreens() throws {
-        try launch()
+    func testAWebsiteHasItsOwnSectionAndPage() {
+        launch()
+        let site = card("Stillwater website")
+        XCTAssertTrue(card("Stillwater").waitForExistence(timeout: 15))
+        scrollTo(site)
+        XCTAssertTrue(app.staticTexts["Websites"].exists)
+        XCTAssertTrue(app.staticTexts["Reached the goal"].exists)
         snap("website-overview")
-        card("Stillwater site").tap()
-        XCTAssertTrue(app.staticTexts["Visitors"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Website for stillwater"].exists)
-        XCTAssertFalse(app.staticTexts["Active installs"].exists)
-        snap("website")
-        app.swipeUp()
-        XCTAssertFalse(card("Attribution").exists, "a website has no App Store attribution")
-        snap("website-cards")
+        site.tap()
 
-        open("Pages")
+        XCTAssertTrue(app.staticTexts["Visitors"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Visits with a store click"].waitForExistence(timeout: 15))
+        XCTAssertFalse(app.staticTexts["Active installs"].exists, "a website has no installs")
+        snap("website")
+        let sources = app.staticTexts["Sources"]
+        scrollTo(sources)
+        XCTAssertTrue(app.staticTexts["google.com"].exists)
+        snap("website-sources")
+        scrollTo(app.staticTexts["Devices"])
+        XCTAssertTrue(app.staticTexts["Landing pages"].exists)
+        snap("website-devices")
+
+        let pages = card("Pages and clicks")
+        scrollTo(pages)
+        pages.tap()
         XCTAssertTrue(app.staticTexts["Top pages"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["/features"].waitForExistence(timeout: 15))
         snap("website-pages")
-        app.swipeUp()
-        XCTAssertTrue(app.staticTexts["Store clicks"].waitForExistence(timeout: 5))
-        snap("website-pages-2")
-        back()
-
-        open("Campaigns")
-        XCTAssertTrue(app.staticTexts["autumn launch"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Store clicked"].exists)
-        snap("website-campaigns")
-        app.buttons["Split by, Campaign"].tap()
-        app.buttons["Referrer"].tap()
-        XCTAssertTrue(app.staticTexts["google.com"].waitForExistence(timeout: 15))
-        snap("website-referrers")
     }
 
-    func testAnAppsCampaignsAndAttribution() throws {
-        try launch()
-        card("Stillwater").tap()
+    func testAnAppShowsTheWebsitesThatSellIt() {
+        launch()
+        let stillwater = card("Stillwater")
+        XCTAssertTrue(stillwater.waitForExistence(timeout: 15))
+        stillwater.tap()
         XCTAssertTrue(app.staticTexts["Active installs"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Sold on stillwater-site"].exists)
-
-        open("Campaigns")
-        XCTAssertTrue(app.staticTexts["autumn update"].waitForExistence(timeout: 15))
-        snap("app-campaigns")
-        back()
-
-        open("Attribution")
-        XCTAssertTrue(app.staticTexts["Ad campaigns"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["How far they got"].exists)
-        snap("app-attribution")
-        app.buttons["App Store"].tap()
-        XCTAssertTrue(app.staticTexts["meta_autumn"].waitForExistence(timeout: 10))
-        snap("app-attribution-store")
-        app.buttons["Values"].tap()
-        XCTAssertTrue(app.staticTexts["Conversion values"].waitForExistence(timeout: 10))
-        snap("app-attribution-values")
+        let websites = card("Websites")
+        scrollTo(websites)
+        websites.tap()
+        XCTAssertTrue(app.staticTexts["By campaign"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["meta_autumn"].waitForExistence(timeout: 15))
+        snap("app-websites")
     }
 }

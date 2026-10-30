@@ -77,12 +77,15 @@ struct OverviewView: View {
             let apps = order.sorted(shown.apps).filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) || $0.app.contains(search.lowercased()) }
             // Inactive apps go last whatever the order: their cards would be zeros.
             let inactive = apps.filter { $0.isInactive() }
+            // Websites apart: a visitor is not an install.
+            let sites = apps.filter { $0.isWebsite && !$0.isInactive() }
             VStack(spacing: 16) {
                 Totals(answer: shown, days: days)
                 if apps.isEmpty {
                     ContentUnavailableView.search(text: search)
                 } else {
-                    AppGrid(apps: apps.filter { !$0.isInactive() }, days: days)
+                    AppGrid(apps: apps.filter { !$0.isWebsite && !$0.isInactive() }, days: days)
+                    if !sites.isEmpty { Websites(sites: sites, all: shown.apps, days: days) }
                     if !inactive.isEmpty { InactiveApps(apps: inactive, env: env) }
                 }
             }
@@ -160,6 +163,106 @@ private struct AppGrid: View {
                     .buttonStyle(Pressable())
             }
         }
+    }
+}
+
+/// The websites, under the apps: their own totals and cards, visitors and
+/// visits, and how many visits reached each site's goal.
+private struct Websites: View {
+    let sites: [AppSummary]
+    /// Every app, for the names of the ones a site sells.
+    let all: [AppSummary]
+    let days: Int
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Websites").font(.headline)
+                Text("Visitors and visits, counted apart from the apps: a visitor is a browser, not an install.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            .padding(.top, 8)
+            let sum = { (key: KeyPath<AppSummary, Int>) in sites.reduce(0) { $0 + $1[keyPath: key] } }
+            LazyVGrid(columns: tileColumns(typeSize), spacing: 12) {
+                Stat(label: "Visitors in the last day", value: sum(\.dau).formatted())
+                Stat(label: "Visits, \(Prefs.periodName(days).lowercased())", value: sum(\.sessions).formatted())
+                Stat(label: "Reached the goal", value: sites.reduce(0) { $0 + ($1.goal?.visits ?? 0) }.formatted())
+            }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 16)], spacing: 16) {
+                ForEach(sites) { site in
+                    NavigationLink(value: site) {
+                        WebsiteCard(site: site, sells: (site.promotes ?? []).map { slug in all.first { $0.app == slug }?.name ?? slug }, days: days)
+                    }
+                    .buttonStyle(Pressable())
+                }
+            }
+        }
+    }
+}
+
+/// A website's card: round, with a globe, visitors rather than installs, and
+/// its goal, the number that says whether the site does its job.
+private struct WebsiteCard: View {
+    let site: AppSummary
+    let sells: [String]
+    let days: Int
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        let goal = goalName(site.goal?.event ?? "store_clicked")
+        let goals = site.goal?.visits ?? 0
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                AppMark(slug: site.app, name: site.name, website: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(site.name).font(.headline).lineLimit(1)
+                    Text("\(sells.isEmpty ? "Website" : "Sells \(sells.formatted(.list(type: .and)))") · last visit \(when(site.lastEvent))")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer()
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("Visitors per day")
+                    Spacer()
+                    Text(Prefs.periodLabel(days)).monospacedDigit()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                if let trend = site.trend, trend.contains(where: { $0 > 0 }) {
+                    Sparkline(values: trend).frame(height: 56)
+                } else {
+                    Text("No visits")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 56)
+                        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 8))
+                }
+            }
+            Divider()
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: typeSize.isAccessibilitySize ? 2 : 4), spacing: 10) {
+                ForEach([("Visits", site.sessions.formatted()), ("New", site.newInstalls.formatted()),
+                         ("\(goal.prefix(1).uppercased() + goal.dropFirst())s", goals.formatted()), ("Rate", percent(goals, of: site.sessions))], id: \.0) { label, value in
+                    VStack(spacing: 2) {
+                        Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
+                        Text(value).font(.subheadline.weight(.semibold).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                }
+            }
+            HStack {
+                Text("\(site.wau.formatted()) visitors in 7 days").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                Spacer()
+                Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+            }
+        }
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(.tint.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+        .contentShape(.rect(cornerRadius: 18))
     }
 }
 
@@ -295,10 +398,10 @@ private struct AppCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                AppMark(slug: app.app, name: app.name, website: app.isWebsite)
+                AppMark(slug: app.app, name: app.name)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(app.name).font(.headline).lineLimit(1)
-                    Text(app.isWebsite ? "Website · last event \(when(app.lastEvent))" : "Last event \(when(app.lastEvent))")
+                    Text("Last event \(when(app.lastEvent))")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
@@ -313,7 +416,7 @@ private struct AppCard: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(app.isWebsite ? "Visitors per day" : "Active installs per day")
+                    Text("Active installs per day")
                         .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer()
@@ -333,7 +436,7 @@ private struct AppCard: View {
             }
             Divider()
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: typeSize.isAccessibilitySize ? 2 : 4), spacing: 10) {
-                ForEach([(app.isWebsite ? "Visitors" : "Installs", app.totalInstalls), ("DAU", app.dau), ("WAU", app.wau), ("MAU", app.mau)], id: \.0) { label, value in
+                ForEach([("Installs", app.totalInstalls), ("DAU", app.dau), ("WAU", app.wau), ("MAU", app.mau)], id: \.0) { label, value in
                     VStack(spacing: 2) {
                         Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                         Text(value, format: .number).font(.subheadline.weight(.semibold).monospacedDigit())
@@ -354,7 +457,7 @@ private struct AppCard: View {
     }
 
     private var footer: String {
-        var parts = ["\(app.sessions.formatted()) \(app.isWebsite ? "visits" : "sessions")", "\(app.newInstalls.formatted()) new"]
+        var parts = ["\(app.sessions.formatted()) sessions", "\(app.newInstalls.formatted()) new"]
         if let ads = app.adInstalls, ads > 0 { parts.append("\(ads.formatted()) from ads") }
         return parts.joined(separator: " · ")
     }
