@@ -566,7 +566,7 @@ installs. `autoTrack` tracks the site without code of its own (2.5.0):
 ```ts
 export const hush = createWebHush({
   platform: 'web',
-  autoTrack: true, // or { pageviews, entry, links }
+  autoTrack: true, // or { pageviews, entry, links, engagement }
   appStore: { providerToken: '118095' }, // optional: App Store Connect's pt
 });
 hush.configure({ url: 'https://hush.example.com', key: 'hush_mysite_prod_…', channel: 'landing', remoteConfig: false });
@@ -582,6 +582,10 @@ hush.init();
 - `links`: `store_clicked { store, campaign }` for App Store, Google Play and
   TestFlight links (`store`: `app_store`, `play`, `testflight`), and
   `link_clicked { host }` for any other link off the site.
+- `engagement`: `visit_engaged` once a visit has had a page in view for ten
+  seconds (2.6.0), counted across the page being hidden and shown again,
+  once per tab per half hour. What tells a reader from a bounce on a site of
+  one page.
 - `appStore.providerToken`: App Store links clicked on the page get `pt` and
   `ct`, the visit's campaign (its `utm_campaign`, else `utm_source`, else the
   referring site, up to 40 characters), so App Store Connect's campaign report
@@ -609,7 +613,9 @@ It is `autoTrack: true`, and leaves the client on `window.hush` for the
 page's own events. `data-url` names another server (default: where the
 script came from), `data-version` the site's version, `data-provider-token`
 the App Store's `pt`, and `data-auto-track="false"` turns the automatic
-tracking off.
+tracking off. `data-storage-prefix` gives the site storage keys of its own,
+for an origin a web build of its app shares; while the app (the default
+`hush` prefix) is opted out, the site sends nothing.
 
 ## Other platforms: the core
 

@@ -51,6 +51,12 @@ export type WebAutoTrack = {
   entry?: boolean;
   /** store_clicked { store, campaign } for App Store, Google Play and TestFlight links; link_clicked { host } for links off the site. */
   links?: boolean;
+  /**
+   * visit_engaged once a visit has had a page in view for ten seconds: what
+   * tells a reader from a bounce on a one-page site, where page counts say
+   * nothing. Once per tab per half hour, the length of a visit.
+   */
+  engagement?: boolean;
 };
 
 const STORES: Record<string, string> = {
@@ -62,6 +68,10 @@ const STORES: Record<string, string> = {
 
 // The visit's campaign, for store links on later pages. Per tab, gone with it.
 const CAMPAIGN_KEY = 'hush.campaign.v1';
+// When this tab last sent visit_engaged.
+const ENGAGED_KEY = 'hush.engaged.v1';
+const ENGAGED_MS = 10_000;
+const VISIT_MS = 30 * 60_000;
 
 const stripWww = (host: string) => host.toLowerCase().replace(/^www\./, '');
 
@@ -142,7 +152,7 @@ export function fromUserAgent(ua: string): Pick<DeviceInfo, 'platform' | 'os' | 
 
 /** A hush client for this page. One per page: it owns the page's lifecycle listeners. */
 export function createWebHush(app: WebApp = {}) {
-  const auto: WebAutoTrack = app.autoTrack === true ? { pageviews: true, entry: true, links: true } : app.autoTrack || {};
+  const auto: WebAutoTrack = app.autoTrack === true ? { pageviews: true, entry: true, links: true, engagement: true } : app.autoTrack || {};
   const providerToken = typeof app.appStore?.providerToken === 'string' ? app.appStore.providerToken.trim() : '';
   // A page being unloaded: Chromium drops a keepalive fetch that needs a CORS
   // preflight (hush's Authorization header does, on another origin), so what
@@ -306,6 +316,48 @@ export function createWebHush(app: WebApp = {}) {
     document.addEventListener('auxclick', onClick, true);
   }
 
+  /** Ten seconds in view, counted across the page being hidden and shown again. */
+  function trackEngagement() {
+    if (typeof document === 'undefined') return;
+    const tab = tabStorage();
+    const recent = () => {
+      try {
+        return Date.now() - Number(tab?.getItem(ENGAGED_KEY) ?? 0) < VISIT_MS;
+      } catch {
+        return false;
+      }
+    };
+    if (recent()) return;
+    let shown = 0;
+    let since = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let done = false;
+    const fire = () => {
+      if (done || recent()) return;
+      done = true;
+      try {
+        tab?.setItem(ENGAGED_KEY, String(Date.now()));
+      } catch {
+        // Refused: another page may send it again, and the visit counts once.
+      }
+      hush.track('visit_engaged');
+    };
+    const onVisibility = () => {
+      if (done) return;
+      if (document.visibilityState === 'visible') {
+        if (since) return;
+        since = Date.now();
+        timer = setTimeout(fire, Math.max(0, ENGAGED_MS - shown));
+      } else if (since) {
+        shown += Date.now() - since;
+        since = 0;
+        clearTimeout(timer);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    onVisibility();
+  }
+
   let started = false;
   let waiting: Promise<void> | null = null;
   /**
@@ -325,6 +377,7 @@ export function createWebHush(app: WebApp = {}) {
       if (auto.entry) claimEntry();
       if (auto.pageviews) trackPages();
       if (auto.links) trackLinks();
+      if (auto.engagement) trackEngagement();
     }
     return hush.init();
   }

@@ -106,6 +106,7 @@ The default entry exports these as module functions. `createWebHush()` and
 | `ticket_replied` | After a successful `replyToTicket()` on a ticket sent without an email | none |
 | `store_clicked` | Web, `autoTrack.links`: a click on an App Store, Google Play or TestFlight link | `store` (`app_store`, `play`, `testflight`), `campaign` (the visit's, or null) |
 | `link_clicked` | Web, `autoTrack.links`: a click on any other link off the site | `host` (without `www.`) |
+| `visit_engaged` | Web, `autoTrack.engagement` (2.6.0): ten seconds in view, once per tab per half hour | none |
 
 The server knows these names for every app without a catalog:
 `app_first_opened`, `session_started`, `screen_viewed`, `paywall_viewed`,
@@ -198,7 +199,7 @@ batch is deduplicated by event id and counted as `duplicate`.
 
 ## 8. The web entry
 
-`createWebHush(app?: { version?: string; build?: string; platform?: string; dev?: boolean; autoTrack?: boolean | { pageviews?: boolean; entry?: boolean; links?: boolean }; appStore?: { providerToken: string } }): Hush & { storeLink(url: string): string }`
+`createWebHush(app?: { version?: string; build?: string; platform?: string; dev?: boolean; autoTrack?: boolean | { pageviews?: boolean; entry?: boolean; links?: boolean; engagement?: boolean }; appStore?: { providerToken: string } }): Hush & { storeLink(url: string): string }`
 
 - One per page: it owns the lifecycle listeners.
 - Storage is `localStorage`, falling back to memory when it is missing or
@@ -223,7 +224,7 @@ batch is deduplicated by event id and counted as `duplicate`.
   it again and the server counts duplicates. Chromium drops a `keepalive`
   fetch that needs a CORS preflight as a page goes. A server before 2.5.0
   refuses the beacon (401); nothing is lost.
-- `autoTrack` (2.5.0, for a website; `true` is all three):
+- `autoTrack` (2.5.0, for a website; `true` is all four):
   - `pageviews`: `screen(location.pathname)` (up to 128 characters) on
     load, after `history.pushState`, and on `popstate`, when the path
     changed. Not on `replaceState`.
@@ -233,6 +234,10 @@ batch is deduplicated by event id and counted as `duplicate`.
   - `links`: `store_clicked` and `link_clicked` (section 4), from a capturing
     `click` and `auxclick` listener on the document. Links on the same host,
     and `mailto:` and the like, are not tracked.
+  - `engagement` (2.6.0): `visit_engaged` once a page has been in view for
+    ten seconds in all (hidden time does not count), at most once per tab per
+    half hour (`sessionStorage` `hush.engaged.v1`). The server's engaged
+    visits are the ones with a second page, any other event, or this.
 - `appStore.providerToken`: an App Store link clicked on the page is
   rewritten before the browser follows it, adding `pt` and `ct` (the visit's
   campaign: `utm_campaign`, else `utm_source`, else the referring host; cut to
@@ -245,7 +250,9 @@ batch is deduplicated by event id and counted as `duplicate`.
   `autoTrack: true`, `platform: 'web'`, `remoteConfig: false`, and the client on
   `window.hush`. Attributes: `data-key`, `data-url` (default: the script's
   origin), `data-channel`, `data-version`, `data-provider-token`,
-  `data-auto-track="false"`.
+  `data-auto-track="false"`, `data-storage-prefix` (2.6.0: storage keys of its
+  own on an origin a web build of the app shares; while the default `hush`
+  prefix is opted out, the tag calls `setEnabled(false)` instead of `init()`).
 
 Exports: `createWebHush`, `fromUserAgent`, `campaignToken`, `SDK_VERSION`,
 and the types `WebApp`, `WebAutoTrack`, `AttributionBridge`, `ConfigRefreshResult`, `ConfigSnapshotEntry`,

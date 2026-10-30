@@ -15,6 +15,10 @@
  * data-version  the site's version
  * data-provider-token  App Store Connect's provider token (pt), for store links
  * data-auto-track      "false": nothing by itself, the page calls hush.screen()
+ * data-storage-prefix  its own storage keys, for a site on the origin of a web
+ *                      build of its app (default "hush", the app's): one
+ *                      install id cannot be in two apps. The app's opt-out
+ *                      still applies: while it is set, the site sends nothing.
  */
 import { createWebHush } from '../src/web.ts';
 
@@ -39,12 +43,22 @@ const hush = createWebHush({
   autoTrack: data.autoTrack !== 'false',
   appStore: data.providerToken ? { providerToken: data.providerToken } : undefined,
 });
+const prefix = data.storagePrefix || 'hush';
 hush.configure({
   url: data.url || origin,
   key: data.key ?? '',
   channel: data.channel || undefined,
+  storagePrefix: prefix,
   // A site reads no remote config; an app on the same origin keeps its own.
   remoteConfig: false,
 });
-void hush.init();
+// "Share anonymous usage data" turned off in the app covers its website too.
+let appOptedOut = false;
+try {
+  appOptedOut = prefix !== 'hush' && localStorage.getItem('hush.optout.v1') === '1';
+} catch {
+  // No storage: nothing to read.
+}
+if (appOptedOut) hush.setEnabled(false);
+else void hush.init();
 window.hush = hush;

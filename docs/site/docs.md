@@ -26,7 +26,7 @@ invented apps.
 The SDK is [`@bavrk/hush`](https://www.npmjs.com/package/@bavrk/hush) on npm,
 for Expo, React Native, the web and Capacitor (below). An AI coding agent can
 do this part for you: see [With an AI coding agent](#with-an-ai-coding-agent).
-This page is for `@bavrk/hush` 2.5.0, `@bavrk/hush-expo` 0.1.3 and
+This page is for `@bavrk/hush` 2.6.0, `@bavrk/hush-expo` 0.1.3 and
 `@bavrk/hush-capacitor` 0.1.0; where older versions behave differently, it
 says so. 2.3.0 keeps a ticket sent with an email apart from the install, and
 needs a server with migration 007 for it: update the server before the app
