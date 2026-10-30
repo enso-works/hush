@@ -2,7 +2,7 @@
 // `installs`: at small-app volume (well under a million rows a year) a GROUP BY
 // over an indexed range is milliseconds, and rollup tables would be a second
 // source of truth to keep honest for no gain.
-import { breakdownsOf, FUNNEL, highlightOf, isPrivateScreen, kindOf, promotedBy, promotesOf } from './catalog.mjs';
+import { breakdownsOf, FUNNEL, goalOf, highlightOf, isPrivateScreen, kindOf, promotedBy, promotesOf } from './catalog.mjs';
 import { installRetention } from './config.mjs';
 import { q } from './db.mjs';
 
@@ -47,7 +47,19 @@ export async function summary({ days, env }) {
   });
   const byApp = new Map();
   for (const r of daily) byApp.set(`${r.app} ${r.day}`, r.n);
-  return rows.map((a) => ({ ...a, ...kindFields(a.app), trend: dayKeys.map((k) => byApp.get(`${a.app} ${k}`) ?? 0) }));
+  // A website's visits that reached its goal, for its card; null for an app.
+  const goals = new Map();
+  for (const a of rows) {
+    const goal = goalOf(a.app);
+    if (!goal) continue;
+    const { rows: [g] } = await q(
+      `SELECT count(DISTINCT session)::int AS n FROM events
+       WHERE app = $1 AND env = $2 AND name = $3 AND at >= now() - make_interval(days => $4)`,
+      [a.app, env, goal, days],
+    );
+    goals.set(a.app, { event: goal, visits: g.n });
+  }
+  return rows.map((a) => ({ ...a, ...kindFields(a.app), goal: goals.get(a.app) ?? null, trend: dayKeys.map((k) => byApp.get(`${a.app} ${k}`) ?? 0) }));
 }
 
 // What the catalog says the slug is, so a client words a website's installs
