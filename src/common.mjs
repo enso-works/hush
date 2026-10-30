@@ -3,4 +3,4 @@
 // Every name the SDK sends by itself is here (test/sdk.test.mjs checks).
 // A module of its own, with no imports, so the SDK's tests can read it
 // without the server's dependencies installed (the publish workflow has none).
-export const COMMON = ['app_first_opened', 'session_started', 'screen_viewed', 'paywall_viewed', 'purchase_started', 'purchase_result', 'restore_result', 'ticket_opened', 'ticket_replied', 'store_clicked', 'link_clicked'];
+export const COMMON = ['app_first_opened', 'session_started', 'screen_viewed', 'paywall_viewed', 'purchase_started', 'purchase_result', 'restore_result', 'ticket_opened', 'ticket_replied', 'store_clicked', 'link_clicked', 'visit_engaged'];

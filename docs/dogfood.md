@@ -8,6 +8,21 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
 
 ## 2026-10-30
 
+- **Websites, on the dashboard and the phone.** With websites in the
+  catalog, the web dashboard still showed one as an app: install cards and
+  totals, retention, versions, remote config, all of them wrong words for a
+  page. Rallo's site still sent to `tennis` (16 of its 42 production installs
+  were browsers), and Braele's landing page had sent three visits since
+  2026-10-26. What a site owner asks is where visitors came from and whether
+  they went on to the store, so a website now has a page of its own on both
+  (visitors, engaged visits, its goal and rate by source, campaign, landing
+  page and device), its own section on the overview, and the app it sells a
+  table of store clicks by campaign beside App Store Connect's. A one-page
+  site cannot tell a reader from a bounce by pages, hence `visit_engaged`
+  after ten seconds in view (SDK 2.6.0). `/hush.js` had no storage prefix,
+  so on Rallo's origin it would have shared the game's install id:
+  `data-storage-prefix`, which keeps the game's opt-out. Fixed in this
+  change; moving Rallo and Braele's pages over is app-side.
 - **Braele, App Store campaigns.** The report request existed on the server
   but its `ASC_*` key was not set, so nothing was imported. Two things then
   read wrong: a value Apple hid was stored as 0, and paying users and unique

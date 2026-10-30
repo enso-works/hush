@@ -232,6 +232,13 @@ export const configOf = (app) => catalog[app]?.config ?? {};
 /** "website" or "app": what the catalog says the slug is, "app" when it says nothing. */
 export const kindOf = (app) => catalog[app]?.kind ?? 'app';
 
+/**
+ * A website's goal, the event a visit is for: its highlight, or a click to an
+ * app store when the catalog names none (store_clicked, which the SDK sends
+ * by itself). An app has none: its highlight is a count, not a conversion.
+ */
+export const goalOf = (app) => (kindOf(app) === 'website' ? (catalog[app]?.highlight?.event ?? 'store_clicked') : null);
+
 /** The apps a website sells, in the catalog's order; none for an app. */
 export const promotesOf = (app) => catalog[app]?.promotes ?? [];
 

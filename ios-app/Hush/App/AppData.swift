@@ -111,7 +111,7 @@ final class AppData {
 /// The screens under an app's page.
 enum AppRoute: Hashable {
     case funnels, retention, engagement, audience, events
-    case website, campaigns, attribution
+    case website, websites, campaigns, attribution
     case event(String)
     case config, configKey(String), configHistory(key: String?), configPreview
 }

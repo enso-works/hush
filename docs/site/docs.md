@@ -26,7 +26,7 @@ invented apps.
 The SDK is [`@bavrk/hush`](https://www.npmjs.com/package/@bavrk/hush) on npm,
 for Expo, React Native, the web and Capacitor (below). An AI coding agent can
 do this part for you: see [With an AI coding agent](#with-an-ai-coding-agent).
-This page is for `@bavrk/hush` 2.5.0, `@bavrk/hush-expo` 0.1.3 and
+This page is for `@bavrk/hush` 2.6.0, `@bavrk/hush-expo` 0.1.3 and
 `@bavrk/hush-capacitor` 0.1.0; where older versions behave differently, it
 says so. 2.3.0 keeps a ticket sent with an email apart from the install, and
 needs a server with migration 007 for it: update the server before the app
@@ -289,12 +289,25 @@ hush.init();
   Connect's campaign report counts the same campaign. `hush.storeLink(url)`
   does it for a link the page builds.
 
+- Engagement: `visit_engaged` once a visit has had a page in view for ten
+  seconds, so a one-page site can tell a reader from a bounce.
+
 A page load within 30 minutes of the last one carries on the session; a link
 with campaign tags starts a new one. A browser driven by automation sends
 nothing, nor does a crawler. A hidden page sends by `sendBeacon`, with the key
 in the query, as a preflighted request does not leave a page that is going.
 `window.hush` is the client for the page's own events; `data-url`,
-`data-version` and `data-auto-track="false"` change the rest.
+`data-version` and `data-auto-track="false"` change the rest. On the origin
+of a web build of its app, `data-storage-prefix="mysite"` gives the site an
+install id of its own, and the app's opt-out still holds: while the app is
+opted out, the site sends nothing.
+
+The dashboard shows a website apart from the apps: visitors and visits, never
+installs; engaged visits; its goal (the catalog's `highlight`, or a store
+click) with its rate; and sources, campaigns, landing pages and devices, each
+with its goal rate. Only a phone installs from a store link, so read the
+rate by device. The app the site sells shows the site's App Store clicks by
+campaign beside App Store Connect's count for the same campaign.
 
 ### The native side: @bavrk/hush-expo
 
@@ -806,8 +819,8 @@ Apps send `Authorization: Key <write key>`. The SDK does this for you.
 
 The operator side takes `Authorization: Bearer <ADMIN_TOKEN>`, or a phone's
 own token, and is what the dashboard reads: `/admin/apps` (with `install_retention_days`), `/admin/apps/:app` (`?channel=`), its
-`/breakdown`, `/props`, `/funnels`, `/funnel`, `/cohorts`, `/campaigns` and
-`/attribution`, `/admin/installs/:id` with `/forget`,
+`/breakdown`, `/props`, `/funnels`, `/funnel`, `/cohorts`, `/campaigns`,
+`/attribution`, `/web` (a website's page) and `/websites` (an app's websites), `/admin/installs/:id` with `/forget`,
 `/admin/tickets` (filtered by `status`, `kind`, `app` and a search `q`, in
 pages by `limit` and `offset`, with `more` and the count of each status),
 `/admin/tickets/:id` with `/reply`, `/status` and `DELETE`,

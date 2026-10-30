@@ -178,3 +178,83 @@ describe('/hush.js', () => {
     assert.ok(body.includes(`"${version}"`), `built from SDK ${version}: run npm run build:script in sdk/`);
   });
 });
+
+describe('a website\'s reports', () => {
+  let shopKey;
+  before(async () => {
+    shopKey = await addApp(db, 'braele-site', 'Braele site');
+    const send = (install, device, platform, events) =>
+      client(srv.base, shopKey).post('/v1/events', batch(events, { platform, os: '', device, version: '', build: '' }));
+    const visit = (install, props, rest) => {
+      const session = uuid();
+      return [event(install, 'session_started', { session, props }), ...rest.map(([name, p]) => event(install, name, { session, props: p ?? {} }))];
+    };
+    const [a, b, c] = [uuid(), uuid(), uuid()];
+    const meta = { entry: 'link', n: 1, utm_source: 'meta', utm_campaign: 'autumn' };
+    // An ad, two pages, a store click: engaged, and the goal.
+    await send(a, 'iPhone', 'ios', visit(a, meta, [['screen_viewed', { screen: '/' }], ['screen_viewed', { screen: '/features' }], ['store_clicked', { store: 'app_store', campaign: 'autumn' }]]));
+    // From a search, one page, gone: a bounce. Back later, straight, ten seconds in view.
+    await send(b, 'Mac', 'web', [
+      ...visit(b, { entry: 'referral', n: 1, referrer: 'google.com' }, [['screen_viewed', { screen: '/blog' }]]),
+      ...visit(b, { entry: 'launch', n: 2 }, [['screen_viewed', { screen: '/' }], ['visit_engaged']]),
+    ]);
+    // The same ad on Android: a link out, no store click.
+    await send(c, 'Android phone', 'android', visit(c, meta, [['screen_viewed', { screen: '/' }], ['link_clicked', { host: 'x.com' }]]));
+    // What App Store Connect counted for the campaign the site passed on as ct.
+    await db.query(
+      `INSERT INTO asc_campaigns (app, kind, day, campaign, source_type, metric, value, processing_date)
+       VALUES ('tennis', 'downloads', current_date, 'autumn', 'Web referrer', 'first_downloads', 4, current_date),
+              ('tennis', 'engagement', current_date, 'autumn', 'Web referrer', 'page_views', 30, current_date)`,
+    );
+  });
+
+  test('visitors, visits, engaged visits and the goal, which is a store click when the catalog names none', async () => {
+    const r = await admin(srv.base).get('/admin/apps/braele-site/web?days=7');
+    assert.equal(r.status, 200);
+    assert.deepEqual(r.json.goal, { event: 'store_clicked' });
+    assert.deepEqual(r.json.current, { visitors: 3, visits: 4, engaged: 3, pageviews: 5, goal_visits: 1, goal_visitors: 1, new_visitors: 3 });
+    assert.equal(r.json.prior.visits, 0);
+    assert.equal(r.json.daily.length, 7);
+    assert.equal(r.json.daily.at(-1).visits, 4);
+  });
+
+  test('sources by tag, then referrer, then direct; campaigns; the page each visit landed on', async () => {
+    const { json } = await admin(srv.base).get('/admin/apps/braele-site/web?days=7');
+    const by = (rows, key) => Object.fromEntries(rows.map((row) => [row[key], row]));
+    const sources = by(json.sources, 'source');
+    assert.deepEqual(sources.meta, { source: 'meta', kind: 'tag', visits: 2, visitors: 2, engaged: 2, goal_visits: 1 });
+    assert.deepEqual(sources['google.com'], { source: 'google.com', kind: 'referrer', visits: 1, visitors: 1, engaged: 0, goal_visits: 0 });
+    assert.deepEqual(sources.direct, { source: 'direct', kind: 'direct', visits: 1, visitors: 1, engaged: 1, goal_visits: 0 });
+    assert.deepEqual(json.campaigns, [{ campaign: 'autumn', source: 'meta', visits: 2, visitors: 2, engaged: 2, goal_visits: 1 }]);
+    assert.deepEqual(by(json.landing, 'page')['/'], { page: '/', visits: 3, engaged: 3, goal_visits: 1 });
+    assert.deepEqual(by(json.landing, 'page')['/blog'], { page: '/blog', visits: 1, engaged: 0, goal_visits: 0 });
+    assert.deepEqual(by(json.pages, 'page')['/'], { page: '/', views: 3, visitors: 3 });
+  });
+
+  test('phones apart from desktops, since only a phone installs from a store link; stores and links clicked', async () => {
+    const { json } = await admin(srv.base).get('/admin/apps/braele-site/web?days=7');
+    const devices = Object.fromEntries(json.devices.map((d) => [d.device, d]));
+    assert.deepEqual(devices.phone, { device: 'phone', visits: 2, visitors: 2, engaged: 2, goal_visits: 1 });
+    assert.deepEqual(devices.desktop, { device: 'desktop', visits: 2, visitors: 1, engaged: 1, goal_visits: 0 });
+    assert.deepEqual(json.stores, [{ value: 'app_store', clicks: 1, visitors: 1 }]);
+    assert.deepEqual(json.links, [{ value: 'x.com', clicks: 1, visitors: 1 }]);
+    assert.deepEqual(json.countries, [{ country: 'other', visitors: 3 }], 'under ten visitors a country is folded away');
+  });
+
+  test("the overview counts a website's goal; an app has none", async () => {
+    const { json } = await admin(srv.base).get('/admin/apps?days=7');
+    const bySlug = Object.fromEntries(json.apps.map((a) => [a.app, a]));
+    assert.deepEqual(bySlug['braele-site'].goal, { event: 'store_clicked', visits: 1 });
+    assert.equal(bySlug.tennis.goal, null);
+  });
+
+  test("an app's websites: their visits, and store clicks per campaign beside App Store Connect's count for it", async () => {
+    const { json } = await admin(srv.base).get('/admin/apps/tennis/websites?days=7');
+    assert.deepEqual(json.websites.map((w) => w.app), ['braele-site', 'rallo-site']);
+    assert.deepEqual(json.websites[0], { app: 'braele-site', name: 'Braele site', visitors: 3, visits: 4, store_clicks: 1, store_visits: 1 });
+    const autumn = json.campaigns.find((c) => c.campaign === 'autumn');
+    assert.deepEqual(autumn, { campaign: 'autumn', store_clicks: 1, visits: 1, app_store: { page_views: 30, first_downloads: 4 } });
+    const none = await admin(srv.base).get('/admin/apps/braele/websites?days=7');
+    assert.deepEqual(none.json.websites.map((w) => w.app), ['braele-site']);
+  });
+});

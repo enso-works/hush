@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 
 import { Shell } from '@/components/Shell'
-import { AppsProvider } from '@/lib/apps'
+import { isWebsite } from '@/lib/api'
+import { AppsProvider, useApps } from '@/lib/apps'
 import { useRoute } from '@/lib/route'
 import { useSession } from '@/lib/session'
 import { AppPage } from '@/pages/AppPage'
@@ -11,6 +12,15 @@ import { Installs } from '@/pages/Installs'
 import { Login } from '@/pages/Login'
 import { Overview } from '@/pages/Overview'
 import { Phones } from '@/pages/Phones'
+import { WebsitePage } from '@/pages/Website'
+
+// A website's slug opens a website's page: visitors, sources and its goal,
+// never installs. The list says which it is; until it has come, nothing.
+function AppOrWebsite({ slug }: { slug: string }) {
+  const { data } = useApps()
+  if (!data) return null
+  return isWebsite(data.apps.find((a) => a.app === slug)) ? <WebsitePage key={slug} slug={slug} /> : <AppPage key={slug} slug={slug} />
+}
 
 export function App() {
   const { signedIn } = useSession()
@@ -26,7 +36,7 @@ export function App() {
     <AppsProvider>
       <Shell route={route}>
         {route.page === 'app' ? (
-          <AppPage key={route.slug} slug={route.slug} />
+          <AppOrWebsite slug={route.slug} />
         ) : route.page === 'config' ? (
           route.key ? (
             <ConfigKey key={`${route.slug}/${route.key}`} slug={route.slug} keyName={route.key} />

@@ -210,3 +210,33 @@ func dates(_ s: String) throws {
     #expect(a.milestone(13) == "First meditation")
     #expect(a.milestone(63) == "Purchased")
 }
+
+@Test func aWebsitesPage() throws {
+    let web = try decode(WebReport.self, "web")
+    #expect(web.goal.event == "store_clicked")
+    #expect(web.current.visits > 0 && web.current.goalVisits <= web.current.visits)
+    let meta = try #require(web.sources.first { $0.label == "meta" })
+    #expect(meta.detail == "tag")
+    let autumn = try #require(web.campaigns.first { $0.label == "meta_autumn" })
+    #expect(autumn.detail == "meta", "a campaign's detail is its source")
+    #expect(web.landing.contains { $0.label == "/features" })
+    #expect(Set(web.devices.map(\.label)) == ["phone", "desktop", "tablet"])
+    #expect(web.stores.contains { $0.value == "app_store" })
+}
+
+@Test func anAppsWebsites() throws {
+    let w = try decode(WebsitesForApp.self, "websites")
+    #expect(w.websites.map(\.app) == ["stillwater-site"])
+    let meta = try #require(w.campaigns.first { $0.campaign == "meta_autumn" })
+    #expect((meta.appStore?.firstDownloads ?? 0) > 0)
+    #expect(w.campaigns.contains { $0.campaign == "" && $0.appStore == nil })
+}
+
+@Test func aWebsitesGoalOnTheList() throws {
+    let site = try HushJSON.decoder.decode(AppSummary.self, from: Data("""
+        {"app": "site", "name": "Site", "new_installs": 3, "total_installs": 3, "dau": 1, "wau": 3, "mau": 3,
+         "sessions": 4, "events": 9, "open_tickets": 0, "last_event": null, "kind": "website", "promotes": ["x"],
+         "goal": {"event": "store_clicked", "visits": 1}}
+        """.utf8))
+    #expect(site.goal == .init(event: "store_clicked", visits: 1))
+}

@@ -22,6 +22,11 @@ export const DEMO_APPS = [
   { slug: 'driftwood', appStoreId: '6700000104', name: 'Driftwood', installs: 140, quietDays: 45, start: 'entry_started', highlight: 'entry_saved', first: 'First entry', events: ['onboarding_completed', 'entry_started', 'entry_saved', 'reminder_set'] },
 ];
 
+// A website that sells Stillwater: visitors from search, an ad and a
+// newsletter, its pages, and clicks to the stores (docs/web.md). Generated
+// from a seed of its own, after the apps, so their numbers stay as they were.
+export const DEMO_SITE = { slug: 'stillwater-site', name: 'Stillwater website', promotes: ['stillwater'], visitors: 1700, events: ['newsletter_signed_up'] };
+
 // Remote config: three keys every demo app declares, and one more for
 // stillwater. The seed below overrides some of them on the "dashboard", so
 // the config pages show overrides, history and an orphan.
@@ -70,7 +75,7 @@ export const DEMO_CATALOG = Object.fromEntries(
       ],
       config: demoConfig(a.slug),
     },
-  ]),
+  ]).concat([[DEMO_SITE.slug, { kind: 'website', promotes: DEMO_SITE.promotes, events: DEMO_SITE.events }]]),
 );
 
 // A small seeded PRNG (mulberry32): the same showcase every run.
@@ -201,9 +206,11 @@ export async function seedDemo() {
     }
   }
 
+  seedSite(now, installs, events);
+
   await tx(async (client) => {
     await client.query('TRUNCATE events, installs, ticket_replies, tickets, write_keys, apps CASCADE');
-    await insertRows(client, 'apps', ['slug', 'name'], DEMO_APPS.map((a) => [a.slug, a.name]));
+    await insertRows(client, 'apps', ['slug', 'name'], [...DEMO_APPS, DEMO_SITE].map((a) => [a.slug, a.name]));
     await insertRows(client, 'installs', ['id', 'app', 'env', 'first_seen', 'last_seen', 'platform', 'os', 'device', 'locale', 'country', 'version', 'build', 'pro', 'channel', 'sdk'], installs);
     // The catalog's known flag is set above from the demo catalog; widget_added is not in it.
     for (const e of events) if (e[5] === 'widget_added') e[6] = false;
@@ -226,6 +233,68 @@ export async function seedDemo() {
   });
   await seedAttribution(r, now);
   log.info('demo seeded', { apps: DEMO_APPS.length, installs: installs.length, events: events.length, tickets: TICKETS.length });
+}
+
+// Where the website's visitors come from, and what the web SDK records for
+// each: a link's tags, or the site that sent it, or nothing.
+const SITE_SOURCES = [
+  ['direct', 30, {}],
+  ['google', 22, { referrer: 'google.com' }],
+  ['meta', 18, { utm_source: 'meta', utm_medium: 'paid_social', utm_campaign: 'meta_autumn' }],
+  ['newsletter', 10, { utm_source: 'newsletter', utm_medium: 'email', utm_campaign: 'autumn_launch' }],
+  ['reddit', 8, { referrer: 'reddit.com' }],
+  ['instagram', 7, { referrer: 'instagram.com' }],
+  ['producthunt', 5, { referrer: 'producthunt.com' }],
+];
+const SITE_DEVICES = [
+  ['iPhone', 46, 'ios', 'ios 18.6', 0.15],
+  ['Android phone', 14, 'android', 'android 15', 0.1],
+  ['Mac', 20, 'web', 'macOS 15.6', 0.02],
+  ['PC', 13, 'web', 'windows 10.0', 0.015],
+  ['iPad', 7, 'ios', 'ios', 0.08],
+];
+const SITE_PAGES = ['/features', '/pricing', '/blog/morning-routine', '/about', '/download'];
+
+/** The demo website's visitors and visits, pushed onto the rows seedDemo inserts. */
+function seedSite(now, installs, events) {
+  const r = rng(20261030);
+  const DAY = 86400000;
+  const site = DEMO_SITE.slug;
+  for (let i = 0; i < DEMO_SITE.visitors; i++) {
+    const ageDays = Math.floor(60 * Math.pow(r(), 1.4));
+    const first = now - ageDays * DAY - Math.floor(r() * DAY * 0.9);
+    const [device, , platform, os, storeRate] = weighted(r, SITE_DEVICES.map((d) => [d, d[1]]));
+    const country = weighted(r, COUNTRIES);
+    const id = uuid(r);
+    const returns = r() < 0.22 ? 1 + Math.floor(r() * 3) : 0;
+    const offsets = [0, ...Array.from({ length: returns }, () => 1 + Math.floor(r() * Math.max(1, ageDays)))].filter((d) => d <= ageDays).sort((a, b) => a - b);
+    let last = first;
+    for (const [n, d] of offsets.entries()) {
+      const visitAt = first + d * DAY + Math.floor(r() * 3600000);
+      if (visitAt > now) continue;
+      last = Math.max(last, visitAt);
+      const session = uuid(r);
+      const at = (min) => new Date(Math.min(now, visitAt + min * 60000)).toISOString();
+      const ev = (name, props = {}, min = 0) => events.push([uuid(r), site, 'prod', id, session, name, true, at(min), null, platform, JSON.stringify(props), null]);
+      const [source, , tags] = weighted(r, SITE_SOURCES.map((x) => [x, x[1]]));
+      const entry = tags.utm_source ? 'link' : tags.referrer ? 'referral' : 'launch';
+      if (n === 0) ev('app_first_opened');
+      ev('session_started', { entry, n: n + 1, ...tags });
+      const landing = source === 'google' ? weighted(r, [['/', 40], ['/blog/morning-routine', 40], ['/features', 20]]) : source === 'meta' ? weighted(r, [['/', 70], ['/features', 30]]) : '/';
+      const pages = [landing];
+      while (pages.length < 5 && r() < 0.42) pages.push(pick(r, SITE_PAGES));
+      for (const [k, page] of pages.entries()) ev('screen_viewed', { screen: page }, k * 0.8);
+      if (pages.length > 1 || r() < 0.4) ev('visit_engaged', {}, 0.2);
+      // A tagged visit converts better: someone who clicked an ad came to look.
+      if (r() < storeRate * (tags.utm_source ? 1.3 : 1) * (pages.length > 1 ? 1.6 : 1)) {
+        const campaign = tags.utm_campaign ?? tags.utm_source ?? tags.referrer ?? null;
+        ev('store_clicked', { store: platform === 'android' ? 'play' : 'app_store', campaign }, pages.length * 0.8);
+      }
+      if (r() < 0.05) ev('link_clicked', { host: pick(r, ['instagram.com', 'x.com', 'youtube.com']) }, 1);
+      if (r() < 0.03) ev('newsletter_signed_up', {}, 1.5);
+    }
+    installs.push([id, site, 'prod', new Date(first).toISOString(), new Date(last).toISOString(), platform, os, device, LOCALE[country], country, null, null, false, null, '2.6.0']);
+  }
 }
 
 /**

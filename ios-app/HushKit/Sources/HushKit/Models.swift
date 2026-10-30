@@ -50,9 +50,16 @@ public struct AppSummary: Decodable, Sendable, Identifiable, Hashable {
     public let promotes: [String]?
     /// The websites that sell this app, by slug.
     public let promotedBy: [String]?
+    /// A website's goal and the visits that reached it this period; nil for an app.
+    public let goal: Goal?
+
+    public struct Goal: Decodable, Sendable, Hashable {
+        public let event: String
+        public let visits: Int
+    }
 
     enum CodingKeys: String, CodingKey {
-        case app, name, dau, wau, mau, sessions, events, trend, kind, promotes
+        case app, name, dau, wau, mau, sessions, events, trend, kind, promotes, goal
         case newInstalls = "new_installs"
         case promotedBy = "promoted_by"
         case totalInstalls = "total_installs"

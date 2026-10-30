@@ -12,7 +12,7 @@ that add hush to an app use the plugin in `plugins/hush/` instead.
 
 | Path | What it is |
 |---|---|
-| `src/` | The server: plain Node 22 ESM, no framework, one runtime dependency (`pg`). `server.mjs` routes, `ingest.mjs` events, `catalog.mjs` the catalog, `sweep.mjs` what the server deletes on its own (retention, private screens), `attribution.mjs` Apple postbacks, `remote-config.mjs` remote config (`/v1/config`, overrides, history, preview), `devices.mjs` phones signed in with a token of their own (pairing codes for the dashboard's QR code), `config-schema.mjs` its validation, `evaluate.mjs` the config evaluator (a copy of the SDK's), `cli.mjs` the admin CLI. |
+| `src/` | The server: plain Node 22 ESM, no framework, one runtime dependency (`pg`). `server.mjs` routes, `ingest.mjs` events, `catalog.mjs` the catalog, `sweep.mjs` what the server deletes on its own (retention, private screens), `attribution.mjs` Apple postbacks, `web.mjs` a website's reports, `remote-config.mjs` remote config (`/v1/config`, overrides, history, preview), `devices.mjs` phones signed in with a token of their own (pairing codes for the dashboard's QR code), `config-schema.mjs` its validation, `evaluate.mjs` the config evaluator (a copy of the SDK's), `cli.mjs` the admin CLI. |
 | `src/dashboard/` | The built dashboard, committed so running hush needs no build step. Never edit by hand. |
 | `src/script/` | `hush.js`, the web SDK as one script tag for websites, served at `/hush.js`. Built from `sdk/script/hush.ts` (`cd sdk && npm run build:script`), committed. Never edit by hand. |
 | `migrations/` | SQL, applied in file-name order at every boot, each in a transaction. |

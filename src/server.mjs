@@ -14,6 +14,7 @@ import { forgetInstall, installDetail } from './installs.mjs';
 import { appStoreIdOf, conversionValuesOf, funnelsOf } from './catalog.mjs';
 import { aakRow, postbackSummary, skanRow, storePostback } from './attribution.mjs';
 import { CAMPAIGN_KEYS, campaignFunnel, cohorts, runFunnel, stepsFromQuery } from './funnels.mjs';
+import { webReport, websitesFor } from './web.mjs';
 import { cfg, installRetention, log, parseApps } from './config.mjs';
 import { pool, q } from './db.mjs';
 import { adminConfig, appExists, checkOverridesAtBoot, configAnswer, history, matchesRevision, preview, revertOverride, setOverride } from './remote-config.mjs';
@@ -363,6 +364,17 @@ r.get('/admin/apps/:app/attribution', async (_req, res, { url, params }) => {
     appstore: await appStoreCampaigns({ app: params.app, days: d }),
   });
 });
+
+// A website's page (catalog kind "website"): visitors, visits, sources,
+// landing pages, devices and its goal. An app's slug answers too, read as a
+// website would be, which a client has no reason to ask for.
+r.get('/admin/apps/:app/web', async (_req, res, { url, params }) =>
+  json(res, 200, await webReport({ app: params.app, env: envOf(url), days: days(url), channel: channelOf(url) })));
+
+// For an app: the websites that sell it, and their store clicks by campaign
+// beside App Store Connect's counts for the same campaign.
+r.get('/admin/apps/:app/websites', async (_req, res, { url, params }) =>
+  json(res, 200, await websitesFor({ app: params.app, env: envOf(url), days: days(url) })));
 
 r.get('/admin/apps/:app/cohorts', async (_req, res, { url, params }) => {
   const weeks = Math.min(Math.max(Number(url.searchParams.get('weeks') ?? 8) || 8, 2), 26);

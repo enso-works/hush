@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "hush",
-  "version": "0.8.1",
+  "version": "0.9.0",
   "description": "Installs hush (@bavrk/hush) in an Expo, React Native, web or Capacitor app (or a Godot game, through its add-on), wires it the way the SDK needs, and plans the events, funnels and conversion values it tracks.",
   "author": {
     "name": "bavrk",

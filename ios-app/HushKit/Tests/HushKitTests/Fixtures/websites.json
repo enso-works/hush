@@ -1,0 +1,59 @@
+{
+ "websites": [
+  {
+   "app": "stillwater-site",
+   "name": "Stillwater website",
+   "visitors": 1151,
+   "visits": 1626,
+   "store_clicks": 224,
+   "store_visits": 224
+  }
+ ],
+ "campaigns": [
+  {
+   "campaign": "",
+   "store_clicks": 54,
+   "visits": 54,
+   "app_store": null
+  },
+  {
+   "campaign": "meta_autumn",
+   "store_clicks": 41,
+   "visits": 41,
+   "app_store": {
+    "page_views": 2424,
+    "first_downloads": 575
+   }
+  },
+  {
+   "campaign": "google.com",
+   "store_clicks": 34,
+   "visits": 34,
+   "app_store": null
+  },
+  {
+   "campaign": "autumn_launch",
+   "store_clicks": 24,
+   "visits": 24,
+   "app_store": null
+  },
+  {
+   "campaign": "instagram.com",
+   "store_clicks": 20,
+   "visits": 20,
+   "app_store": null
+  },
+  {
+   "campaign": "producthunt.com",
+   "store_clicks": 7,
+   "visits": 7,
+   "app_store": null
+  },
+  {
+   "campaign": "reddit.com",
+   "store_clicks": 7,
+   "visits": 7,
+   "app_store": null
+  }
+ ]
+}

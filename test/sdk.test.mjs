@@ -323,7 +323,7 @@ test('the web entry: localStorage, the page hiding as leaving, the device from t
 // over the same localStorage (the origin's) and sessionStorage (the tab's).
 const site = { local: new Map(), tab: new Map() };
 const asStorage = (m) => ({ getItem: (k) => m.get(k) ?? null, setItem: (k, v) => void m.set(k, String(v)), removeItem: (k) => void m.delete(k) });
-async function pageLoad(href, { referrer = '', webdriver = false, prerendering = false, beacons = null, ...app } = {}) {
+async function pageLoad(href, { referrer = '', webdriver = false, prerendering = false, beacons = null, script = null, ...app } = {}) {
   const now = Date.now();
   mock.timers.reset();
   mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now });
@@ -343,10 +343,20 @@ async function pageLoad(href, { referrer = '', webdriver = false, prerendering =
   const nav = { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', languages: ['en-US'], webdriver };
   if (beacons) nav.sendBeacon = (to, blob) => (beacons.push({ to, blob }), true);
   Object.defineProperty(globalThis, 'navigator', { value: nav, configurable: true, writable: true });
-  const { createWebHush } = await import(`../sdk/src/web.ts?launch=${++launches}`);
-  const hush = createWebHush({ platform: 'web', ...app });
-  hush.configure({ url: 'https://hush.test', key: 'hush_site_prod_x', channel: 'web', remoteConfig: false });
-  const ready = hush.init();
+  let hush, ready;
+  if (script) {
+    // The script tag: its data-* attributes, and the client it leaves on window.
+    doc.currentScript = { src: 'https://hush.test/hush.js', dataset: { key: 'hush_site_prod_x', ...script } };
+    globalThis.window = globalThis;
+    await import(`../sdk/script/hush.ts?launch=${++launches}`);
+    hush = globalThis.hush;
+    ready = Promise.resolve();
+  } else {
+    const { createWebHush } = await import(`../sdk/src/web.ts?launch=${++launches}`);
+    hush = createWebHush({ platform: 'web', ...app });
+    hush.configure({ url: 'https://hush.test', key: 'hush_site_prod_x', channel: 'web', remoteConfig: false });
+    ready = hush.init();
+  }
   await settle();
   const click = (to, type = 'click') => {
     const a = { href: new URL(to, url).href };
@@ -366,7 +376,7 @@ function clearSite() {
   site.tab.clear();
 }
 function restoreGlobals() {
-  for (const k of ['localStorage', 'sessionStorage', 'document', 'location', 'history', 'addEventListener']) delete globalThis[k];
+  for (const k of ['localStorage', 'sessionStorage', 'document', 'location', 'history', 'addEventListener', 'window', 'hush']) delete globalThis[k];
 }
 
 test('a website visit: one session over many pages, from its link and the site that sent it, every page a screen', async () => {
@@ -480,6 +490,64 @@ test('a website: without a provider token store links are left alone; without au
     page.click('https://apps.apple.com/app/id1');
     await leavePage(page);
     assert.deepEqual([...new Set(events().map((e) => e.name))].sort(), ['app_first_opened', 'session_started']);
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test('a website: ten seconds in view make the visit engaged, once per tab per half hour', async () => {
+  clearSite();
+  try {
+    let page = await pageLoad('https://rallo.example/', { autoTrack: true });
+    await page.ready;
+    mock.timers.tick(6_000);
+    page.doc.visibilityState = 'hidden';
+    page.fire('visibilitychange');
+    mock.timers.tick(60_000);
+    page.doc.visibilityState = 'visible';
+    page.fire('visibilitychange');
+    mock.timers.tick(3_000);
+    await page.hush.flushNow();
+    assert.equal(named('visit_engaged').length, 0, 'nine seconds in view, the minute hidden not counted');
+    mock.timers.tick(1_000);
+    await leavePage(page);
+    assert.equal(named('visit_engaged').length, 1);
+
+    // The next page of the visit does not send it again.
+    minutes(1);
+    page = await pageLoad('https://rallo.example/faq', { autoTrack: true });
+    await page.ready;
+    mock.timers.tick(20_000);
+    await leavePage(page);
+    assert.equal(named('visit_engaged').length, 1);
+
+    const { COMMON } = await import('../src/common.mjs');
+    assert.ok(COMMON.includes('visit_engaged'));
+  } finally {
+    restoreGlobals();
+  }
+});
+
+test('the script tag: a storage prefix of its own beside the app on the same origin, and the app\'s opt-out kept', async () => {
+  clearSite();
+  try {
+    site.local.set('hush.install.v1', 'the-games-install-id');
+    let page = await pageLoad('https://rallo.example/', { script: { storagePrefix: 'rallo-site', channel: 'landing' } });
+    await leavePage(page);
+    const install = site.local.get('rallo-site.install.v1');
+    assert.ok(install && install !== 'the-games-install-id', 'an install id of its own');
+    assert.equal(site.local.get('hush.install.v1'), 'the-games-install-id', "the app's is left alone");
+    assert.deepEqual(named('screen_viewed').map((e) => e.props.screen), ['/'], 'autoTrack by default');
+    assert.ok(events().every((e) => e.install === install));
+
+    // "Share anonymous usage data" off in the game: the site sends nothing.
+    clearSite();
+    sent.length = 0;
+    site.local.set('hush.optout.v1', '1');
+    page = await pageLoad('https://rallo.example/', { script: { storagePrefix: 'rallo-site' } });
+    page.hush.track('cta_seen');
+    await leavePage(page);
+    assert.equal(events().length, 0);
   } finally {
     restoreGlobals();
   }
