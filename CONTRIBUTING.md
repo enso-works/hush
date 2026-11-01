@@ -22,13 +22,19 @@ The SDK (`sdk/`, published as `@bavrk/hush`) is tested by `npm test` too:
 
 ## Releasing the SDK
 
-1. Bump `version` in `sdk/package.json` and `SDK_VERSION` in `sdk/src/core.ts`
-   (a test fails when they differ), and say what changed in the commit.
-2. `git tag sdk-v<version> && git push origin sdk-v<version>`.
+Bump `version` in `sdk/package.json` and `SDK_VERSION` in `sdk/src/core.ts`
+(a test fails when they differ) in the pull request, and say what changed in
+the commit. Merging it releases it: the `publish sdk` workflow sees a version
+npm doesn't have, runs the tests, builds, publishes with npm provenance and
+tags the commit `sdk-v<version>`. A merge that leaves the version alone
+publishes nothing. There is no npm token: npm trusts the workflow by its file
+name (trusted publishing, in the package's settings on npmjs.com). A failed
+run is retried from the Actions tab. Semver: anything an app would have to
+change for is a major.
 
-The `publish sdk` workflow checks the tag against the package, runs the
-tests, builds, and publishes with npm provenance. It needs the `NPM_TOKEN`
-secret. Semver: anything an app would have to change for is a major.
+The other packages release the same way, each when a merge changes its
+version: hush-expo, hush-capacitor, the Swift SDK and the Godot add-on
+(`.github/workflows/publish-*.yml`). Never push a release tag by hand.
 
 ## The dashboard
 
@@ -157,16 +163,16 @@ cd dashboard && npx playwright install chromium && npm run e2e
 
 ## Releasing @bavrk/hush-expo
 
-Bump `expo/package.json`, commit, then `git tag expo-v<version> && git push
-origin expo-v<version>`; `.github/workflows/publish-expo.yml` publishes it
-with the same `NPM_TOKEN`. Its Swift is only compiled by an app: build one
-(Braele is the reference) for the simulator before tagging.
+Bump `expo/package.json` in the pull request; the merge publishes it
+(`.github/workflows/publish-expo.yml`) and tags `expo-v<version>`. Its Swift
+is only compiled by an app: build one (Braele is the reference) for the
+simulator before bumping.
 
 ## Releasing @bavrk/hush-capacitor
 
-Bump `capacitor/package.json`, commit, then `git tag capacitor-v<version> &&
-git push origin capacitor-v<version>`; `.github/workflows/publish-capacitor.yml`
-typechecks, builds and publishes it with the same `NPM_TOKEN`. Its Swift
+Bump `capacitor/package.json` in the pull request; on the merge
+`.github/workflows/publish-capacitor.yml` typechecks, builds, publishes it and
+tags `capacitor-v<version>`. Its Swift
 builds on its own against capacitor-swift-pm:
 `cd capacitor && xcodebuild -scheme BavrkHushCapacitor -destination 'generic/platform=iOS Simulator' build`.
-Build an app that uses it (`npx cap sync ios`, then Xcode) before tagging.
+Build an app that uses it (`npx cap sync ios`, then Xcode) before bumping.

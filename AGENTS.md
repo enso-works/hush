@@ -110,31 +110,40 @@ claude plugin validate ./plugins/hush
   `src/dashboard/` with it; CI fails when they differ. The same for
   `src/script/hush.js` after changing `sdk/src/` or `sdk/script/`. The page runs under a
   strict CSP: nothing may inject a `<style>` element or an inline script.
+- **Releasing is merging.** Every package releases when a merge to `main`
+  changes its version, and a merge that doesn't releases nothing: its
+  `publish-*` workflow sees the version isn't on npm (or tagged) yet, tests,
+  publishes and tags the commit. Never push a release tag by hand. npm trusts
+  the three npm workflows by file name (trusted publishing): there is no npm
+  token, and renaming one of them breaks publishing until the package's
+  settings on npmjs.com name the new file. A failed run is retried from the
+  Actions tab (Run workflow).
 - **Releasing the SDK**: bump `sdk/package.json` and `SDK_VERSION` in
-  `sdk/src/core.ts` together (a test fails when they differ), commit, then tag
-  `sdk-v<version>` and push the tag. The `publish sdk` workflow publishes with
-  provenance. Semver: anything an app must change for is a major.
-- **Releasing hush-expo**: bump `expo/package.json`, build an app that uses it
-  for the simulator, commit, then tag `expo-v<version>` and push the tag.
-- **Releasing hush-capacitor**: bump `capacitor/package.json`, build the
-  Swift (the `xcodebuild` line above) and an app that uses it, commit, then
-  tag `capacitor-v<version>` and push the tag.
+  `sdk/src/core.ts` together (a test fails when they differ) in the pull
+  request. The merge publishes it with provenance and tags `sdk-v<version>`.
+  Semver: anything an app must change for is a major.
+- **Releasing hush-expo**: bump `expo/package.json` after building an app that
+  uses it for the simulator; the merge publishes it and tags `expo-v<version>`.
+- **Releasing hush-capacitor**: bump `capacitor/package.json` after building
+  the Swift (the `xcodebuild` line above) and an app that uses it; the merge
+  publishes it and tags `capacitor-v<version>`.
 - **Releasing the Swift SDK**: bump `sdkVersion` in
   `swift/Sources/Hush/Client.swift` and the version in `docs/site/docs.md`
-  and `swift/README.md` (`test/site.test.mjs` checks the docs page), commit,
-  then tag the plain version (`git tag 0.1.1`) and push the tag. The `publish
-  swift` workflow checks the tag against `sdkVersion`, tests, builds for iOS
-  and creates the GitHub release; Swift Package Manager reads the tag. A
+  and `swift/README.md` (`test/site.test.mjs` checks the docs page) in the
+  pull request. The merge runs the `publish swift` workflow, which tests,
+  builds for iOS and creates the GitHub release with the plain version as its
+  tag (`0.1.1`); Swift Package Manager reads the tag. A
   change to `/v1` the JavaScript SDK makes, the Swift one makes too: they
   must stay indistinguishable to the server.
 - **Releasing the Godot add-on**: bump `version` in
   `godot/addons/hush/plugin.cfg` and `SDK_VERSION` in `godot/addons/hush/hush.gd`
   together (the workflow checks both against the tag), and the version in
   `godot/addons/hush/README.md`, `docs/site/docs.md` and
-  `plugins/hush/skills/hush/references/godot.md`, commit, then tag
-  `godot-v<version>` and push the tag. The `publish godot` workflow tests the
+  `plugins/hush/skills/hush/references/godot.md` in the pull request. The
+  merge runs the `publish godot` workflow, which checks the two agree, tests the
   add-on against a server, zips `addons/hush/` into
-  `hush-godot-<version>.zip` and creates the GitHub release. With the variable
+  `hush-godot-<version>.zip` and creates the GitHub release, tagged
+  `godot-v<version>`. With the variable
   `HUSH_GODOT_MIRROR` set to `on` and the deploy key `HUSH_GODOT_MIRROR_KEY`,
   it also pushes `addons/hush/` to `enso-works/hush-godot`, for the Godot
   Asset Library. A change to `/v1` the JavaScript SDK makes, the add-on makes
