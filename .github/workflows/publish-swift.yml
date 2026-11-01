@@ -1,37 +1,68 @@
 name: publish swift
 
-# Releases the Swift SDK when a plain semver tag is pushed, e.g.
-#   (bump sdkVersion in swift/Sources/Hush/Client.swift, commit)
-#   git tag 0.1.1 && git push origin 0.1.1
-# Swift Package Manager reads versions from these tags directly; there is no
-# registry to upload to. The npm packages' tags carry a prefix (sdk-v…), so
-# only the Swift SDK uses plain ones. The tag must match sdkVersion.
+# Releases the Swift SDK when a merge to main changes its version: bump
+# sdkVersion in swift/Sources/Hush/Client.swift (and the version in
+# docs/site/docs.md and swift/README.md) in the pull request. A merge that
+# leaves the version as it is releases nothing. The release tags the commit
+# with the plain version (0.1.1): Swift Package Manager reads versions from
+# these tags directly, and there is no registry to upload to. The npm
+# packages' tags carry a prefix (sdk-v…), so only the Swift SDK uses plain
+# ones. Run it by hand (Actions, Run workflow) to retry a failed release.
 
 on:
   push:
-    tags: ['[0-9]+.[0-9]+.[0-9]+']
+    branches: [main]
+    paths: ['swift/**', 'Package.swift', '.github/workflows/publish-swift.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-swift
+  cancel-in-progress: false
 
 permissions:
-  contents: write # the GitHub release
+  contents: read
 
 jobs:
-  release:
-    runs-on: macos-latest
+  # On Linux, so a merge with nothing to release starts no macOS runner.
+  check:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
     steps:
       - uses: actions/checkout@v5
-      - name: The tag matches sdkVersion
+      - name: Is this version tagged yet
+        id: version
         run: |
           version=$(sed -nE 's/^public let sdkVersion = "(.*)"$/\1/p' swift/Sources/Hush/Client.swift)
-          echo "sdkVersion $version, tag $GITHUB_REF_NAME"
-          test "$version" = "$GITHUB_REF_NAME"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/$version" > /dev/null; then
+            echo "Swift SDK $version is tagged already: nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Swift SDK $version is not tagged: releasing"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: write # the tag and the GitHub release
+    steps:
+      - uses: actions/checkout@v5
       - run: swift test
       - name: Build for iOS
         run: |
           xcodebuild -scheme Hush -destination 'generic/platform=iOS Simulator' build | tail -n 5
           test "${PIPESTATUS[0]}" -eq 0
-      - name: GitHub release
+      - name: GitHub release, and its tag
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" --title "Swift SDK $GITHUB_REF_NAME" --notes "The hush Swift SDK, $GITHUB_REF_NAME. Add it with
-          \`.package(url: \"https://github.com/enso-works/hush\", from: \"$GITHUB_REF_NAME\")\` and \`import Hush\`: see swift/README.md."
+          gh release create "$VERSION" --target "$GITHUB_SHA" --title "Swift SDK $VERSION" --notes "The hush Swift SDK, $VERSION. Add it with
+          \`.package(url: \"https://github.com/enso-works/hush\", from: \"$VERSION\")\` and \`import Hush\`: see swift/README.md."

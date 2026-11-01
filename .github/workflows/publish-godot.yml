@@ -1,27 +1,65 @@
 name: publish godot
 
-# Releases the Godot add-on when a godot-v tag is pushed, e.g.
-#   (bump version in godot/addons/hush/plugin.cfg and SDK_VERSION in hush.gd, commit)
-#   git tag godot-v0.1.1 && git push origin godot-v0.1.1
-# The release carries hush-godot-<version>.zip, which holds addons/hush/ and
-# nothing else, to unzip into a project's root. With the repository variable
-# HUSH_GODOT_MIRROR set to `on` and a deploy key in the secret
-# HUSH_GODOT_MIRROR_KEY, addons/hush/ also goes to enso-works/hush-godot, the
-# repository the Godot Asset Library reads; until then that step is skipped.
+# Releases the Godot add-on when a merge to main changes its version: bump
+# version in godot/addons/hush/plugin.cfg and SDK_VERSION in hush.gd together
+# (this checks both), and the version in its README and the docs, in the pull
+# request. A merge that leaves the version as it is releases nothing. The
+# release, tagged godot-v<version>, carries hush-godot-<version>.zip, which
+# holds addons/hush/ and nothing else, to unzip into a project's root. With
+# the repository variable HUSH_GODOT_MIRROR set to `on` and a deploy key in
+# the secret HUSH_GODOT_MIRROR_KEY, addons/hush/ also goes to
+# enso-works/hush-godot, the repository the Godot Asset Library reads; until
+# then that step is skipped. Run it by hand (Actions, Run workflow) to retry a
+# failed release.
 
 on:
   push:
-    tags: ['godot-v*']
+    branches: [main]
+    paths: ['godot/addons/hush/**', '.github/workflows/publish-godot.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-godot
+  cancel-in-progress: false
 
 permissions:
-  contents: write # the GitHub release
+  contents: read
 
 env:
   GODOT_VERSION: 4.7.2-stable
 
 jobs:
-  release:
+  check:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: plugin.cfg and SDK_VERSION agree, and is this version tagged yet
+        id: version
+        run: |
+          version=$(sed -nE 's/^version="(.*)"$/\1/p' godot/addons/hush/plugin.cfg)
+          sdk=$(sed -nE 's/^const SDK_VERSION := "(.*)"$/\1/p' godot/addons/hush/hush.gd)
+          echo "plugin.cfg $version, SDK_VERSION $sdk"
+          test -n "$version"
+          test "$sdk" = "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if git ls-remote --exit-code --tags origin "refs/tags/godot-v$version" > /dev/null; then
+            echo "Godot add-on $version is tagged already: nothing to release"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Godot add-on $version is not tagged: releasing"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  release:
+    needs: check
+    if: needs.check.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the tag and the GitHub release
     services:
       postgres:
         image: postgres:16-alpine
@@ -37,15 +75,6 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v5
-      - name: The tag matches plugin.cfg and SDK_VERSION
-        id: version
-        run: |
-          version=$(sed -nE 's/^version="(.*)"$/\1/p' godot/addons/hush/plugin.cfg)
-          sdk=$(sed -nE 's/^const SDK_VERSION := "(.*)"$/\1/p' godot/addons/hush/hush.gd)
-          echo "plugin.cfg $version, SDK_VERSION $sdk, tag $GITHUB_REF_NAME"
-          test "$version" = "${GITHUB_REF_NAME#godot-v}"
-          test "$sdk" = "$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v5
         with:
           node-version: 22
@@ -74,19 +103,19 @@ jobs:
       - name: Zip addons/hush
         working-directory: godot
         run: |
-          zip -r "../hush-godot-${{ steps.version.outputs.version }}.zip" addons/hush -x '*.tmp'
-          unzip -l "../hush-godot-${{ steps.version.outputs.version }}.zip"
+          zip -r "../hush-godot-${{ needs.check.outputs.version }}.zip" addons/hush -x '*.tmp'
+          unzip -l "../hush-godot-${{ needs.check.outputs.version }}.zip"
       - name: GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "hush-godot-$VERSION.zip" --title "Godot add-on $VERSION" --notes "hush for Godot $VERSION. Unzip hush-godot-$VERSION.zip into your project's root (it holds addons/hush/), then enable the plugin in Project Settings > Plugins: see godot/addons/hush/README.md."
+          gh release create "godot-v$VERSION" "hush-godot-$VERSION.zip" --target "$GITHUB_SHA" --title "Godot add-on $VERSION" --notes "hush for Godot $VERSION. Unzip hush-godot-$VERSION.zip into your project's root (it holds addons/hush/), then enable the plugin in Project Settings > Plugins: see godot/addons/hush/README.md."
       - name: Mirror addons/hush to enso-works/hush-godot
         if: vars.HUSH_GODOT_MIRROR == 'on'
         env:
           DEPLOY_KEY: ${{ secrets.HUSH_GODOT_MIRROR_KEY }}
-          VERSION: ${{ steps.version.outputs.version }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           test -n "$DEPLOY_KEY" || { echo "::error::HUSH_GODOT_MIRROR is on but HUSH_GODOT_MIRROR_KEY is empty"; exit 1; }
           mkdir -p ~/.ssh

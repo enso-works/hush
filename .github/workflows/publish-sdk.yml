@@ -1,22 +1,56 @@
 name: publish sdk
 
-# Publishes @bavrk/hush to npm when a tag sdk-v<version> is pushed, e.g.
-#   (bump sdk/package.json and SDK_VERSION in sdk/src/core.ts, commit)
-#   git tag sdk-v2.0.1 && git push origin sdk-v2.0.1
-# The tag must match sdk/package.json. Needs the NPM_TOKEN secret: a granular
-# npm token with read and write on the @bavrk scope.
+# Publishes @bavrk/hush to npm when a merge to main changes its version: bump
+# sdk/package.json and SDK_VERSION in sdk/src/core.ts (a test fails when
+# they differ) in the pull request. A merge that leaves the
+# version as it is publishes nothing. npm trusts this workflow by its file
+# name (trusted publishing, set on the package's page on npmjs.com): no token,
+# and the package carries provenance. Once published, the commit is tagged
+# sdk-v<version>. Run it by hand (Actions, Run workflow) to retry a failed
+# publish.
 
 on:
   push:
-    tags: ['sdk-v*']
+    branches: [main]
+    paths: ['sdk/**', '.github/workflows/publish-sdk.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-sdk
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  id-token: write # npm provenance: the package says which commit and workflow built it
 
 jobs:
-  publish:
+  check:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Is this version on npm yet
+        id: version
+        run: |
+          version=$(node -p "require('./sdk/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ -n "$(npm view "@bavrk/hush@$version" version 2>/dev/null)" ]; then
+            echo "@bavrk/hush $version is on npm already: nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "@bavrk/hush $version is not on npm: publishing"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the tag
+      id-token: write # trusted publishing, and provenance
     defaults:
       run:
         working-directory: sdk
@@ -28,13 +62,21 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
           cache-dependency-path: sdk/package-lock.json
-      - name: The tag matches the package version
-        run: test "sdk-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - run: npm install -g npm@^11.5.1
       - name: The SDK's tests pass
         working-directory: .
         run: node --test test/sdk.test.mjs
       - run: npm ci
       - run: npm test
       - run: npm publish --provenance --access public
+      - name: Tag sdk-v${{ needs.check.outputs.version }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: sdk-v${{ needs.check.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "$TAG exists already"
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi

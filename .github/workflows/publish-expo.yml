@@ -1,21 +1,55 @@
 name: publish expo
 
-# Publishes @bavrk/hush-expo to npm when a tag expo-v<version> is pushed, e.g.
-#   (bump expo/package.json, commit)
-#   git tag expo-v0.1.1 && git push origin expo-v0.1.1
-# The tag must match expo/package.json. Uses the NPM_TOKEN secret, as the SDK does.
+# Publishes @bavrk/hush-expo to npm when a merge to main changes its version: bump
+# expo/package.json, after building an app that uses it for the simulator in the pull request. A merge that leaves the
+# version as it is publishes nothing. npm trusts this workflow by its file
+# name (trusted publishing, set on the package's page on npmjs.com): no token,
+# and the package carries provenance. Once published, the commit is tagged
+# expo-v<version>. Run it by hand (Actions, Run workflow) to retry a failed
+# publish.
 
 on:
   push:
-    tags: ['expo-v*']
+    branches: [main]
+    paths: ['expo/**', '.github/workflows/publish-expo.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: publish-expo
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  id-token: write # npm provenance
 
 jobs:
-  publish:
+  check:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Is this version on npm yet
+        id: version
+        run: |
+          version=$(node -p "require('./expo/package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ -n "$(npm view "@bavrk/hush-expo@$version" version 2>/dev/null)" ]; then
+            echo "@bavrk/hush-expo $version is on npm already: nothing to publish"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "@bavrk/hush-expo $version is not on npm: publishing"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  publish:
+    needs: check
+    if: needs.check.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the tag
+      id-token: write # trusted publishing, and provenance
     defaults:
       run:
         working-directory: expo
@@ -25,10 +59,18 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-      - name: The tag matches the package version
-        run: test "expo-v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships npm 10.
+      - run: npm install -g npm@^11.5.1
       - run: npm install --no-audit --no-fund
       - run: npm run typecheck
       - run: npm publish --provenance --access public
+      - name: Tag expo-v${{ needs.check.outputs.version }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TAG: expo-v${{ needs.check.outputs.version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+            echo "$TAG exists already"
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
+          fi

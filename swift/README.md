@@ -102,8 +102,9 @@ Apple's ad attribution (conversion values).
 
 The package is versioned by the plain semver tags of this repository
 (`0.1.0`); every batch carries `sdk: "swift-<version>"`, stored on the install.
-Releasing: bump `sdkVersion` in `Sources/Hush/Client.swift`, commit, then tag
-the version and push the tag (`.github/workflows/publish-swift.yml`).
+Releasing: bump `sdkVersion` in `Sources/Hush/Client.swift` in a pull request;
+merging it tags the version and creates the release
+(`.github/workflows/publish-swift.yml`).
 
 ## Tests
 
