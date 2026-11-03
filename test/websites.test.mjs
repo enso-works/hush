@@ -13,6 +13,7 @@ const CATALOG_FILE = join(tmpdir(), 'hush-test-websites.json');
 writeFileSync(CATALOG_FILE, JSON.stringify({
   'rallo-site': { kind: 'website', promotes: ['tennis'] },
   'braele-site': { kind: 'website', promotes: ['braele', 'tennis'] },
+  'shop-site': { kind: 'website', events: ['order_completed'], highlight: { event: 'order_completed' } },
   tennis: { events: ['match_started'] },
 }));
 
@@ -241,6 +242,11 @@ describe('a website\'s reports', () => {
     assert.deepEqual(json.countries, [{ country: 'other', visitors: 3 }], 'under ten visitors a country is folded away');
   });
 
+  test('a site whose goal has no amount has no revenue', async () => {
+    const { json } = await admin(srv.base).get('/admin/apps/braele-site/web?days=7');
+    assert.equal(json.revenue, null);
+  });
+
   test("the overview counts a website's goal; an app has none", async () => {
     const { json } = await admin(srv.base).get('/admin/apps?days=7');
     const bySlug = Object.fromEntries(json.apps.map((a) => [a.app, a]));
@@ -256,5 +262,55 @@ describe('a website\'s reports', () => {
     assert.deepEqual(autumn, { campaign: 'autumn', store_clicks: 1, visits: 1, app_store: { page_views: 30, first_downloads: 4 } });
     const none = await admin(srv.base).get('/admin/apps/braele/websites?days=7');
     assert.deepEqual(none.json.websites.map((w) => w.app), ['braele-site']);
+  });
+});
+
+describe("a shop's orders and revenue", () => {
+  before(async () => {
+    const shopKey = await addApp(db, 'shop-site', 'Shop');
+    const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+    const send = (events) => client(srv.base, shopKey).post('/v1/events', batch(events, { platform: 'web', os: '', device: 'iPhone', version: '', build: '' }));
+    const visit = (install, props, at, rest) => {
+      const session = uuid();
+      return [
+        { ...event(install, 'session_started', { session, props }), at },
+        ...rest.map(([name, p]) => ({ ...event(install, name, { session, props: p }), at })),
+      ];
+    };
+    const order = (amount) => ['order_completed', { amount, currency: 'BAM', items: 1 }];
+    const meta = { entry: 'link', n: 1, utm_source: 'meta', utm_campaign: 'autumn' };
+    const [a, b, c, d, e] = [uuid(), uuid(), uuid(), uuid(), uuid()];
+    // An ad on Monday, back by typing the address on Friday to buy: the ad's order.
+    await send([...visit(a, meta, daysAgo(4), [['screen_viewed', { screen: '/' }]]), ...visit(a, { entry: 'launch', n: 2 }, daysAgo(0), [order(50)])]);
+    // From a search, bought in the same visit.
+    await send(visit(b, { entry: 'referral', n: 1, referrer: 'google.com' }, daysAgo(1), [order(30.5)]));
+    // Never came from anywhere.
+    await send(visit(c, { entry: 'launch', n: 1 }, daysAgo(1), [order(20)]));
+    // The ad again, bought at once.
+    await send(visit(d, meta, daysAgo(2), [order(25)]));
+    // A goal event without an amount is a visit that reached the goal, not revenue.
+    await send(visit(e, meta, daysAgo(2), [['order_completed', { items: 1 }]]));
+  });
+
+  test('orders and revenue for the period, by the last source within 30 days before each order', async () => {
+    const r = await admin(srv.base).get('/admin/apps/shop-site/web?days=7');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.current.goal_visits, 5);
+    const { revenue } = r.json;
+    assert.equal(revenue.lookback_days, 30);
+    assert.deepEqual(revenue.current, [{ currency: 'BAM', orders: 4, revenue: 125.5 }]);
+    assert.deepEqual(revenue.prior, []);
+    assert.deepEqual(revenue.sources, [
+      { source: 'meta', currency: 'BAM', orders: 2, revenue: 75 },
+      { source: 'google.com', currency: 'BAM', orders: 1, revenue: 30.5 },
+      { source: 'direct', currency: 'BAM', orders: 1, revenue: 20 },
+    ]);
+    assert.deepEqual(revenue.campaigns, [{ campaign: 'autumn', source: 'meta', currency: 'BAM', orders: 2, revenue: 75 }]);
+  });
+
+  test('a shorter period leaves out older orders but keeps their source', async () => {
+    const { json } = await admin(srv.base).get('/admin/apps/shop-site/web?days=1');
+    assert.deepEqual(json.revenue.current, [{ currency: 'BAM', orders: 1, revenue: 50 }]);
+    assert.deepEqual(json.revenue.sources, [{ source: 'meta', currency: 'BAM', orders: 1, revenue: 50 }]);
   });
 });

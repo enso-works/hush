@@ -14,7 +14,7 @@ import { Stat } from '@/components/Stat'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { WebReport, WebSplit, WebsitesForApp } from '@/lib/api'
+import type { WebMoney, WebReport, WebRevenue, WebSplit, WebsitesForApp } from '@/lib/api'
 import { isInactive, useApps } from '@/lib/apps'
 import { useApi } from '@/lib/data'
 import { countryName, flag, goalName, humanize, num, pct, plural, shortDay, when } from '@/lib/format'
@@ -107,6 +107,95 @@ function SplitTable<T extends WebSplit>({
         </tbody>
       </table>
     </div>
+  )
+}
+
+/** An amount in its currency; a goal event without one shows the bare number. */
+const money = (value: number, currency: string) => {
+  try {
+    if (currency) return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format(value)
+  } catch {
+    // Not an ISO code: the number and the label as sent.
+  }
+  return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ''}`
+}
+
+function MoneyTable<T extends WebMoney>({ rows, head, label, empty }: { rows: T[]; head: string; label: (r: T) => ReactNode; empty: string }) {
+  if (!rows.length) return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
+  const max = Math.max(1, ...rows.map((r) => r.revenue))
+  const th = 'px-2 py-2 text-right font-medium'
+  return (
+    <div className="-mx-1 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-muted-foreground">
+            <th className="py-2 pr-2 pl-1 font-medium">{head}</th>
+            <th className={th}>Orders</th>
+            <th className={th}>Revenue</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} className="border-b last:border-0">
+              <td className="relative py-2 pr-2 pl-1">
+                <div aria-hidden className="absolute inset-y-1 left-0 rounded bg-chart-2/15" style={{ width: `${Math.max(2, (r.revenue / max) * 100)}%` }} />
+                <span className="relative flex min-w-0 items-center gap-2 truncate">{label(r)}</span>
+              </td>
+              <td className="px-2 py-2 text-right tabular-nums">{num(r.orders)}</td>
+              <td className="px-2 py-2 text-right font-medium tabular-nums">{money(r.revenue, r.currency)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** A shop's orders and revenue, each order counted for the source that brought the shopper. */
+function Revenue({ r }: { r: WebRevenue }) {
+  // The busiest currency leads the cards; a shop selling in one has just that one.
+  const now = r.current[0] ?? { currency: r.prior[0]?.currency ?? '', orders: 0, revenue: 0 }
+  const before = r.prior.find((m) => m.currency === now.currency) ?? { currency: now.currency, orders: 0, revenue: 0 }
+  const others = r.current.slice(1)
+  const avg = (m: WebMoney) => (m.orders ? m.revenue / m.orders : 0)
+  const sub = `Each order counts for the last visit, within ${r.lookback_days} days before it, that came from a tagged link or another site`
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <Stat
+          label="Revenue"
+          value={now.revenue}
+          before={before.revenue}
+          text={money(now.revenue, now.currency)}
+          hint={others.length ? `and ${others.map((m) => money(m.revenue, m.currency)).join(', ')}` : undefined}
+        />
+        <Stat label="Orders" value={now.orders} before={before.orders} />
+        <Stat label="Average order" value={avg(now)} before={avg(before)} text={money(Math.round(avg(now) * 100) / 100, now.currency)} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel title="Revenue by source" sub={sub}>
+          <MoneyTable
+            rows={r.sources}
+            head="Source"
+            empty="No orders in this period."
+            label={(m) => <span className="truncate">{m.source === 'direct' ? 'Direct' : humanize(m.source)}</span>}
+          />
+        </Panel>
+        <Panel title="Revenue by campaign" sub="Orders whose source was a tagged link, by its utm_campaign">
+          <MoneyTable
+            rows={r.campaigns}
+            head="Campaign"
+            empty="No orders from tagged links in this period."
+            label={(m) => (
+              <>
+                <span className="truncate">{humanize(m.campaign)}</span>
+                <span className="truncate text-xs text-muted-foreground">{humanize(m.source)}</span>
+              </>
+            )}
+          />
+        </Panel>
+      </div>
+    </>
   )
 }
 
@@ -212,6 +301,14 @@ export function WebsitePage({ slug }: { slug: string }) {
               <Visitors daily={d.daily} />
             </Panel>
           </BlurFade>
+
+          {d.revenue && (
+            <BlurFade delay={0.08} duration={0.3}>
+              <div className="flex flex-col gap-4">
+                <Revenue r={d.revenue} />
+              </div>
+            </BlurFade>
+          )}
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Sources" sub="A link's utm_source, else the site that sent the visit, else direct">

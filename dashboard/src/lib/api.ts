@@ -125,6 +125,18 @@ export type WebReport = {
   stores: { value: string; clicks: number; visitors: number }[]
   links: { value: string; clicks: number; visitors: number }[]
   events: { name: string; known: boolean; n: number; visitors: number }[]
+  /** A shop's orders: goal events with an amount; null for a site without them. */
+  revenue: WebRevenue | null
+}
+
+export type WebMoney = { currency: string; orders: number; revenue: number }
+/** Each order counted for the last visit, within lookback_days before it, that came from a tagged link or another site. */
+export type WebRevenue = {
+  lookback_days: number
+  current: WebMoney[]
+  prior: WebMoney[]
+  sources: (WebMoney & { source: string })[]
+  campaigns: (WebMoney & { campaign: string; source: string })[]
 }
 
 /** /admin/apps/:app/websites: the sites that sell an app, and their store clicks beside Apple's counts. */
