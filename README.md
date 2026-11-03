@@ -456,7 +456,12 @@ it names none. Sources (a link's `utm_source`, else the site that sent the
 visit, else direct), campaigns, landing pages and devices each show their
 visits, engaged share and goal rate: a phone can install from a store link
 and a desktop cannot, so the device split says which rate to read. Then
-pages, countries, store clicks, links out and the site's own events. An app
+pages, countries, store clicks, links out and the site's own events. A shop
+whose goal event carries a numeric `amount` and a `currency`
+(`order_completed { amount: 49.9, currency: 'BAM' }`) also gets orders,
+revenue and the average order against the period before, by source and by
+campaign: each order counts for the visitor's last visit, within 30 days
+before it, that came from a tagged link or another site. An app
 that a website `promotes` gets a card with that site's App Store clicks by
 campaign beside App Store Connect's count for the same campaign: the link
 carries the visit's campaign as `ct`. What comes next is planned in

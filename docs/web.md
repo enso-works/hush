@@ -1,7 +1,7 @@
 # Websites: design
 
-A proposal, 2026-10-29, agreed the same day. Phases 1 and 2 are built, and
-the iOS app's part of phase 5; the rest is not. It is written down first so
+A proposal, 2026-10-29, agreed the same day. Phases 1, 2, 3, 5 and 6 are
+built, and part of 4. It is written down first so
 the model is settled before the SDK, the dashboard and the iOS app depend on
 it.
 
@@ -150,9 +150,25 @@ full funnel per install.
   and a newsletter, store clicks by campaign that match the demo's App Store
   campaign `meta_autumn`.
 
-**6. Webshops (Amora).** Orders and revenue from the site: an `order_completed`
-event with amount and currency, a cart funnel, revenue per campaign. Designed
-when Amora's shop is chosen.
+**6. Webshops (Amora).** Built: orders and revenue on the website's page.
+- A shop names its order event as the `highlight`, usually `order_completed`,
+  and sends it with a numeric `amount` and a `currency` prop (an ISO code such
+  as `BAM`). Nothing else changes: no catalog key, no migration, no new
+  endpoint. A goal event without `amount` still counts as a goal visit and adds
+  nothing to revenue.
+- `/admin/apps/:app/web` adds `revenue`: orders and revenue per currency
+  against the period before, and by source and by campaign. `null` when no
+  goal event in either period carried an amount.
+- Attribution: each order counts for the last visit of the same visitor, at
+  most 30 days before it, that came from a tagged link or another site; else
+  direct. A shopper who clicks an ad on Monday and comes back by typing the
+  address on Friday counts for the ad. Visits and orders stay unlinked to
+  anything outside hush; only totals leave the query.
+- The cart funnel is the catalog's (`session_started`, `product_viewed`,
+  `cart_added`, `checkout_started`, `order_completed`).
+- Not built: revenue in the overview and the iOS app, refunds and cancelled
+  orders (a cash-on-delivery order the customer refuses still counts), and
+  ad spend beside revenue.
 
 Each phase updates the README, `docs/site/docs.md` and the plugin.
 
