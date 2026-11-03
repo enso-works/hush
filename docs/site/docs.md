@@ -884,6 +884,15 @@ thing locally to try the dashboard before wiring anything. A demo wipes its
 database on start, so it refuses to run against one that holds any write
 key.
 
+## In production
+
+hush runs our own apps. Working examples:
+
+- [Braele](https://braele.bavrk.com), an iOS breathing app: feedback in the
+  app, usage, funnels, remote config and Apple ad attribution.
+- [Rallo](https://bavrk.com/rallo), a tennis game, and its website: usage in
+  the game, and the site's visits, sources and campaigns.
+
 ## With an AI coding agent
 
 hush has a plugin for Claude Code and a skill for other coding agents

@@ -35,10 +35,17 @@ installed from this repository with Swift Package Manager
 ([guide](swift/README.md)). For Godot 4 games, an add-on in pure GDScript
 ([guide](godot/addons/hush/README.md)).
 
-Built for our own apps ([bavrk](https://bavrk.com): Braele and friends), where
-it runs in production. It is public so you can read it, fork it or run it
-yourself; it is not a product, and there is no support beyond what the code
-and this page say. MIT.
+Built for our own apps ([bavrk](https://bavrk.com)), where it runs in
+production. It is public so you can read it, fork it or run it yourself; it
+is not a product, and there is no support beyond what the code and this page
+say. MIT.
+
+Running in production, as working examples:
+
+- [Braele](https://braele.bavrk.com), an iOS breathing app: feedback in the
+  app, usage, funnels, remote config and Apple ad attribution.
+- [Rallo](https://bavrk.com/rallo), a tennis game, and its website: usage in
+  the game, and the site's visits, sources and campaigns.
 
 - **Feedback**: users write from inside the app (a problem, an idea, or kind
   words). You answer on the dashboard, and by email if they left an address;
