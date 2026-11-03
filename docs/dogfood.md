@@ -52,7 +52,7 @@ Format: date, app, what happened, status (fixed in `<commit>`, open, app-side).
   keeps the last channel it sent, so a player who later read the site turned
   into a `landing` install. Untagged traffic (a search, a post) showed
   nowhere, and nothing followed a campaign from the site to the App Store.
-  Braele's landing page and Amora's shop are next. Planned in
+  Other landing pages and a webshop are next. Planned in
   [docs/web.md](web.md); phase 1, website slugs in the catalog and crawlers
   dropped at ingest, is in. Open: the SDK side, the website reports, and
   moving Rallo's site to a slug of its own.

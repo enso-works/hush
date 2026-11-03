@@ -377,8 +377,8 @@ and inbox screens out of `screen()` and in `private_screens`, and nothing
 about a ticket in an event
 ([above](#what-a-ticket-carries)). Other SDKs in the app answer for
 themselves, in the same rows: RevenueCat adds App Functionality to Purchase
-History. Braele's answers, which this table follows, have no Identifiers
-row for the install id or RevenueCat's anonymous id. Remote config adds no
+History. Answered this way, there is no Identifiers row for the install id
+or RevenueCat's anonymous id. Remote config adds no
 row and changes none: it collects nothing.
 
 ## Configuration

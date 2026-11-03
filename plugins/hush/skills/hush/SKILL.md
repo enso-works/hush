@@ -366,9 +366,8 @@ with an email. A postback copy names no install.
   and list them in the catalog's `private_screens`, and put nothing about a
   ticket in an event.
 - Other SDKs in the app answer in the same rows: RevenueCat adds App
-  Functionality to Purchase History. Braele's answers, which this table
-  follows, have no Identifiers row for the install id or RevenueCat's
-  anonymous id.
+  Functionality to Purchase History. Answered this way, there is no
+  Identifiers row for the install id or RevenueCat's anonymous id.
 - Versions already in users' hands on 2.2.x or older still send the install
   id with an email, and track `ticket_opened` and `ticket_replied` with it.
   The server drops RevenueCat's id at once. It clears the install id, and

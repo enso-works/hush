@@ -9,16 +9,17 @@ it.
 
 hush counts installs. On the web every browser that loads a page is an
 install, so a landing site that reports into its app's own slug inflates that
-app's new installs, totals, retention and countries. Rallo's site
-(`bavrk.com/rallo`) does exactly that: it reports to `tennis` with the
-`landing` channel. And since `installs.channel` keeps the last channel it
-saw, a player who later reads the site becomes a `landing` install.
+app's new installs, totals, retention and countries: a site that reports to
+`myapp` with the `landing` channel counts its readers as the app's installs.
+And since `installs.channel` keeps the last channel it saw, a user who later
+reads the site becomes a `landing` install.
 
 Beyond the counts, a website needs what hush does not have yet: pageviews,
 top and entry pages, referrers without utm tags, bot filtering, and a way to
 follow a campaign from the site to the App Store.
 
-Websites coming: Rallo (tennis), Braele's landing page, Amora's webshop.
+The kinds of site this covers: a landing page that sells an app, a site that
+is also a web build of its app, and a webshop.
 
 ## What does not change
 
@@ -36,8 +37,8 @@ catalog:
 
 ```json
 {
-  "rallo-site": { "kind": "website", "promotes": ["tennis"], "events": ["store_clicked"] },
-  "tennis": { "app_store_id": "6740000000" }
+  "mysite": { "kind": "website", "promotes": ["myapp"], "events": ["store_clicked"] },
+  "myapp": { "app_store_id": "6740000000" }
 }
 ```
 
@@ -50,7 +51,7 @@ Tables stay as they are: a visitor is an install row, a visit a session, a
 page a `screen_viewed` with its path as the screen (so `private_screens` and
 the screens views work for pages as they are). No migration.
 
-On one origin, a website and a web build of its app (Rallo's `/play/`) need
+On one origin, a website and a web build of its app (say `/play/`) need
 separate install ids: `installs.id` is the primary key, so one id cannot be in
 two apps. The SDK's storage prefix gives the website its own; the opt-out is
 shared on purpose (phase 2).
@@ -150,7 +151,7 @@ full funnel per install.
   and a newsletter, store clicks by campaign that match the demo's App Store
   campaign `meta_autumn`.
 
-**6. Webshops (Amora).** Built: orders and revenue on the website's page.
+**6. Webshops.** Built: orders and revenue on the website's page.
 - A shop names its order event as the `highlight`, usually `order_completed`,
   and sends it with a numeric `amount` and a `currency` prop (an ISO code such
   as `BAM`). Nothing else changes: no catalog key, no migration, no new
@@ -179,5 +180,3 @@ Each phase updates the README, `docs/site/docs.md` and the plugin.
   storing it. The stored id is device storage under ePrivacy.
 - Android: Google Play's install referrer, carried from the store link into
   the React Native SDK.
-- Deleting the `tennis` installs that only ever sent `landing` events, once
-  Rallo's site reports to `rallo-site` (counted first).
