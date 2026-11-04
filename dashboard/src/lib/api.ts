@@ -91,8 +91,8 @@ export type AppSummary = {
   promotes?: string[]
   /** The websites that sell an app. */
   promoted_by?: string[]
-  /** A website's goal event and the visits that reached it this period; null for an app. */
-  goal?: { event: string; visits: number } | null
+  /** A website's goal event and the visits that reached it this period, and a shop's revenue per currency (null without orders that carry an amount); null for an app. */
+  goal?: { event: string; visits: number; revenue?: WebMoney[] | null } | null
 }
 
 export const isWebsite = (a: { kind?: string } | undefined) => a?.kind === 'website'

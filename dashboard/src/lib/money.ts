@@ -42,3 +42,14 @@ export function freshness(p: RevenueProject) {
   const stale = ok !== null && Date.now() - ok > 60 * 60 * 1000
   return { failedLast, stale, never: ok === null }
 }
+
+/** An amount in its currency, to the cent or to whole units; an order without a currency shows the bare number. */
+export const amount = (value: number, currency: string, digits: 0 | 2 = 2) => {
+  const places = { minimumFractionDigits: digits, maximumFractionDigits: digits }
+  try {
+    if (currency) return new Intl.NumberFormat(undefined, { style: 'currency', currency, ...places }).format(value)
+  } catch {
+    // Not an ISO code: the number and the label as sent.
+  }
+  return `${value.toLocaleString(undefined, places)}${currency ? ` ${currency}` : ''}`
+}

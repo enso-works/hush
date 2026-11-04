@@ -13,7 +13,7 @@ import { INACTIVE_DAYS, isInactive, useApps } from '@/lib/apps'
 import { goalName, num, pct, when } from '@/lib/format'
 import { href } from '@/lib/route'
 import { usePrefs } from '@/lib/session'
-import { findMetric, metricValue } from '@/lib/money'
+import { amount, findMetric, metricValue } from '@/lib/money'
 import { ErrorNote } from '@/pages/ErrorNote'
 import { useRevenueByApp } from '@/pages/Revenue'
 
@@ -223,10 +223,12 @@ function AppCard({ app: a, days, revenue }: { app: AppSummary; days: number; rev
 /**
  * A website's card: round, with a globe, and visitors rather than installs.
  * Its goal (a store click unless the catalog names another) is the number
- * that says whether the site does its job.
+ * that says whether the site does its job; a shop's card adds its revenue.
  */
 function WebsiteCard({ site: a, days, sells }: { site: AppSummary; days: number; sells: string[] }) {
   const goal = a.goal ? goalName(a.goal.event) : 'store click'
+  // A shop's card puts its revenue (the busiest currency) where the others show new visitors.
+  const revenue = a.goal?.revenue?.[0]
   return (
     <a href={href.app(a.app)} className="group block rounded-2xl focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none">
       <div className="flex flex-col gap-4 rounded-2xl border border-dashed bg-card p-5 transition-colors group-hover:border-solid">
@@ -254,8 +256,8 @@ function WebsiteCard({ site: a, days, sells }: { site: AppSummary; days: number;
           {(
             [
               ['Visits', num(a.sessions)],
-              ['New', num(a.new_installs)],
-              [`${goal}s`, num(a.goal?.visits ?? 0)],
+              revenue ? ['Revenue', amount(revenue.revenue, revenue.currency, 0)] : ['New', num(a.new_installs)],
+              [revenue ? 'Orders' : `${goal}s`, num(a.goal?.visits ?? 0)],
               ['Rate', pct(a.goal?.visits ?? 0, a.sessions)],
             ] as const
           ).map(([k, v]) => (

@@ -53,14 +53,23 @@ export function FunnelSteps({ steps }: { steps: FunnelStep[] }) {
   )
 }
 
+/** The catalog's funnels for the period (an app without any gets the default paywall one; a website, none). */
+export function useCatalogFunnels(slug: string) {
+  const { prefs } = usePrefs()
+  return useApi<{ funnels: Funnel[] }>(`/admin/apps/${encodeURIComponent(slug)}/funnels?${scope(prefs)}`).data
+}
+
 /** The catalog's funnels (or the default paywall one), one at a time. */
 export function CatalogFunnels({ slug }: { slug: string }) {
-  const { prefs } = usePrefs()
-  const { data } = useApi<{ funnels: Funnel[] }>(`/admin/apps/${encodeURIComponent(slug)}/funnels?${scope(prefs)}`)
-  const [picked, setPicked] = useState(0)
-  const funnels = data?.funnels ?? []
-  const f = funnels[Math.min(picked, funnels.length - 1)]
+  const data = useCatalogFunnels(slug)
   if (!data) return <div className="h-40" />
+  return <FunnelPicker funnels={data.funnels} />
+}
+
+/** Funnels already read, one at a time. */
+export function FunnelPicker({ funnels }: { funnels: Funnel[] }) {
+  const [picked, setPicked] = useState(0)
+  const f = funnels[Math.min(picked, funnels.length - 1)]
   if (!f) return <p className="py-6 text-center text-sm text-muted-foreground">No funnels.</p>
   return (
     <div className="flex flex-col gap-4">

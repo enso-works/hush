@@ -17,10 +17,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { WebMoney, WebReport, WebRevenue, WebSplit, WebsitesForApp } from '@/lib/api'
 import { isInactive, useApps } from '@/lib/apps'
 import { useApi } from '@/lib/data'
-import { countryName, flag, goalName, humanize, num, pct, plural, shortDay, when } from '@/lib/format'
+import { countryName, flag, goalName, humanize, num, pct, plural, shortDay, when, withArticle } from '@/lib/format'
+import { amount } from '@/lib/money'
 import { href } from '@/lib/route'
 import { usePrefs } from '@/lib/session'
 import { Panel } from '@/pages/AppPage'
+import { FunnelPicker, useCatalogFunnels } from '@/pages/Funnels'
 import { ErrorNote } from '@/pages/ErrorNote'
 
 const DEVICE: Record<string, string> = { phone: 'Phone', tablet: 'Tablet', desktop: 'Desktop' }
@@ -84,7 +86,7 @@ function SplitTable<T extends WebSplit>({
             <th className={th} title="More than a glance: a second page, a click, or ten seconds in view">
               Engaged
             </th>
-            <th className={th} title={`Visits with a ${goal}`}>
+            <th className={th} title={`Visits with ${withArticle(goal)}`}>
               {goal.charAt(0).toUpperCase() + goal.slice(1)} rate
             </th>
           </tr>
@@ -110,16 +112,6 @@ function SplitTable<T extends WebSplit>({
   )
 }
 
-/** An amount in its currency; a goal event without one shows the bare number. */
-const money = (value: number, currency: string) => {
-  try {
-    if (currency) return new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 2 }).format(value)
-  } catch {
-    // Not an ISO code: the number and the label as sent.
-  }
-  return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ''}`
-}
-
 function MoneyTable<T extends WebMoney>({ rows, head, label, empty }: { rows: T[]; head: string; label: (r: T) => ReactNode; empty: string }) {
   if (!rows.length) return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
   const max = Math.max(1, ...rows.map((r) => r.revenue))
@@ -142,12 +134,23 @@ function MoneyTable<T extends WebMoney>({ rows, head, label, empty }: { rows: T[
                 <span className="relative flex min-w-0 items-center gap-2 truncate">{label(r)}</span>
               </td>
               <td className="px-2 py-2 text-right tabular-nums">{num(r.orders)}</td>
-              <td className="px-2 py-2 text-right font-medium tabular-nums">{money(r.revenue, r.currency)}</td>
+              <td className="px-2 py-2 text-right font-medium tabular-nums">{amount(r.revenue, r.currency)}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
+  )
+}
+
+/** The funnels a website's catalog names (a shop's cart, say), counted in visitors; nothing when it names none. */
+function SiteFunnels({ slug }: { slug: string }) {
+  const data = useCatalogFunnels(slug)
+  if (!data?.funnels.length) return null
+  return (
+    <Panel title="Funnels" sub="Visitors through each step in order, and how long each step took">
+      <FunnelPicker funnels={data.funnels} />
+    </Panel>
   )
 }
 
@@ -166,11 +169,11 @@ function Revenue({ r }: { r: WebRevenue }) {
           label="Revenue"
           value={now.revenue}
           before={before.revenue}
-          text={money(now.revenue, now.currency)}
-          hint={others.length ? `and ${others.map((m) => money(m.revenue, m.currency)).join(', ')}` : undefined}
+          text={amount(now.revenue, now.currency)}
+          hint={others.length ? `and ${others.map((m) => amount(m.revenue, m.currency)).join(', ')}` : undefined}
         />
         <Stat label="Orders" value={now.orders} before={before.orders} />
-        <Stat label="Average order" value={avg(now)} before={avg(before)} text={money(Math.round(avg(now) * 100) / 100, now.currency)} />
+        <Stat label="Average order" value={avg(now)} before={avg(before)} text={amount(Math.round(avg(now) * 100) / 100, now.currency)} />
       </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Revenue by source" sub={sub}>
@@ -266,7 +269,7 @@ export function WebsitePage({ slug }: { slug: string }) {
               <Stat label="New visitors" value={c.new_visitors} before={p.new_visitors} />
               <Stat label="Visits" value={c.visits} before={p.visits} />
               <Stat label="Engaged visits" value={c.engaged} text={pct(c.engaged, c.visits)} hint={`${num(c.engaged)} of ${num(c.visits)}`} />
-              <Stat label={`Visits with a ${goal}`} value={c.goal_visits} before={p.goal_visits} />
+              <Stat label={`Visits with ${withArticle(goal)}`} value={c.goal_visits} before={p.goal_visits} />
               <Stat label={`${goal} rate`} value={c.goal_visits} text={pct(c.goal_visits, c.visits)} hint={`${plural(c.goal_visitors, 'visitor')}`} />
             </div>
           </BlurFade>
@@ -293,7 +296,7 @@ export function WebsitePage({ slug }: { slug: string }) {
                     <span className="h-0.5 w-3 bg-chart-3" /> New visitors
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-0.5 w-3 bg-chart-2" /> Visits with a {goal}
+                    <span className="h-0.5 w-3 bg-chart-2" /> Visits with {withArticle(goal)}
                   </span>
                 </span>
               }
@@ -309,6 +312,8 @@ export function WebsitePage({ slug }: { slug: string }) {
               </div>
             </BlurFade>
           )}
+
+          <SiteFunnels slug={slug} />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Sources" sub="A link's utm_source, else the site that sent the visit, else direct">
@@ -345,7 +350,14 @@ export function WebsitePage({ slug }: { slug: string }) {
             <Panel title="Landing pages" sub="The page each visit began on">
               <SplitTable rows={d.landing} head="Page" goal={goal} empty="No pages in this period." label={(r) => code(r.page)} />
             </Panel>
-            <Panel title="Devices" sub={`A store link leads to an app only on a phone or tablet: compare the ${goal} rate there`}>
+            <Panel
+              title="Devices"
+              sub={
+                d.goal.event === 'store_clicked'
+                  ? `A store link leads to an app only on a phone or tablet: compare the ${goal} rate there`
+                  : `Phone, tablet or desktop, each with its ${goal} rate`
+              }
+            >
               <SplitTable rows={d.devices} head="Device" goal={goal} empty="No visits in this period." label={(r) => <span>{DEVICE[r.device] ?? r.device}</span>} />
             </Panel>
           </div>

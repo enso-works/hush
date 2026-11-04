@@ -61,6 +61,32 @@ describe('overview', () => {
     await page.close();
   });
 
+  test("a shop's page: orders and revenue, by the source and the campaign that brought them", async () => {
+    const { page, problems } = await open('#/app/stillwater-shop');
+    await page.getByRole('heading', { name: 'Stillwater shop' }).waitFor();
+    for (const label of ['Revenue', 'Orders', 'Average order', 'Visits with an order completed']) {
+      await page.getByText(label, { exact: true }).first().waitFor();
+    }
+    const bySource = panel(page, 'Revenue by source');
+    await bySource.getByText('Direct', { exact: true }).waitFor();
+    assert.ok(await bySource.getByText(/^€/).first().isVisible(), 'amounts in the orders\' currency');
+    // The shop's catalog funnel, in visitors.
+    const funnel = panel(page, 'Funnels');
+    await funnel.getByText('Order completed', { exact: true }).waitFor();
+    await funnel.getByText(/made it from the first step to the last/).waitFor();
+    const byCampaign = panel(page, 'Revenue by campaign');
+    await byCampaign.getByText('meta autumn', { exact: true }).waitFor();
+    await byCampaign.getByText('autumn launch', { exact: true }).waitFor();
+    // A site that sells an app has store clicks, not orders: no revenue there.
+    await page.goto(`${srv.base}/dashboard/#/app/stillwater-site`);
+    await page.getByRole('heading', { name: 'Stillwater website' }).waitFor();
+    await page.getByRole('heading', { name: 'Sources', exact: true }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: 'Revenue by source' }).count(), 0);
+    assert.equal(await page.getByRole('heading', { name: 'Funnels' }).count(), 0, 'no paywall funnel on a website');
+    assert.deepEqual(problems, []);
+    await page.close();
+  });
+
   test('three apps with their numbers, ads counted, feedback badged', async () => {
     const { page, problems } = await open('');
     await page.getByRole('heading', { name: 'Overview' }).waitFor();
@@ -72,12 +98,17 @@ describe('overview', () => {
     assert.equal(await inactive.getByText('Stillwater', { exact: true }).count(), 0);
     const sidebar = await page.getByRole('navigation', { name: 'Apps' }).getByRole('link').locator('span.flex-1').allTextContents();
     assert.deepEqual(sidebar, ['Pace', 'Stillwater', 'Tally', 'Driftwood, inactive']);
-    await page.getByText(/^4 apps · 1 website · 1 inactive · prod/).waitFor();
+    await page.getByText(/^4 apps · 2 websites · 1 inactive · prod/).waitFor();
     // A website apart: its own section and sidebar group, visitors rather than installs.
     const sites = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Websites', exact: true }) });
     await sites.getByRole('link', { name: /Stillwater website/ }).waitFor();
     assert.ok(await sites.getByText('Sells Stillwater', { exact: false }).isVisible());
-    assert.deepEqual(await page.getByRole('navigation', { name: 'Websites' }).getByRole('link').locator('span.flex-1').allTextContents(), ['Stillwater website']);
+    assert.deepEqual(await page.getByRole('navigation', { name: 'Websites' }).getByRole('link').locator('span.flex-1').allTextContents(), ['Stillwater shop', 'Stillwater website']);
+    // A shop's card shows its revenue where the others show new visitors.
+    const shopCard = sites.getByRole('link', { name: /Stillwater shop/ });
+    assert.ok(await shopCard.getByText('Revenue', { exact: true }).isVisible());
+    assert.ok(await shopCard.getByText('Orders', { exact: true }).isVisible());
+    assert.match(await shopCard.getByText(/€/).first().innerText(), /€\s?[\d,]+$/);
     await page.getByText(/from ads/).first().waitFor();
     // The installs the server keeps: those seen in INSTALL_RETENTION_DAYS, 180 here by default (a live demo
     // may set another, and an older one says all time).
