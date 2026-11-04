@@ -91,8 +91,8 @@ export type AppSummary = {
   promotes?: string[]
   /** The websites that sell an app. */
   promoted_by?: string[]
-  /** A website's goal event and the visits that reached it this period; null for an app. */
-  goal?: { event: string; visits: number } | null
+  /** A website's goal event and the visits that reached it this period, and a shop's revenue per currency (null without orders that carry an amount); null for an app. */
+  goal?: { event: string; visits: number; revenue?: WebMoney[] | null } | null
 }
 
 export const isWebsite = (a: { kind?: string } | undefined) => a?.kind === 'website'
@@ -125,6 +125,18 @@ export type WebReport = {
   stores: { value: string; clicks: number; visitors: number }[]
   links: { value: string; clicks: number; visitors: number }[]
   events: { name: string; known: boolean; n: number; visitors: number }[]
+  /** A shop's orders: goal events with an amount; null for a site without them. */
+  revenue: WebRevenue | null
+}
+
+export type WebMoney = { currency: string; orders: number; revenue: number }
+/** Each order counted for the last visit, within lookback_days before it, that came from a tagged link or another site. */
+export type WebRevenue = {
+  lookback_days: number
+  current: WebMoney[]
+  prior: WebMoney[]
+  sources: (WebMoney & { source: string })[]
+  campaigns: (WebMoney & { campaign: string; source: string })[]
 }
 
 /** /admin/apps/:app/websites: the sites that sell an app, and their store clicks beside Apple's counts. */

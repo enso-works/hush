@@ -65,6 +65,83 @@ async function totals(args, from, to) {
   return row;
 }
 
+// A shop's orders (docs/web.md, phase 6): goal events with a numeric
+// `amount` prop and a `currency`. Each order goes to the last visit of the same
+// visitor, at most 30 days before it, that came from somewhere: a tagged link
+// or another site. A direct visit carries no source, so a shopper who clicks an
+// ad on Monday and comes back by typing the address on Friday counts for the
+// ad. Only these totals leave the query: never an order, a visitor or a time.
+const LOOKBACK_DAYS = 30;
+const ORDERS = `
+  orders AS (
+    SELECT install, at, (props->>'amount')::numeric AS amount, COALESCE(NULLIF(props->>'currency', ''), '') AS currency
+    FROM events
+    WHERE app = $1 AND env = $2 AND ${byChannel} AND name = $6 AND jsonb_typeof(props->'amount') = 'number'
+      AND at >= now() - make_interval(days => $3) AND at < now() - make_interval(days => $4)
+  ),
+  touched AS (
+    SELECT o.amount, o.currency, t.props AS touch
+    FROM orders o
+    LEFT JOIN LATERAL (
+      SELECT props FROM events s
+      WHERE s.app = $1 AND s.env = $2 AND s.install = o.install AND s.name = 'session_started'
+        AND s.at <= o.at AND s.at > o.at - make_interval(days => ${LOOKBACK_DAYS})
+        AND (NULLIF(s.props->>'utm_source', '') IS NOT NULL OR NULLIF(s.props->>'referrer', '') IS NOT NULL)
+      ORDER BY s.at DESC LIMIT 1
+    ) t ON true
+  )`;
+
+const money = (rows) => rows.map((r) => ({ ...r, revenue: Math.round(r.revenue * 100) / 100 }));
+
+async function revenueTotals(args, from, to) {
+  return money((await q(
+    `WITH ${ORDERS}
+     SELECT currency, count(*)::int AS orders, sum(amount)::float8 AS revenue
+     FROM orders GROUP BY 1 ORDER BY revenue DESC`,
+    [args[0], args[1], from, to, args[4], args[5]],
+  )).rows);
+}
+
+/**
+ * Orders and revenue for the period against the one before, by source and by
+ * campaign; null when the goal never carried an amount (a site that sells an
+ * app has store clicks, not orders).
+ */
+async function revenueReport(args) {
+  const [, , days] = args;
+  const current = await revenueTotals(args, days, 0);
+  const prior = await revenueTotals(args, days * 2, days);
+  if (current.length === 0 && prior.length === 0) return null;
+  const rows = money((await q(
+    `WITH ${ORDERS}
+     SELECT COALESCE(NULLIF(touch->>'utm_source', ''), NULLIF(touch->>'referrer', ''), 'direct') AS source,
+       NULLIF(touch->>'utm_campaign', '') AS campaign, currency,
+       count(*)::int AS orders, sum(amount)::float8 AS revenue
+     FROM touched GROUP BY 1, 2, 3`,
+    args,
+  )).rows);
+  const sum = (key) => {
+    const out = new Map();
+    for (const r of rows) {
+      const k = JSON.stringify([key(r), r.currency]);
+      const prev = out.get(k) ?? { ...r, orders: 0, revenue: 0 };
+      out.set(k, { ...prev, orders: prev.orders + r.orders, revenue: Math.round((prev.revenue + r.revenue) * 100) / 100 });
+    }
+    return [...out.values()].sort((a, b) => b.revenue - a.revenue);
+  };
+  return {
+    lookback_days: LOOKBACK_DAYS,
+    current,
+    prior,
+    sources: sum((r) => r.source).map(({ source, currency, orders, revenue }) => ({ source, currency, orders, revenue })).slice(0, 15),
+    campaigns: rows
+      .filter((r) => r.campaign)
+      .sort((a, b) => b.revenue - a.revenue)
+      .map(({ campaign, source, currency, orders, revenue }) => ({ campaign, source, currency, orders, revenue }))
+      .slice(0, 15),
+  };
+}
+
 /**
  * Everything a website's page shows for the period: totals against the one
  * before, visitors per day, sources, campaigns, landing pages, pages, devices,
@@ -183,6 +260,7 @@ export async function webReport({ app, env, days, channel = null }) {
     stores: await clicks('store_clicked', 'store'),
     links: await clicks('link_clicked', 'host'),
     events,
+    revenue: await revenueReport(args),
   };
 }
 

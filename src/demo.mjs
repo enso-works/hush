@@ -27,6 +27,18 @@ export const DEMO_APPS = [
 // from a seed of its own, after the apps, so their numbers stay as they were.
 export const DEMO_SITE = { slug: 'stillwater-site', name: 'Stillwater website', promotes: ['stillwater'], visitors: 1700, events: ['newsletter_signed_up'] };
 
+// A webshop (docs/web.md, phase 6): Stillwater's cushions and candles, with
+// orders as its goal. Each order carries an amount and a currency, so its
+// page shows revenue by source and campaign. Seeded last, from its own seed,
+// so the apps' and the website's numbers stay as they were.
+export const DEMO_SHOP = {
+  slug: 'stillwater-shop',
+  name: 'Stillwater shop',
+  visitors: 1100,
+  events: ['product_viewed', 'cart_added', 'checkout_started', 'order_completed'],
+  highlight: 'order_completed',
+};
+
 // Remote config: three keys every demo app declares, and one more for
 // stillwater. The seed below overrides some of them on the "dashboard", so
 // the config pages show overrides, history and an orphan.
@@ -75,7 +87,15 @@ export const DEMO_CATALOG = Object.fromEntries(
       ],
       config: demoConfig(a.slug),
     },
-  ]).concat([[DEMO_SITE.slug, { kind: 'website', promotes: DEMO_SITE.promotes, events: DEMO_SITE.events }]]),
+  ]).concat([
+    [DEMO_SITE.slug, { kind: 'website', promotes: DEMO_SITE.promotes, events: DEMO_SITE.events }],
+    [DEMO_SHOP.slug, {
+      kind: 'website',
+      events: DEMO_SHOP.events,
+      highlight: { event: DEMO_SHOP.highlight },
+      funnels: [{ name: 'Shop', steps: ['session_started', ...DEMO_SHOP.events] }],
+    }],
+  ]),
 );
 
 // A small seeded PRNG (mulberry32): the same showcase every run.
@@ -207,10 +227,11 @@ export async function seedDemo() {
   }
 
   seedSite(now, installs, events);
+  seedShop(now, installs, events);
 
   await tx(async (client) => {
     await client.query('TRUNCATE events, installs, ticket_replies, tickets, write_keys, apps CASCADE');
-    await insertRows(client, 'apps', ['slug', 'name'], [...DEMO_APPS, DEMO_SITE].map((a) => [a.slug, a.name]));
+    await insertRows(client, 'apps', ['slug', 'name'], [...DEMO_APPS, DEMO_SITE, DEMO_SHOP].map((a) => [a.slug, a.name]));
     await insertRows(client, 'installs', ['id', 'app', 'env', 'first_seen', 'last_seen', 'platform', 'os', 'device', 'locale', 'country', 'version', 'build', 'pro', 'channel', 'sdk'], installs);
     // The catalog's known flag is set above from the demo catalog; widget_added is not in it.
     for (const e of events) if (e[5] === 'widget_added') e[6] = false;
@@ -254,6 +275,75 @@ const SITE_DEVICES = [
   ['iPad', 7, 'ios', 'ios', 0.08],
 ];
 const SITE_PAGES = ['/features', '/pricing', '/blog/morning-routine', '/about', '/download'];
+
+// The shop's products: slug, category and price in euros.
+const SHOP_PRODUCTS = [
+  ['meditation-cushion', 'cushions', 59],
+  ['travel-cushion', 'cushions', 39],
+  ['candle-set', 'candles', 24],
+  ['incense-sampler', 'candles', 16],
+  ['gift-card', 'gifts', 50],
+];
+
+/** The demo shop's visitors, visits and orders, pushed onto the rows seedDemo inserts. */
+function seedShop(now, installs, events) {
+  const r = rng(20261103);
+  const DAY = 86400000;
+  const shop = DEMO_SHOP.slug;
+  for (let i = 0; i < DEMO_SHOP.visitors; i++) {
+    const ageDays = Math.floor(60 * Math.pow(r(), 1.4));
+    const first = now - ageDays * DAY - Math.floor(r() * DAY * 0.9);
+    const [device, , platform, os] = weighted(r, SITE_DEVICES.map((d) => [d, d[1]]));
+    const country = weighted(r, COUNTRIES);
+    const id = uuid(r);
+    const returns = r() < 0.3 ? 1 + Math.floor(r() * 3) : 0;
+    const offsets = [0, ...Array.from({ length: returns }, () => 1 + Math.floor(r() * Math.max(1, Math.min(ageDays, 20))))].filter((d) => d <= ageDays).sort((a, b) => a - b);
+    let last = first;
+    for (const [n, d] of offsets.entries()) {
+      const visitAt = first + d * DAY + Math.floor(r() * 3600000);
+      if (visitAt > now) continue;
+      last = Math.max(last, visitAt);
+      const session = uuid(r);
+      const at = (min) => new Date(Math.min(now, visitAt + min * 60000)).toISOString();
+      const ev = (name, props = {}, min = 0) => events.push([uuid(r), shop, 'prod', id, session, name, true, at(min), null, platform, JSON.stringify(props), null]);
+      // A first visit comes from somewhere; a return is often typed in, and
+      // then its order counts for the visit that brought the shopper.
+      const [, , tags] = n > 0 && r() < 0.6 ? ['direct', 0, {}] : weighted(r, SITE_SOURCES.map((x) => [x, x[1]]));
+      const entry = tags.utm_source ? 'link' : tags.referrer ? 'referral' : 'launch';
+      if (n === 0) ev('app_first_opened');
+      ev('session_started', { entry, n: n + 1, ...tags });
+      ev('screen_viewed', { screen: '/' });
+      const seen = [];
+      // Some leave from the home page; the rest look at a product or a few.
+      while (seen.length < 4 && r() < (seen.length === 0 ? 0.7 : 0.45)) {
+        const product = pick(r, SHOP_PRODUCTS);
+        seen.push(product);
+        ev('screen_viewed', { screen: `/shop/${product[0]}` }, seen.length);
+        ev('product_viewed', { category: product[1], product: product[0] }, seen.length);
+      }
+      if (seen.length > 1 || r() < 0.5) ev('visit_engaged', {}, 0.2);
+      if (!seen.length) continue;
+      // A tagged visit and a returning shopper buy more often.
+      const intent = (tags.utm_source ? 1.4 : 1) * (n > 0 ? 1.8 : 1);
+      if (r() > 0.2 * intent) continue;
+      const cart = seen.slice(0, 1 + Math.floor(r() * seen.length));
+      let value = 0;
+      for (const [k, [product, category, price]] of cart.entries()) {
+        const quantity = r() < 0.15 ? 2 : 1;
+        value += price * quantity;
+        ev('cart_added', { category, product, quantity, value: price * quantity }, 5 + k);
+      }
+      if (r() > 0.65) continue;
+      ev('screen_viewed', { screen: '/checkout' }, 8);
+      ev('checkout_started', { items: cart.length, value }, 8);
+      if (r() > 0.7) continue;
+      const shipping = value >= 60 ? 0 : 5;
+      ev('order_completed', { amount: value + shipping, currency: 'EUR', items: cart.length, free_shipping: shipping === 0 }, 10);
+      ev('screen_viewed', { screen: '/checkout/thanks' }, 10);
+    }
+    installs.push([id, shop, 'prod', new Date(first).toISOString(), new Date(last).toISOString(), platform, os, device, LOCALE[country], country, null, null, false, null, '2.6.0']);
+  }
+}
 
 /** The demo website's visitors and visits, pushed onto the rows seedDemo inserts. */
 function seedSite(now, installs, events) {

@@ -35,10 +35,17 @@ installed from this repository with Swift Package Manager
 ([guide](swift/README.md)). For Godot 4 games, an add-on in pure GDScript
 ([guide](godot/addons/hush/README.md)).
 
-Built for our own apps ([bavrk](https://bavrk.com): Braele and friends), where
-it runs in production. It is public so you can read it, fork it or run it
-yourself; it is not a product, and there is no support beyond what the code
-and this page say. MIT.
+Built for our own apps ([bavrk](https://bavrk.com)), where it runs in
+production. It is public so you can read it, fork it or run it yourself; it
+is not a product, and there is no support beyond what the code and this page
+say. MIT.
+
+Running in production, as working examples:
+
+- [Braele](https://braele.bavrk.com), an iOS breathing app: feedback in the
+  app, usage, funnels, remote config and Apple ad attribution.
+- [Rallo](https://bavrk.com/rallo), a tennis game, and its website: usage in
+  the game, and the site's visits, sources and campaigns.
 
 - **Feedback**: users write from inside the app (a problem, an idea, or kind
   words). You answer on the dashboard, and by email if they left an address;
@@ -377,8 +384,8 @@ and inbox screens out of `screen()` and in `private_screens`, and nothing
 about a ticket in an event
 ([above](#what-a-ticket-carries)). Other SDKs in the app answer for
 themselves, in the same rows: RevenueCat adds App Functionality to Purchase
-History. Braele's answers, which this table follows, have no Identifiers
-row for the install id or RevenueCat's anonymous id. Remote config adds no
+History. Answered this way, there is no Identifiers row for the install id
+or RevenueCat's anonymous id. Remote config adds no
 row and changes none: it collects nothing.
 
 ## Configuration
@@ -456,7 +463,14 @@ it names none. Sources (a link's `utm_source`, else the site that sent the
 visit, else direct), campaigns, landing pages and devices each show their
 visits, engaged share and goal rate: a phone can install from a store link
 and a desktop cannot, so the device split says which rate to read. Then
-pages, countries, store clicks, links out and the site's own events. An app
+pages, countries, store clicks, links out and the site's own events. A shop
+whose goal event carries a numeric `amount` and a `currency`
+(`order_completed { amount: 49.9, currency: 'BAM' }`) also gets orders,
+revenue and the average order against the period before, by source and by
+campaign: each order counts for the visitor's last visit, within 30 days
+before it, that came from a tagged link or another site. Its card on the
+overview shows revenue and orders, and its page the funnels its catalog
+names (a cart funnel, say), counted in visitors. An app
 that a website `promotes` gets a card with that site's App Store clicks by
 campaign beside App Store Connect's count for the same campaign: the link
 carries the visit's campaign as `ct`. What comes next is planned in

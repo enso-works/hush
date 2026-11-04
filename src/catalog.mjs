@@ -212,7 +212,9 @@ export function isKnown(app, name) {
 export const highlightOf = (app) => catalog[app]?.highlight ?? null;
 
 /** The app's funnels from the catalog, or the default paywall funnel. */
-export const funnelsOf = (app) => catalog[app]?.funnels ?? DEFAULT_FUNNELS;
+// A website's funnels are the ones its catalog names (a shop's cart, say);
+// the default paywall funnel is an app's.
+export const funnelsOf = (app) => catalog[app]?.funnels ?? (kindOf(app) === 'website' ? [] : DEFAULT_FUNNELS);
 
 /** Charts the catalog pins to the app page, in its order; none by default. */
 export const breakdownsOf = (app) => catalog[app]?.breakdowns ?? [];

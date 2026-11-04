@@ -306,7 +306,10 @@ The dashboard shows a website apart from the apps: visitors and visits, never
 installs; engaged visits; its goal (the catalog's `highlight`, or a store
 click) with its rate; and sources, campaigns, landing pages and devices, each
 with its goal rate. Only a phone installs from a store link, so read the
-rate by device. The app the site sells shows the site's App Store clicks by
+rate by device. A shop sends its order as the goal with an `amount` and a
+`currency`, and gets revenue by source and campaign: each order counts for the
+last visit, within 30 days before it, that came from a tagged link or another
+site, and the funnels its catalog names, in visitors. The app the site sells shows the site's App Store clicks by
 campaign beside App Store Connect's count for the same campaign.
 
 ### The native side: @bavrk/hush-expo
@@ -880,6 +883,15 @@ events for 30 days as inactive, after the others), regenerated every day, read-o
 thing locally to try the dashboard before wiring anything. A demo wipes its
 database on start, so it refuses to run against one that holds any write
 key.
+
+## In production
+
+hush runs our own apps. Working examples:
+
+- [Braele](https://braele.bavrk.com), an iOS breathing app: feedback in the
+  app, usage, funnels, remote config and Apple ad attribution.
+- [Rallo](https://bavrk.com/rallo), a tennis game, and its website: usage in
+  the game, and the site's visits, sources and campaigns.
 
 ## With an AI coding agent
 

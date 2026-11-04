@@ -2,7 +2,8 @@ import XCTest
 
 /// A website apart from the apps: its own section on the overview, its own
 /// page (visitors, sources, landing pages, devices, its goal), and on the app
-/// it sells, a Websites card. The demo's `stillwater-site` sells Stillwater.
+/// it sells, a Websites card. The demo's `stillwater-site` sells Stillwater;
+/// `stillwater-shop` is a shop, with orders and revenue.
 /// HUSH_DEMO_URL (TEST_RUNNER_HUSH_DEMO_URL on the xcodebuild line) points at
 /// a local DEMO=1 server in place of the live demo.
 @MainActor
@@ -63,6 +64,45 @@ final class WebsiteTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Top pages"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["/features"].waitForExistence(timeout: 15))
         snap("website-pages")
+    }
+
+    func testAShopShowsItsRevenueBySourceAndCampaign() {
+        launch()
+        let shop = card("Stillwater shop")
+        XCTAssertTrue(card("Stillwater").waitForExistence(timeout: 15))
+        scrollTo(shop)
+        XCTAssertTrue(shop.staticTexts["Revenue"].exists, "a shop's card shows its revenue")
+        XCTAssertTrue(shop.staticTexts["Orders"].exists)
+        snap("shop-overview")
+        shop.tap()
+
+        XCTAssertTrue(app.staticTexts["Visits with an order completed"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Average order"].waitForExistence(timeout: 15))
+        snap("shop")
+        let bySource = app.staticTexts["Revenue by source"]
+        scrollTo(bySource)
+        XCTAssertTrue(app.staticTexts["Direct"].exists)
+        // The shop's catalog funnel, in visitors.
+        let funnel = app.staticTexts["Shop"]
+        scrollTo(funnel)
+        XCTAssertTrue(funnel.exists)
+        snap("shop-funnel")
+        let byCampaign = app.staticTexts["Revenue by campaign"]
+        scrollTo(byCampaign)
+        XCTAssertTrue(app.staticTexts["Meta autumn · meta"].waitForExistence(timeout: 5))
+        snap("shop-revenue")
+    }
+
+    func testASiteThatSellsAnAppHasNoRevenue() {
+        launch()
+        let site = card("Stillwater website")
+        XCTAssertTrue(card("Stillwater").waitForExistence(timeout: 15))
+        scrollTo(site)
+        site.tap()
+        XCTAssertTrue(app.staticTexts["Visits with a store click"].waitForExistence(timeout: 15))
+        scrollTo(app.staticTexts["Devices"])
+        XCTAssertFalse(app.staticTexts["Revenue by source"].exists)
+        XCTAssertFalse(app.staticTexts["Paywall"].exists, "no paywall funnel on a website")
     }
 
     func testAnAppShowsTheWebsitesThatSellIt() {

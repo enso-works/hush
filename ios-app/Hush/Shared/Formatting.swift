@@ -80,3 +80,27 @@ extension Date.FormatStyle {
         return style
     }
 }
+
+/// The change in an amount against the period before, or nil when there is nothing to compare with.
+func change(_ current: Double, _ prior: Double) -> Double? {
+    prior > 0 ? (current - prior) / prior : nil
+}
+
+/// An amount in its currency, to the cent or to whole units: `€1,234.50`.
+/// An order without a currency, or with a code that is not ISO, shows the
+/// number and the label as sent.
+func money(_ value: Double, _ currency: String, whole: Bool = false) -> String {
+    let places = whole ? 0 ... 0 : 2 ... 2
+    let iso = currency.count == 3 && currency.allSatisfy(\.isLetter)
+        && Locale.Currency.isoCurrencies.contains { $0.identifier == currency.uppercased() }
+    if iso {
+        return value.formatted(.currency(code: currency.uppercased()).precision(.fractionLength(places)))
+    }
+    let number = value.formatted(.number.precision(.fractionLength(places)))
+    return currency.isEmpty ? number : "\(number) \(currency)"
+}
+
+/// "a store click", "an order completed".
+func withArticle(_ noun: String) -> String {
+    "\(noun.first.map { "aeiou".contains($0.lowercased()) } == true ? "an" : "a") \(noun)"
+}

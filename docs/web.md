@@ -1,7 +1,7 @@
 # Websites: design
 
-A proposal, 2026-10-29, agreed the same day. Phases 1 and 2 are built, and
-the iOS app's part of phase 5; the rest is not. It is written down first so
+A proposal, 2026-10-29, agreed the same day. Phases 1, 2, 3, 5 and 6 are
+built, and part of 4. It is written down first so
 the model is settled before the SDK, the dashboard and the iOS app depend on
 it.
 
@@ -9,16 +9,17 @@ it.
 
 hush counts installs. On the web every browser that loads a page is an
 install, so a landing site that reports into its app's own slug inflates that
-app's new installs, totals, retention and countries. Rallo's site
-(`bavrk.com/rallo`) does exactly that: it reports to `tennis` with the
-`landing` channel. And since `installs.channel` keeps the last channel it
-saw, a player who later reads the site becomes a `landing` install.
+app's new installs, totals, retention and countries: a site that reports to
+`myapp` with the `landing` channel counts its readers as the app's installs.
+And since `installs.channel` keeps the last channel it saw, a user who later
+reads the site becomes a `landing` install.
 
 Beyond the counts, a website needs what hush does not have yet: pageviews,
 top and entry pages, referrers without utm tags, bot filtering, and a way to
 follow a campaign from the site to the App Store.
 
-Websites coming: Rallo (tennis), Braele's landing page, Amora's webshop.
+The kinds of site this covers: a landing page that sells an app, a site that
+is also a web build of its app, and a webshop.
 
 ## What does not change
 
@@ -36,8 +37,8 @@ catalog:
 
 ```json
 {
-  "rallo-site": { "kind": "website", "promotes": ["tennis"], "events": ["store_clicked"] },
-  "tennis": { "app_store_id": "6740000000" }
+  "mysite": { "kind": "website", "promotes": ["myapp"], "events": ["store_clicked"] },
+  "myapp": { "app_store_id": "6740000000" }
 }
 ```
 
@@ -50,7 +51,7 @@ Tables stay as they are: a visitor is an install row, a visit a session, a
 page a `screen_viewed` with its path as the screen (so `private_screens` and
 the screens views work for pages as they are). No migration.
 
-On one origin, a website and a web build of its app (Rallo's `/play/`) need
+On one origin, a website and a web build of its app (say `/play/`) need
 separate install ids: `installs.id` is the primary key, so one id cannot be in
 two apps. The SDK's storage prefix gives the website its own; the opt-out is
 shared on purpose (phase 2).
@@ -142,17 +143,40 @@ full funnel per install.
   mark with a globe, visitors per day, visits, new, goal and rate). The
   apps' install totals never count a visitor. The sidebar lists Apps and
   Websites apart; Remote config lists apps only.
-- A website's page: the order in phase 3. No funnels, retention, versions,
-  remote config, attribution or feedback: a site has none of them.
+- A website's page: the order in phase 3. No retention, versions, remote
+  config, attribution or feedback: a site has none of them. Funnels only when
+  its catalog names some (phase 6); never the app's default paywall funnel.
 - An app a site promotes: a "From its websites" panel (the iOS app: a
   Websites card) with phase 4's table.
 - The demo has `stillwater-site`, which sells Stillwater: search, a Meta ad
   and a newsletter, store clicks by campaign that match the demo's App Store
-  campaign `meta_autumn`.
+  campaign `meta_autumn`. And `stillwater-shop`, a shop: orders in euros,
+  revenue by source and campaign, and its cart funnel (phase 6).
 
-**6. Webshops (Amora).** Orders and revenue from the site: an `order_completed`
-event with amount and currency, a cart funnel, revenue per campaign. Designed
-when Amora's shop is chosen.
+**6. Webshops.** Built: orders and revenue on the website's page.
+- A shop names its order event as the `highlight`, usually `order_completed`,
+  and sends it with a numeric `amount` and a `currency` prop (an ISO code such
+  as `BAM`). Nothing else changes: no catalog key, no migration, no new
+  endpoint. A goal event without `amount` still counts as a goal visit and adds
+  nothing to revenue.
+- `/admin/apps/:app/web` adds `revenue`: orders and revenue per currency
+  against the period before, and by source and by campaign. `null` when no
+  goal event in either period carried an amount.
+- Attribution: each order counts for the last visit of the same visitor, at
+  most 30 days before it, that came from a tagged link or another site; else
+  direct. A shopper who clicks an ad on Monday and comes back by typing the
+  address on Friday counts for the ad. Visits and orders stay unlinked to
+  anything outside hush; only totals leave the query.
+- The overview's card of a shop shows its revenue and orders where another
+  site shows new visitors and goal visits (`goal.revenue` on `/admin/apps`).
+- Funnels: a website shows the funnels its catalog names, counted in
+  visitors (a shop's cart: `session_started`, `product_viewed`, `cart_added`,
+  `checkout_started`, `order_completed`). A website gets no default funnel:
+  the paywall funnel is an app's.
+- The iOS app shows the same: the card's revenue, the revenue section and the
+  site's funnels.
+- Not built: refunds and cancelled orders (a cash-on-delivery order the
+  customer refuses still counts), and ad spend beside revenue.
 
 Each phase updates the README, `docs/site/docs.md` and the plugin.
 
@@ -163,5 +187,3 @@ Each phase updates the README, `docs/site/docs.md` and the plugin.
   storing it. The stored id is device storage under ePrivacy.
 - Android: Google Play's install referrer, carried from the store link into
   the React Native SDK.
-- Deleting the `tennis` installs that only ever sent `landing` events, once
-  Rallo's site reports to `rallo-site` (counted first).

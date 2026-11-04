@@ -47,7 +47,7 @@ export async function summary({ days, env }) {
   });
   const byApp = new Map();
   for (const r of daily) byApp.set(`${r.app} ${r.day}`, r.n);
-  // A website's visits that reached its goal, for its card; null for an app.
+  // A website's visits that reached its goal, and a shop's revenue, for its card; null for an app.
   const goals = new Map();
   for (const a of rows) {
     const goal = goalOf(a.app);
@@ -57,7 +57,17 @@ export async function summary({ days, env }) {
        WHERE app = $1 AND env = $2 AND name = $3 AND at >= now() - make_interval(days => $4)`,
       [a.app, env, goal, days],
     );
-    goals.set(a.app, { event: goal, visits: g.n });
+    // A shop's orders: goal events with an amount, per currency; null without any.
+    const { rows: money } = await q(
+      `SELECT COALESCE(NULLIF(props->>'currency', ''), '') AS currency, count(*)::int AS orders,
+         round(sum((props->>'amount')::numeric), 2)::float8 AS revenue
+       FROM events
+       WHERE app = $1 AND env = $2 AND name = $3 AND jsonb_typeof(props->'amount') = 'number'
+         AND at >= now() - make_interval(days => $4)
+       GROUP BY 1 ORDER BY revenue DESC`,
+      [a.app, env, goal, days],
+    );
+    goals.set(a.app, { event: goal, visits: g.n, revenue: money.length ? money : null });
   }
   return rows.map((a) => ({ ...a, ...kindFields(a.app), goal: goals.get(a.app) ?? null, trend: dayKeys.map((k) => byApp.get(`${a.app} ${k}`) ?? 0) }));
 }

@@ -11,7 +11,8 @@ it). A website is shown apart, in its own section of the Overview and on a
 page of its own: visitors, visits, engaged visits and its goal (a store
 click unless the catalog names another) with its rate, by source, campaign,
 landing page and device, then its pages, countries, store clicks and links
-out. Never as installs, and never in the apps' totals. It edits remote config (with a preview of what a device gets, the
+out. A shop (orders with an amount) also shows its revenue on the card and
+the page, by source and campaign, and its catalog's funnels. Never as installs, and never in the apps' totals. It edits remote config (with a preview of what a device gets, the
 history and a revert), lists and revokes the server's phones and signs in
 another with a QR code, notifies the phone of new feedback and replies
 (answered or closed from the notification), looks up an install by its id, and has a Feedback tab to read,
@@ -56,8 +57,9 @@ opens Phones. `HeaderTests` checks the headers while scrolling (titles
 stay, pinned filters stay in reach, the title's menu changes the filters);
 `ScrollShots` saves every screen's header at rest and mid-scroll, to check
 by eye. Run both on iOS 18 and iOS 26: their bars differ. `AppTests` walks an app's screens;
-`WebsiteTests` the demo's website (`stillwater-site`, which sells Stillwater)
-and Stillwater's Websites screen; `TEST_RUNNER_HUSH_DEMO_URL` points it at a
+`WebsiteTests` the demo's website (`stillwater-site`, which sells Stillwater),
+its shop (`stillwater-shop`: revenue on the card and the page, the cart
+funnel) and Stillwater's Websites screen; `TEST_RUNNER_HUSH_DEMO_URL` points it at a
 local `DEMO=1` server in place of the live demo; `TEST_RUNNER_INSTALL_ID`, an install id
 from one of the demo's tickets, adds a look at a real install. With
 `TEST_RUNNER_SCREENSHOTS_DIR=<dir>` on the `xcodebuild test` line they save

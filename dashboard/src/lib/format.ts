@@ -28,6 +28,8 @@ export const humanize = (s: string) => s.replace(/_/g, ' ')
 
 /** What a website's visit that reached its goal did: "store click", or the catalog's event in words. */
 export const goalName = (event: string) => (event === 'store_clicked' ? 'store click' : humanize(event))
+/** "a store click", "an order completed". */
+export const withArticle = (noun: string) => `${/^[aeiou]/i.test(noun) ? 'an' : 'a'} ${noun}`
 
 /** Seconds as "45 s", "3 min 20 s", "1 h 5 min". */
 export function duration(s: number | null | undefined) {

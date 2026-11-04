@@ -14,13 +14,15 @@ import { Stat } from '@/components/Stat'
 import { BlurFade } from '@/components/ui/blur-fade'
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { WebReport, WebSplit, WebsitesForApp } from '@/lib/api'
+import type { WebMoney, WebReport, WebRevenue, WebSplit, WebsitesForApp } from '@/lib/api'
 import { isInactive, useApps } from '@/lib/apps'
 import { useApi } from '@/lib/data'
-import { countryName, flag, goalName, humanize, num, pct, plural, shortDay, when } from '@/lib/format'
+import { countryName, flag, goalName, humanize, num, pct, plural, shortDay, when, withArticle } from '@/lib/format'
+import { amount } from '@/lib/money'
 import { href } from '@/lib/route'
 import { usePrefs } from '@/lib/session'
 import { Panel } from '@/pages/AppPage'
+import { FunnelPicker, useCatalogFunnels } from '@/pages/Funnels'
 import { ErrorNote } from '@/pages/ErrorNote'
 
 const DEVICE: Record<string, string> = { phone: 'Phone', tablet: 'Tablet', desktop: 'Desktop' }
@@ -84,7 +86,7 @@ function SplitTable<T extends WebSplit>({
             <th className={th} title="More than a glance: a second page, a click, or ten seconds in view">
               Engaged
             </th>
-            <th className={th} title={`Visits with a ${goal}`}>
+            <th className={th} title={`Visits with ${withArticle(goal)}`}>
               {goal.charAt(0).toUpperCase() + goal.slice(1)} rate
             </th>
           </tr>
@@ -107,6 +109,96 @@ function SplitTable<T extends WebSplit>({
         </tbody>
       </table>
     </div>
+  )
+}
+
+function MoneyTable<T extends WebMoney>({ rows, head, label, empty }: { rows: T[]; head: string; label: (r: T) => ReactNode; empty: string }) {
+  if (!rows.length) return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
+  const max = Math.max(1, ...rows.map((r) => r.revenue))
+  const th = 'px-2 py-2 text-right font-medium'
+  return (
+    <div className="-mx-1 overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left text-xs text-muted-foreground">
+            <th className="py-2 pr-2 pl-1 font-medium">{head}</th>
+            <th className={th}>Orders</th>
+            <th className={th}>Revenue</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} className="border-b last:border-0">
+              <td className="relative py-2 pr-2 pl-1">
+                <div aria-hidden className="absolute inset-y-1 left-0 rounded bg-chart-2/15" style={{ width: `${Math.max(2, (r.revenue / max) * 100)}%` }} />
+                <span className="relative flex min-w-0 items-center gap-2 truncate">{label(r)}</span>
+              </td>
+              <td className="px-2 py-2 text-right tabular-nums">{num(r.orders)}</td>
+              <td className="px-2 py-2 text-right font-medium tabular-nums">{amount(r.revenue, r.currency)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/** The funnels a website's catalog names (a shop's cart, say), counted in visitors; nothing when it names none. */
+function SiteFunnels({ slug }: { slug: string }) {
+  const data = useCatalogFunnels(slug)
+  if (!data?.funnels.length) return null
+  return (
+    <Panel title="Funnels" sub="Visitors through each step in order, and how long each step took">
+      <FunnelPicker funnels={data.funnels} />
+    </Panel>
+  )
+}
+
+/** A shop's orders and revenue, each order counted for the source that brought the shopper. */
+function Revenue({ r }: { r: WebRevenue }) {
+  // The busiest currency leads the cards; a shop selling in one has just that one.
+  const now = r.current[0] ?? { currency: r.prior[0]?.currency ?? '', orders: 0, revenue: 0 }
+  const before = r.prior.find((m) => m.currency === now.currency) ?? { currency: now.currency, orders: 0, revenue: 0 }
+  const others = r.current.slice(1)
+  const avg = (m: WebMoney) => (m.orders ? m.revenue / m.orders : 0)
+  const sub = `Each order counts for the last visit, within ${r.lookback_days} days before it, that came from a tagged link or another site`
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        <Stat
+          label="Revenue"
+          value={now.revenue}
+          before={before.revenue}
+          text={amount(now.revenue, now.currency)}
+          hint={others.length ? `and ${others.map((m) => amount(m.revenue, m.currency)).join(', ')}` : undefined}
+        />
+        <Stat label="Orders" value={now.orders} before={before.orders} />
+        <Stat label="Average order" value={avg(now)} before={avg(before)} text={amount(Math.round(avg(now) * 100) / 100, now.currency)} />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel title="Revenue by source" sub={sub}>
+          <MoneyTable
+            rows={r.sources}
+            head="Source"
+            empty="No orders in this period."
+            label={(m) => <span className="truncate">{m.source === 'direct' ? 'Direct' : humanize(m.source)}</span>}
+          />
+        </Panel>
+        <Panel title="Revenue by campaign" sub="Orders whose source was a tagged link, by its utm_campaign">
+          <MoneyTable
+            rows={r.campaigns}
+            head="Campaign"
+            empty="No orders from tagged links in this period."
+            label={(m) => (
+              <>
+                <span className="truncate">{humanize(m.campaign)}</span>
+                <span className="truncate text-xs text-muted-foreground">{humanize(m.source)}</span>
+              </>
+            )}
+          />
+        </Panel>
+      </div>
+    </>
   )
 }
 
@@ -177,7 +269,7 @@ export function WebsitePage({ slug }: { slug: string }) {
               <Stat label="New visitors" value={c.new_visitors} before={p.new_visitors} />
               <Stat label="Visits" value={c.visits} before={p.visits} />
               <Stat label="Engaged visits" value={c.engaged} text={pct(c.engaged, c.visits)} hint={`${num(c.engaged)} of ${num(c.visits)}`} />
-              <Stat label={`Visits with a ${goal}`} value={c.goal_visits} before={p.goal_visits} />
+              <Stat label={`Visits with ${withArticle(goal)}`} value={c.goal_visits} before={p.goal_visits} />
               <Stat label={`${goal} rate`} value={c.goal_visits} text={pct(c.goal_visits, c.visits)} hint={`${plural(c.goal_visitors, 'visitor')}`} />
             </div>
           </BlurFade>
@@ -204,7 +296,7 @@ export function WebsitePage({ slug }: { slug: string }) {
                     <span className="h-0.5 w-3 bg-chart-3" /> New visitors
                   </span>
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="h-0.5 w-3 bg-chart-2" /> Visits with a {goal}
+                    <span className="h-0.5 w-3 bg-chart-2" /> Visits with {withArticle(goal)}
                   </span>
                 </span>
               }
@@ -212,6 +304,16 @@ export function WebsitePage({ slug }: { slug: string }) {
               <Visitors daily={d.daily} />
             </Panel>
           </BlurFade>
+
+          {d.revenue && (
+            <BlurFade delay={0.08} duration={0.3}>
+              <div className="flex flex-col gap-4">
+                <Revenue r={d.revenue} />
+              </div>
+            </BlurFade>
+          )}
+
+          <SiteFunnels slug={slug} />
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Sources" sub="A link's utm_source, else the site that sent the visit, else direct">
@@ -248,7 +350,14 @@ export function WebsitePage({ slug }: { slug: string }) {
             <Panel title="Landing pages" sub="The page each visit began on">
               <SplitTable rows={d.landing} head="Page" goal={goal} empty="No pages in this period." label={(r) => code(r.page)} />
             </Panel>
-            <Panel title="Devices" sub={`A store link leads to an app only on a phone or tablet: compare the ${goal} rate there`}>
+            <Panel
+              title="Devices"
+              sub={
+                d.goal.event === 'store_clicked'
+                  ? `A store link leads to an app only on a phone or tablet: compare the ${goal} rate there`
+                  : `Phone, tablet or desktop, each with its ${goal} rate`
+              }
+            >
               <SplitTable rows={d.devices} head="Device" goal={goal} empty="No visits in this period." label={(r) => <span>{DEVICE[r.device] ?? r.device}</span>} />
             </Panel>
           </div>

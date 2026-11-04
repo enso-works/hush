@@ -19,10 +19,10 @@ after(async () => {
   await db?.drop();
 });
 
-test('the showcase is seeded: three apps with installs, events and feedback, one gone quiet, and a website', async () => {
+test('the showcase is seeded: three apps with installs, events and feedback, one gone quiet, a website and a shop', async () => {
   const apps = await client(srv.base).get('/admin/apps?days=30');
   assert.equal(apps.status, 200, 'readable without a token');
-  assert.deepEqual(apps.json.apps.map((a) => a.app).sort(), ['driftwood', 'pace', 'stillwater', 'stillwater-site', 'tally']);
+  assert.deepEqual(apps.json.apps.map((a) => a.app).sort(), ['driftwood', 'pace', 'stillwater', 'stillwater-shop', 'stillwater-site', 'tally']);
   for (const a of apps.json.apps.filter((x) => x.app !== 'driftwood')) assert.ok(a.total_installs > 100 && a.events > 0, `${a.app} has data`);
   // The website sells Stillwater: visitors from search, an ad and a newsletter, store clicks by campaign.
   const site = apps.json.apps.find((a) => a.app === 'stillwater-site');
@@ -37,6 +37,19 @@ test('the showcase is seeded: three apps with installs, events and feedback, one
   assert.ok(phone.goal_visits / phone.visits > desktop.goal_visits / desktop.visits, 'phones click through to a store, desktops rarely');
   const sold = (await client(srv.base).get('/admin/apps/stillwater/websites?days=30')).json;
   assert.ok(sold.campaigns.find((c) => c.campaign === 'meta_autumn').app_store.first_downloads > 0, "the ad's campaign beside Apple's count for it");
+  // The shop: orders with an amount, so revenue on its card and its page, by source and campaign.
+  const shop = apps.json.apps.find((a) => a.app === 'stillwater-shop');
+  assert.deepEqual([shop.kind, shop.promotes, shop.goal.event], ['website', [], 'order_completed']);
+  assert.equal(shop.goal.revenue.length, 1);
+  assert.equal(shop.goal.revenue[0].currency, 'EUR');
+  assert.ok(shop.goal.revenue[0].orders > 20 && shop.goal.revenue[0].revenue > 1000, JSON.stringify(shop.goal.revenue));
+  const sales = (await client(srv.base).get('/admin/apps/stillwater-shop/web?days=30')).json.revenue;
+  assert.deepEqual(sales.current, shop.goal.revenue);
+  assert.ok(sales.sources.some((x) => x.source === 'meta') && sales.sources.some((x) => x.source === 'direct'));
+  assert.deepEqual(sales.campaigns.map((c) => c.campaign).sort(), ['autumn_launch', 'meta_autumn']);
+  const [cart] = (await client(srv.base).get('/admin/apps/stillwater-shop/funnels?days=30')).json.funnels;
+  assert.equal(cart.name, 'Shop');
+  assert.ok(cart.steps.at(-1).installs > 0 && cart.steps.at(-1).installs < cart.steps[0].installs, 'some visitors reach an order');
   // Driftwood stopped 45 days ago: nothing in the last 30, but it has a past.
   const quiet = apps.json.apps.find((a) => a.app === 'driftwood');
   assert.equal(quiet.mau, 0);
