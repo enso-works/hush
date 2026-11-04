@@ -345,6 +345,7 @@ r.get('/admin/apps/:app/campaigns', async (_req, res, { url, params }) => {
     if (typeof steps === 'string') return json(res, 400, { error: steps });
   } else {
     const all = funnelsOf(params.app);
+    if (!all.length) return json(res, 400, { error: 'no funnels in the catalog for this app; pass step= to build one' });
     const f = all[Math.min(Math.max(Number(url.searchParams.get('funnel') ?? 0) || 0, 0), all.length - 1)];
     steps = f.steps.filter((st, i) => !(i === 0 && (st.event === 'app_first_opened' || st.event === 'session_started')));
     if (!url.searchParams.get('window')) windowDays = f.window_days;

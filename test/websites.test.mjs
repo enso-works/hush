@@ -13,7 +13,12 @@ const CATALOG_FILE = join(tmpdir(), 'hush-test-websites.json');
 writeFileSync(CATALOG_FILE, JSON.stringify({
   'rallo-site': { kind: 'website', promotes: ['tennis'] },
   'braele-site': { kind: 'website', promotes: ['braele', 'tennis'] },
-  'shop-site': { kind: 'website', events: ['order_completed'], highlight: { event: 'order_completed' } },
+  'shop-site': {
+    kind: 'website',
+    events: ['order_completed'],
+    highlight: { event: 'order_completed' },
+    funnels: [{ name: 'Shop', steps: ['session_started', 'order_completed'] }],
+  },
   tennis: { events: ['match_started'] },
 }));
 
@@ -250,7 +255,7 @@ describe('a website\'s reports', () => {
   test("the overview counts a website's goal; an app has none", async () => {
     const { json } = await admin(srv.base).get('/admin/apps?days=7');
     const bySlug = Object.fromEntries(json.apps.map((a) => [a.app, a]));
-    assert.deepEqual(bySlug['braele-site'].goal, { event: 'store_clicked', visits: 1 });
+    assert.deepEqual(bySlug['braele-site'].goal, { event: 'store_clicked', visits: 1, revenue: null });
     assert.equal(bySlug.tennis.goal, null);
   });
 
@@ -306,6 +311,23 @@ describe("a shop's orders and revenue", () => {
       { source: 'direct', currency: 'BAM', orders: 1, revenue: 20 },
     ]);
     assert.deepEqual(revenue.campaigns, [{ campaign: 'autumn', source: 'meta', currency: 'BAM', orders: 2, revenue: 75 }]);
+  });
+
+  test("the overview's card carries the shop's revenue for the period", async () => {
+    const { json } = await admin(srv.base).get('/admin/apps?days=7');
+    const shop = json.apps.find((a) => a.app === 'shop-site');
+    assert.deepEqual(shop.goal, { event: 'order_completed', visits: 5, revenue: [{ currency: 'BAM', orders: 4, revenue: 125.5 }] });
+  });
+
+  test("a website's funnels are its catalog's, and no paywall funnel by default", async () => {
+    const shop = await admin(srv.base).get('/admin/apps/shop-site/funnels?days=7');
+    assert.equal(shop.status, 200);
+    assert.deepEqual(shop.json.funnels.map((f) => f.name), ['Shop']);
+    assert.deepEqual(shop.json.funnels[0].steps.map((s) => [s.event, s.installs]), [['session_started', 5], ['order_completed', 5]]);
+    const site = await admin(srv.base).get('/admin/apps/braele-site/funnels?days=7');
+    assert.deepEqual(site.json.funnels, []);
+    const byCampaign = await admin(srv.base).get('/admin/apps/braele-site/campaigns?days=7');
+    assert.equal(byCampaign.status, 400, 'no catalog funnel to run by campaign');
   });
 
   test('a shorter period leaves out older orders but keeps their source', async () => {
