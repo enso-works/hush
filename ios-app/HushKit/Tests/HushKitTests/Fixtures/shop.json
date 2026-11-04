@@ -1,0 +1,540 @@
+{
+  "app": "stillwater-shop",
+  "goal": {
+    "event": "order_completed"
+  },
+  "current": {
+    "visitors": 749,
+    "visits": 1206,
+    "engaged": 1020,
+    "pageviews": 2906,
+    "goal_visits": 113,
+    "goal_visitors": 102,
+    "new_visitors": 687
+  },
+  "prior": {
+    "visitors": 413,
+    "visits": 575,
+    "engaged": 486,
+    "pageviews": 1401,
+    "goal_visits": 49,
+    "goal_visitors": 43,
+    "new_visitors": 413
+  },
+  "daily": [
+    {
+      "day": "2026-10-05",
+      "visitors": 27,
+      "visits": 28,
+      "goal_visits": 3,
+      "new_visitors": 19
+    },
+    {
+      "day": "2026-10-06",
+      "visitors": 27,
+      "visits": 28,
+      "goal_visits": 4,
+      "new_visitors": 16
+    },
+    {
+      "day": "2026-10-07",
+      "visitors": 24,
+      "visits": 24,
+      "goal_visits": 2,
+      "new_visitors": 15
+    },
+    {
+      "day": "2026-10-08",
+      "visitors": 26,
+      "visits": 26,
+      "goal_visits": 4,
+      "new_visitors": 18
+    },
+    {
+      "day": "2026-10-09",
+      "visitors": 28,
+      "visits": 29,
+      "goal_visits": 3,
+      "new_visitors": 18
+    },
+    {
+      "day": "2026-10-10",
+      "visitors": 31,
+      "visits": 31,
+      "goal_visits": 1,
+      "new_visitors": 19
+    },
+    {
+      "day": "2026-10-11",
+      "visitors": 22,
+      "visits": 22,
+      "goal_visits": 1,
+      "new_visitors": 15
+    },
+    {
+      "day": "2026-10-12",
+      "visitors": 29,
+      "visits": 29,
+      "goal_visits": 4,
+      "new_visitors": 18
+    },
+    {
+      "day": "2026-10-13",
+      "visitors": 35,
+      "visits": 35,
+      "goal_visits": 3,
+      "new_visitors": 23
+    },
+    {
+      "day": "2026-10-14",
+      "visitors": 28,
+      "visits": 28,
+      "goal_visits": 3,
+      "new_visitors": 22
+    },
+    {
+      "day": "2026-10-15",
+      "visitors": 30,
+      "visits": 30,
+      "goal_visits": 4,
+      "new_visitors": 22
+    },
+    {
+      "day": "2026-10-16",
+      "visitors": 28,
+      "visits": 28,
+      "goal_visits": 4,
+      "new_visitors": 19
+    },
+    {
+      "day": "2026-10-17",
+      "visitors": 37,
+      "visits": 37,
+      "goal_visits": 2,
+      "new_visitors": 21
+    },
+    {
+      "day": "2026-10-18",
+      "visitors": 35,
+      "visits": 36,
+      "goal_visits": 0,
+      "new_visitors": 24
+    },
+    {
+      "day": "2026-10-19",
+      "visitors": 33,
+      "visits": 33,
+      "goal_visits": 7,
+      "new_visitors": 17
+    },
+    {
+      "day": "2026-10-20",
+      "visitors": 26,
+      "visits": 27,
+      "goal_visits": 1,
+      "new_visitors": 16
+    },
+    {
+      "day": "2026-10-21",
+      "visitors": 33,
+      "visits": 33,
+      "goal_visits": 3,
+      "new_visitors": 21
+    },
+    {
+      "day": "2026-10-22",
+      "visitors": 26,
+      "visits": 26,
+      "goal_visits": 1,
+      "new_visitors": 12
+    },
+    {
+      "day": "2026-10-23",
+      "visitors": 32,
+      "visits": 34,
+      "goal_visits": 4,
+      "new_visitors": 17
+    },
+    {
+      "day": "2026-10-24",
+      "visitors": 30,
+      "visits": 30,
+      "goal_visits": 3,
+      "new_visitors": 15
+    },
+    {
+      "day": "2026-10-25",
+      "visitors": 34,
+      "visits": 35,
+      "goal_visits": 3,
+      "new_visitors": 20
+    },
+    {
+      "day": "2026-10-26",
+      "visitors": 45,
+      "visits": 46,
+      "goal_visits": 2,
+      "new_visitors": 33
+    },
+    {
+      "day": "2026-10-27",
+      "visitors": 45,
+      "visits": 45,
+      "goal_visits": 2,
+      "new_visitors": 24
+    },
+    {
+      "day": "2026-10-28",
+      "visitors": 40,
+      "visits": 40,
+      "goal_visits": 4,
+      "new_visitors": 22
+    },
+    {
+      "day": "2026-10-29",
+      "visitors": 46,
+      "visits": 48,
+      "goal_visits": 4,
+      "new_visitors": 25
+    },
+    {
+      "day": "2026-10-30",
+      "visitors": 50,
+      "visits": 50,
+      "goal_visits": 5,
+      "new_visitors": 31
+    },
+    {
+      "day": "2026-10-31",
+      "visitors": 50,
+      "visits": 51,
+      "goal_visits": 4,
+      "new_visitors": 27
+    },
+    {
+      "day": "2026-11-01",
+      "visitors": 81,
+      "visits": 85,
+      "goal_visits": 8,
+      "new_visitors": 37
+    },
+    {
+      "day": "2026-11-02",
+      "visitors": 85,
+      "visits": 92,
+      "goal_visits": 13,
+      "new_visitors": 40
+    },
+    {
+      "day": "2026-11-03",
+      "visitors": 104,
+      "visits": 120,
+      "goal_visits": 11,
+      "new_visitors": 61
+    }
+  ],
+  "sources": [
+    {
+      "source": "direct",
+      "kind": "direct",
+      "visits": 571,
+      "visitors": 379,
+      "engaged": 486,
+      "goal_visits": 53
+    },
+    {
+      "source": "google.com",
+      "kind": "referrer",
+      "visits": 193,
+      "visitors": 183,
+      "engaged": 155,
+      "goal_visits": 14
+    },
+    {
+      "source": "meta",
+      "kind": "tag",
+      "visits": 166,
+      "visitors": 157,
+      "engaged": 145,
+      "goal_visits": 21
+    },
+    {
+      "source": "newsletter",
+      "kind": "tag",
+      "visits": 87,
+      "visitors": 84,
+      "engaged": 77,
+      "goal_visits": 7
+    },
+    {
+      "source": "instagram.com",
+      "kind": "referrer",
+      "visits": 77,
+      "visitors": 74,
+      "engaged": 64,
+      "goal_visits": 6
+    },
+    {
+      "source": "reddit.com",
+      "kind": "referrer",
+      "visits": 72,
+      "visitors": 71,
+      "engaged": 63,
+      "goal_visits": 9
+    },
+    {
+      "source": "producthunt.com",
+      "kind": "referrer",
+      "visits": 40,
+      "visitors": 40,
+      "engaged": 30,
+      "goal_visits": 3
+    }
+  ],
+  "campaigns": [
+    {
+      "campaign": "meta_autumn",
+      "source": "meta",
+      "visits": 166,
+      "visitors": 157,
+      "engaged": 145,
+      "goal_visits": 21
+    },
+    {
+      "campaign": "autumn_launch",
+      "source": "newsletter",
+      "visits": 87,
+      "visitors": 84,
+      "engaged": 77,
+      "goal_visits": 7
+    }
+  ],
+  "landing": [
+    {
+      "page": "/",
+      "visits": 1206,
+      "engaged": 1020,
+      "goal_visits": 113
+    }
+  ],
+  "pages": [
+    {
+      "page": "/",
+      "views": 1206,
+      "visitors": 749
+    },
+    {
+      "page": "/shop/travel-cushion",
+      "views": 292,
+      "visitors": 222
+    },
+    {
+      "page": "/shop/incense-sampler",
+      "views": 292,
+      "visitors": 226
+    },
+    {
+      "page": "/shop/candle-set",
+      "views": 285,
+      "visitors": 231
+    },
+    {
+      "page": "/shop/gift-card",
+      "views": 279,
+      "visitors": 209
+    },
+    {
+      "page": "/shop/meditation-cushion",
+      "views": 275,
+      "visitors": 210
+    },
+    {
+      "page": "/checkout",
+      "views": 164,
+      "visitors": 144
+    },
+    {
+      "page": "/checkout/thanks",
+      "views": 113,
+      "visitors": 102
+    }
+  ],
+  "devices": [
+    {
+      "device": "phone",
+      "visits": 697,
+      "visitors": 438,
+      "engaged": 603,
+      "goal_visits": 68
+    },
+    {
+      "device": "desktop",
+      "visits": 419,
+      "visitors": 258,
+      "engaged": 346,
+      "goal_visits": 37
+    },
+    {
+      "device": "tablet",
+      "visits": 90,
+      "visitors": 53,
+      "engaged": 71,
+      "goal_visits": 8
+    }
+  ],
+  "countries": [
+    {
+      "country": "US",
+      "visitors": 219
+    },
+    {
+      "country": "DE",
+      "visitors": 111
+    },
+    {
+      "country": "GB",
+      "visitors": 100
+    },
+    {
+      "country": "FR",
+      "visitors": 55
+    },
+    {
+      "country": "NL",
+      "visitors": 48
+    },
+    {
+      "country": "CA",
+      "visitors": 45
+    },
+    {
+      "country": "AU",
+      "visitors": 37
+    },
+    {
+      "country": "DK",
+      "visitors": 32
+    },
+    {
+      "country": "IT",
+      "visitors": 31
+    },
+    {
+      "country": "JP",
+      "visitors": 30
+    },
+    {
+      "country": "SE",
+      "visitors": 23
+    },
+    {
+      "country": "ES",
+      "visitors": 18
+    }
+  ],
+  "stores": [],
+  "links": [],
+  "events": [
+    {
+      "name": "product_viewed",
+      "known": true,
+      "n": 1423,
+      "visitors": 572
+    },
+    {
+      "name": "cart_added",
+      "known": true,
+      "n": 329,
+      "visitors": 212
+    },
+    {
+      "name": "checkout_started",
+      "known": true,
+      "n": 164,
+      "visitors": 144
+    },
+    {
+      "name": "order_completed",
+      "known": true,
+      "n": 113,
+      "visitors": 102
+    }
+  ],
+  "revenue": {
+    "lookback_days": 30,
+    "current": [
+      {
+        "currency": "EUR",
+        "orders": 113,
+        "revenue": 6638
+      }
+    ],
+    "prior": [
+      {
+        "currency": "EUR",
+        "orders": 49,
+        "revenue": 2671
+      }
+    ],
+    "sources": [
+      {
+        "source": "meta",
+        "currency": "EUR",
+        "orders": 34,
+        "revenue": 2238
+      },
+      {
+        "source": "google.com",
+        "currency": "EUR",
+        "orders": 27,
+        "revenue": 1477
+      },
+      {
+        "source": "reddit.com",
+        "currency": "EUR",
+        "orders": 14,
+        "revenue": 762
+      },
+      {
+        "source": "direct",
+        "currency": "EUR",
+        "orders": 13,
+        "revenue": 729
+      },
+      {
+        "source": "newsletter",
+        "currency": "EUR",
+        "orders": 10,
+        "revenue": 722
+      },
+      {
+        "source": "instagram.com",
+        "currency": "EUR",
+        "orders": 10,
+        "revenue": 485
+      },
+      {
+        "source": "producthunt.com",
+        "currency": "EUR",
+        "orders": 5,
+        "revenue": 225
+      }
+    ],
+    "campaigns": [
+      {
+        "campaign": "meta_autumn",
+        "source": "meta",
+        "currency": "EUR",
+        "orders": 34,
+        "revenue": 2238
+      },
+      {
+        "campaign": "autumn_launch",
+        "source": "newsletter",
+        "currency": "EUR",
+        "orders": 10,
+        "revenue": 722
+      }
+    ]
+  }
+}

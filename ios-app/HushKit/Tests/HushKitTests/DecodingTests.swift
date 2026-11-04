@@ -240,3 +240,38 @@ func dates(_ s: String) throws {
         """.utf8))
     #expect(site.goal == .init(event: "store_clicked", visits: 1))
 }
+
+@Test func aShopsOrdersAndRevenue() throws {
+    let shop = try decode(WebReport.self, "shop")
+    #expect(shop.goal.event == "order_completed")
+    let revenue = try #require(shop.revenue)
+    #expect(revenue.lookbackDays == 30)
+    let now = try #require(revenue.current.first)
+    #expect(now.currency == "EUR" && now.orders == shop.current.goalVisits && now.revenue > 0)
+    // By source: each a label with no detail; direct is one of them.
+    #expect(revenue.sources.contains { $0.label == "direct" && $0.detail == nil })
+    #expect(revenue.sources.reduce(0) { $0 + $1.orders } == now.orders)
+    // By campaign: the campaign, with its source as the detail.
+    let autumn = try #require(revenue.campaigns.first { $0.label == "meta_autumn" })
+    #expect(autumn.detail == "meta" && autumn.currency == "EUR" && autumn.orders > 0)
+}
+
+@Test func aSiteWithoutOrdersAndAnOlderServerHaveNoRevenue() throws {
+    // web.json comes from a server before webshops: no revenue key at all.
+    #expect(try decode(WebReport.self, "web").revenue == nil)
+}
+
+@Test func aShopsRevenueOnTheList() throws {
+    let shop = try HushJSON.decoder.decode(AppSummary.self, from: Data("""
+        {"app": "shop", "name": "Shop", "new_installs": 3, "total_installs": 3, "dau": 1, "wau": 3, "mau": 3,
+         "sessions": 4, "events": 9, "open_tickets": 0, "last_event": null, "kind": "website", "promotes": [],
+         "goal": {"event": "order_completed", "visits": 2, "revenue": [{"currency": "EUR", "orders": 2, "revenue": 74.5}]}}
+        """.utf8))
+    #expect(shop.goal?.revenue == [OrderTotal(currency: "EUR", orders: 2, revenue: 74.5)])
+    let site = try HushJSON.decoder.decode(AppSummary.self, from: Data("""
+        {"app": "site", "name": "Site", "new_installs": 3, "total_installs": 3, "dau": 1, "wau": 3, "mau": 3,
+         "sessions": 4, "events": 9, "open_tickets": 0, "last_event": null, "kind": "website", "promotes": ["x"],
+         "goal": {"event": "store_clicked", "visits": 1, "revenue": null}}
+        """.utf8))
+    #expect(site.goal?.revenue == nil)
+}

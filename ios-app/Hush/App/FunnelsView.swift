@@ -30,6 +30,8 @@ struct FunnelsView: View {
 /// and the time it took; the step that loses the most is marked.
 struct FunnelSteps: View {
     let steps: [FunnelStep]
+    /// What one count is: an install, or on a website a visitor.
+    var unit = "install"
     @Environment(\.redactionReasons) private var redaction
 
     var body: some View {
@@ -65,7 +67,7 @@ struct FunnelSteps: View {
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Step \(i + 1), \(s.label)")
-                    .accessibilityValue([plural(s.installs, "install"), i > 0 ? caption(i) : nil].compactMap(\.self).joined(separator: ", "))
+                    .accessibilityValue([plural(s.installs, unit), i > 0 ? caption(i) : nil].compactMap(\.self).joined(separator: ", "))
                 }
                 if let last = steps.last {
                     Text("**\(percent(last.installs, of: top))** made it from the first step to the last.")

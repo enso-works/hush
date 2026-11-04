@@ -205,7 +205,8 @@ private struct Websites: View {
 }
 
 /// A website's card: round, with a globe, visitors rather than installs, and
-/// its goal, the number that says whether the site does its job.
+/// its goal, the number that says whether the site does its job; a shop's
+/// card adds its revenue.
 private struct WebsiteCard: View {
     let site: AppSummary
     let sells: [String]
@@ -215,6 +216,9 @@ private struct WebsiteCard: View {
     var body: some View {
         let goal = goalName(site.goal?.event ?? "store_clicked")
         let goals = site.goal?.visits ?? 0
+        // A shop's card puts its revenue (the busiest currency) where the others show new visitors.
+        let second = site.goal?.revenue?.first.map { ("Revenue", money($0.revenue, $0.currency, whole: true)) }
+            ?? ("New", site.newInstalls.formatted())
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
                 AppMark(slug: site.app, name: site.name, website: true)
@@ -245,8 +249,8 @@ private struct WebsiteCard: View {
             }
             Divider()
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: typeSize.isAccessibilitySize ? 2 : 4), spacing: 10) {
-                ForEach([("Visits", site.sessions.formatted()), ("New", site.newInstalls.formatted()),
-                         ("\(goal.prefix(1).uppercased() + goal.dropFirst())s", goals.formatted()), ("Rate", percent(goals, of: site.sessions))], id: \.0) { label, value in
+                ForEach([("Visits", site.sessions.formatted()), second,
+                         (site.goal?.revenue != nil ? "Orders" : "\(goal.prefix(1).uppercased() + goal.dropFirst())s", goals.formatted()), ("Rate", percent(goals, of: site.sessions))], id: \.0) { label, value in
                     VStack(spacing: 2) {
                         Text(label).font(.caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.7)
                         Text(value).font(.subheadline.weight(.semibold).monospacedDigit()).lineLimit(1).minimumScaleFactor(0.7)

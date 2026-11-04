@@ -29,7 +29,7 @@ struct WebsiteHome: View {
                     Stat(label: "New visitors", value: c.newVisitors.formatted(), change: change(c.newVisitors, p.newVisitors))
                     Stat(label: "Visits", value: c.visits.formatted(), change: change(c.visits, p.visits))
                     Stat(label: "Engaged visits", value: percent(c.engaged, of: c.visits))
-                    Stat(label: "Visits with a \(goal)", value: c.goalVisits.formatted(), change: change(c.goalVisits, p.goalVisits))
+                    Stat(label: "Visits with \(withArticle(goal))", value: c.goalVisits.formatted(), change: change(c.goalVisits, p.goalVisits))
                     Stat(label: "\(goal.prefix(1).uppercased() + goal.dropFirst()) rate", value: percent(c.goalVisits, of: c.visits))
                 }
                 if env == .prod, c.visits == 0 {
@@ -39,6 +39,10 @@ struct WebsiteHome: View {
                 Panel(title: "Visitors", trailing: Prefs.periodName(days)) {
                     VisitorsChart(daily: w.daily, goal: goal)
                 }
+                if let revenue = w.revenue {
+                    RevenueSection(revenue: revenue)
+                }
+                SiteFunnels(data: data, days: days, env: env)
                 Panel(title: "Sources", trailing: "Visits") {
                     SplitRows(rows: Array(w.sources.prefix(8)), goal: goal, empty: "No visits in this period.") { row in
                         row.detail == "referrer" ? row.label : row.label == "direct" ? "Direct" : eventLabel(row.label)
@@ -56,7 +60,9 @@ struct WebsiteHome: View {
                 }
                 Panel(title: "Devices", trailing: "Visits") {
                     SplitRows(rows: w.devices, goal: goal, empty: "No visits in this period.") { $0.label.prefix(1).uppercased() + $0.label.dropFirst() }
-                    Text("A store link leads to an app only on a phone or tablet: compare the \(goal) rate there.")
+                    Text(w.goal.event == "store_clicked"
+                         ? "A store link leads to an app only on a phone or tablet: compare the \(goal) rate there."
+                         : "Phone, tablet or desktop, each with its \(goal) rate.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: typeSize.isAccessibilitySize ? 320 : 150), spacing: 12)], spacing: 12) {
@@ -70,6 +76,102 @@ struct WebsiteHome: View {
                     }
                 }
                 .buttonStyle(Pressable())
+            }
+        }
+    }
+}
+
+/// The funnels a website's catalog names (a shop's cart, say), counted in
+/// visitors; nothing at all when it names none.
+private struct SiteFunnels: View {
+    let data: AppData
+    let days: Int
+    let env: Env
+
+    var body: some View {
+        Remote(key: data.key(days: days, env: env), height: 0) {
+            try await data.client.funnels(data.slug, data.scope(days: days, env: env))
+        } content: { funnels in
+            ForEach(funnels, id: \.name) { f in
+                Panel(title: f.name, trailing: "Within \(plural(f.windowDays, "day"))") {
+                    FunnelSteps(steps: f.steps, unit: "visitor")
+                }
+            }
+        }
+    }
+}
+
+/// A shop's orders and revenue against the period before, then by the
+/// source and the campaign that brought each order: the visitor's last
+/// visit, within the lookback, that came from a tagged link or another site.
+private struct RevenueSection: View {
+    let revenue: WebReport.Revenue
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        // The busiest currency leads the tiles; a shop selling in one has just that one.
+        let now = revenue.current.first ?? OrderTotal(currency: revenue.prior.first?.currency ?? "", orders: 0, revenue: 0)
+        let before = revenue.prior.first { $0.currency == now.currency } ?? OrderTotal(currency: now.currency, orders: 0, revenue: 0)
+        let average = { (t: OrderTotal) in t.orders > 0 ? t.revenue / Double(t.orders) : 0 }
+        LazyVGrid(columns: tileColumns(typeSize), spacing: 12) {
+            Stat(label: "Revenue", value: money(now.revenue, now.currency), change: change(now.revenue, before.revenue))
+            Stat(label: "Orders", value: now.orders.formatted(), change: change(now.orders, before.orders))
+            Stat(label: "Average order", value: money(average(now), now.currency), change: change(average(now), average(before)))
+        }
+        if revenue.current.count > 1 {
+            Text("Also \(revenue.current.dropFirst().map { money($0.revenue, $0.currency) }.formatted(.list(type: .and))).")
+                .font(.caption).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        Panel(title: "Revenue by source", trailing: "Revenue") {
+            MoneyRows(rows: Array(revenue.sources.prefix(8)), empty: "No orders in this period.") { row in
+                row.label == "direct" ? "Direct" : row.label.contains(".") ? row.label : eventLabel(row.label)
+            }
+            Text("Each order counts for the last visit, within \(revenue.lookbackDays) days before it, that came from a tagged link or another site.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        Panel(title: "Revenue by campaign", trailing: "Revenue") {
+            MoneyRows(rows: revenue.campaigns, empty: "No orders from tagged links in this period.") { row in
+                "\(eventLabel(row.label)) · \(row.detail ?? "")"
+            }
+        }
+    }
+}
+
+/// Sources or campaigns by the revenue they brought, with their orders.
+private struct MoneyRows: View {
+    let rows: [WebReport.Revenue.Row]
+    let empty: String
+    let label: (WebReport.Revenue.Row) -> String
+    @Environment(\.redactionReasons) private var redaction
+
+    var body: some View {
+        if rows.isEmpty {
+            EmptyNote(empty)
+        } else {
+            let top = max(rows.map(\.revenue).max() ?? 1, 1)
+            VStack(spacing: 12) {
+                ForEach(rows) { row in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(label(row)).font(.subheadline).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            Text(money(row.revenue, row.currency)).font(.subheadline.weight(.medium).monospacedDigit())
+                        }
+                        GeometryReader { g in
+                            Capsule().fill(.quaternary)
+                                .overlay(alignment: .leading) {
+                                    Capsule().fill(accent(redaction).opacity(0.75))
+                                        .frame(width: max(4, g.size.width * CGFloat(row.revenue / top)))
+                                }
+                        }
+                        .frame(height: 6)
+                        Text(plural(row.orders, "order")).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(label(row))
+                    .accessibilityValue("\(money(row.revenue, row.currency)), \(plural(row.orders, "order"))")
+                }
             }
         }
     }
@@ -158,7 +260,7 @@ private struct VisitorsChart: View {
         .accessibilityLabel("Visitors per day")
         HStack(spacing: 14) {
             Label("Visitors", systemImage: "circle.fill").foregroundStyle(accent(redaction))
-            Label("Visits with a \(goal)", systemImage: "line.diagonal").foregroundStyle(redaction.isEmpty ? Color.green : Color(.systemFill))
+            Label("Visits with \(withArticle(goal))", systemImage: "line.diagonal").foregroundStyle(redaction.isEmpty ? Color.green : Color(.systemFill))
         }
         .font(.caption)
         .labelStyle(LegendLabel())

@@ -56,6 +56,9 @@ public struct AppSummary: Decodable, Sendable, Identifiable, Hashable {
     public struct Goal: Decodable, Sendable, Hashable {
         public let event: String
         public let visits: Int
+        /// A shop's orders this period, per currency, the busiest first; nil
+        /// when no goal event carried an amount (or from a server before it).
+        public var revenue: [OrderTotal]? = nil
     }
 
     enum CodingKeys: String, CodingKey {

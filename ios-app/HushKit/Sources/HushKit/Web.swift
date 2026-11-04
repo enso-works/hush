@@ -116,6 +116,67 @@ public struct WebReport: Decodable, Sendable {
     public let links: [Click]
     /// The site's own events, beyond pages and clicks.
     public let events: [Event]
+    /// A shop's orders and revenue; nil for a site whose goal carries no
+    /// amount, and from a server before webshops.
+    public let revenue: Revenue?
+
+    /// Orders and revenue for the period against the one before, by source and
+    /// by campaign. Each order counts for the visitor's last visit, within
+    /// `lookbackDays` before it, that came from a tagged link or another site.
+    public struct Revenue: Decodable, Sendable, Hashable {
+        /// One source or campaign: its orders and revenue in one currency.
+        public struct Row: Decodable, Sendable, Hashable, Identifiable {
+            public var id: String { "\(label) \(detail ?? "") \(currency)" }
+            /// The source (`direct` when none), or the campaign.
+            public let label: String
+            /// A campaign's source; nil for a source.
+            public let detail: String?
+            public let currency: String
+            public let orders: Int
+            public let revenue: Double
+
+            enum CodingKeys: String, CodingKey {
+                case source, campaign, currency, orders, revenue
+            }
+
+            public init(from decoder: Decoder) throws {
+                let c = try decoder.container(keyedBy: CodingKeys.self)
+                let campaign = try c.decodeIfPresent(String.self, forKey: .campaign)
+                let source = try c.decode(String.self, forKey: .source)
+                label = campaign ?? source
+                detail = campaign != nil ? source : nil
+                currency = try c.decode(String.self, forKey: .currency)
+                orders = try c.decode(Int.self, forKey: .orders)
+                revenue = try c.decode(Double.self, forKey: .revenue)
+            }
+        }
+
+        public let lookbackDays: Int
+        public let current: [OrderTotal]
+        public let prior: [OrderTotal]
+        public let sources: [Row]
+        public let campaigns: [Row]
+
+        enum CodingKeys: String, CodingKey {
+            case current, prior, sources, campaigns
+            case lookbackDays = "lookback_days"
+        }
+    }
+}
+
+/// A shop's orders in one currency: how many, and what they came to.
+public struct OrderTotal: Decodable, Sendable, Hashable, Identifiable {
+    public var id: String { currency }
+    /// An ISO code such as `EUR`, or whatever the site sent; empty when none.
+    public let currency: String
+    public let orders: Int
+    public let revenue: Double
+
+    public init(currency: String, orders: Int, revenue: Double) {
+        self.currency = currency
+        self.orders = orders
+        self.revenue = revenue
+    }
 }
 
 /// `GET /admin/apps/:app/websites`: the websites that sell an app, and their
