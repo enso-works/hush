@@ -114,6 +114,25 @@ completion rate:
 "highlight": { "event": "workout_completed", "done_prop": "completed" }
 ```
 
+A website's highlight is its goal: a store click when it names none. A shop
+names its order event and sends it with a numeric `amount` and a `currency`
+(an ISO code such as `EUR`); the site's page and its card then show orders
+and revenue, by the source and the campaign that brought each order:
+
+```json
+"highlight": { "event": "order_completed" }
+```
+
+```ts
+hush.track('order_completed', { amount: 74.5, currency: 'EUR', items: 2 })
+```
+
+The amount is the order's total as the shop charged it. Never the order
+number, the customer or the address: an order is counted, not identified.
+A shop's usual steps before it: `product_viewed { category, product }`,
+`cart_added { category, product, quantity, value }`,
+`checkout_started { items, value }`.
+
 ## 7. Funnels
 
 - Up to 10 funnels, 2 to 8 steps each. Steps are ordered, and each must happen

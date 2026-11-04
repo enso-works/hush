@@ -248,8 +248,11 @@ if (browser && /[?&](utm_[a-z]+|ref)=/.test(location.search)) hush.entry('link',
   `storagePrefix` (`data-storage-prefix` on the tag, which also keeps the
   app's opt-out). The site's goal is the catalog's `highlight` event, a store
   click when it names none: a shop sets `"highlight": { "event":
-  "order_completed" }`. Its events stay within the rules: no email, name,
-  address or order id in a prop.
+  "order_completed" }` and sends that event, once the order went through,
+  with a numeric `amount` and a `currency` (`{ amount: 74.5, currency:
+  'EUR' }`), and its page and card show revenue by source and campaign
+  ([tracking-plan.md](tracking-plan.md), section 6). Its events stay within
+  the rules: no email, name, address or order id in a prop.
 - For another runtime, `createHush()` from `@bavrk/hush/core` takes a storage,
   lifecycle callbacks, device info and a dev flag. See [sdk-api.md](sdk-api.md).
 

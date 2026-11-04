@@ -143,13 +143,15 @@ full funnel per install.
   mark with a globe, visitors per day, visits, new, goal and rate). The
   apps' install totals never count a visitor. The sidebar lists Apps and
   Websites apart; Remote config lists apps only.
-- A website's page: the order in phase 3. No funnels, retention, versions,
-  remote config, attribution or feedback: a site has none of them.
+- A website's page: the order in phase 3. No retention, versions, remote
+  config, attribution or feedback: a site has none of them. Funnels only when
+  its catalog names some (phase 6); never the app's default paywall funnel.
 - An app a site promotes: a "From its websites" panel (the iOS app: a
   Websites card) with phase 4's table.
 - The demo has `stillwater-site`, which sells Stillwater: search, a Meta ad
   and a newsletter, store clicks by campaign that match the demo's App Store
-  campaign `meta_autumn`.
+  campaign `meta_autumn`. And `stillwater-shop`, a shop: orders in euros,
+  revenue by source and campaign, and its cart funnel (phase 6).
 
 **6. Webshops.** Built: orders and revenue on the website's page.
 - A shop names its order event as the `highlight`, usually `order_completed`,
@@ -165,11 +167,16 @@ full funnel per install.
   direct. A shopper who clicks an ad on Monday and comes back by typing the
   address on Friday counts for the ad. Visits and orders stay unlinked to
   anything outside hush; only totals leave the query.
-- The cart funnel is the catalog's (`session_started`, `product_viewed`,
-  `cart_added`, `checkout_started`, `order_completed`).
-- Not built: revenue in the overview and the iOS app, refunds and cancelled
-  orders (a cash-on-delivery order the customer refuses still counts), and
-  ad spend beside revenue.
+- The overview's card of a shop shows its revenue and orders where another
+  site shows new visitors and goal visits (`goal.revenue` on `/admin/apps`).
+- Funnels: a website shows the funnels its catalog names, counted in
+  visitors (a shop's cart: `session_started`, `product_viewed`, `cart_added`,
+  `checkout_started`, `order_completed`). A website gets no default funnel:
+  the paywall funnel is an app's.
+- The iOS app shows the same: the card's revenue, the revenue section and the
+  site's funnels.
+- Not built: refunds and cancelled orders (a cash-on-delivery order the
+  customer refuses still counts), and ad spend beside revenue.
 
 Each phase updates the README, `docs/site/docs.md` and the plugin.
 

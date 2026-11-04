@@ -309,7 +309,7 @@ with its goal rate. Only a phone installs from a store link, so read the
 rate by device. A shop sends its order as the goal with an `amount` and a
 `currency`, and gets revenue by source and campaign: each order counts for the
 last visit, within 30 days before it, that came from a tagged link or another
-site. The app the site sells shows the site's App Store clicks by
+site, and the funnels its catalog names, in visitors. The app the site sells shows the site's App Store clicks by
 campaign beside App Store Connect's count for the same campaign.
 
 ### The native side: @bavrk/hush-expo

@@ -468,7 +468,9 @@ whose goal event carries a numeric `amount` and a `currency`
 (`order_completed { amount: 49.9, currency: 'BAM' }`) also gets orders,
 revenue and the average order against the period before, by source and by
 campaign: each order counts for the visitor's last visit, within 30 days
-before it, that came from a tagged link or another site. An app
+before it, that came from a tagged link or another site. Its card on the
+overview shows revenue and orders, and its page the funnels its catalog
+names (a cart funnel, say), counted in visitors. An app
 that a website `promotes` gets a card with that site's App Store clicks by
 campaign beside App Store Connect's count for the same campaign: the link
 carries the visit's campaign as `ct`. What comes next is planned in

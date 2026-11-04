@@ -28,10 +28,16 @@ First read these files and follow them:
 3. **Stay inside the limits.** Names match `^[a-z][a-z0-9_]{1,63}$`, prop keys
    `^[a-z][a-z0-9_]{0,39}$`, values flat, at most 40 keys with globals. Never
    propose props that carry personal data, typed text, ids or URLs.
-4. **Check the ladder.** If you propose conversion values, walk the app's real
+4. **A shop is a website with orders.** Its order event is the catalog's
+   `highlight` and carries a numeric `amount` and a `currency`, so the
+   site's page shows revenue by source and campaign
+   (`references/tracking-plan.md`, section 6). Put the event where the shop
+   knows the order went through (the server's answer, not the button), and
+   never the order number or the customer in a prop.
+5. **Check the ladder.** If you propose conversion values, walk the app's real
    flow and make sure no higher milestone can come before a lower one, or say
    what it hides.
-5. **Validate the catalog entry** with `references/server.md`, section 6, when
+6. **Validate the catalog entry** with `references/server.md`, section 6, when
    a checkout of the hush repository with `npm ci` done is at hand (not the
    plugin's own copy under `~/.claude/plugins`, which has no server code). Run
    it with `CATALOG_FILE` unset. Either way, check by hand what the validator
@@ -43,7 +49,7 @@ First read these files and follow them:
    90, `where` 1 to 3 props of string, number or boolean, at most 12
    breakdowns, at most 20 milestones with values 1 to 63 strictly increasing
    and coarse never going down.
-6. **Change nothing unless asked.** Only when the delegation prompt asks you to
+7. **Change nothing unless asked.** Only when the delegation prompt asks you to
    wire the plan: add the `track()` calls through the app's hush module (never
    `@bavrk/hush` directly), run the project's typecheck, and list the files
    changed. Never commit, push, stash or switch branches. Never print `.env`
