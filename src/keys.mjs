@@ -48,6 +48,14 @@ const same = (given, secret) => {
   return a.length === b.length && timingSafeEqual(a, b);
 };
 
+export const displayOn = () => cfg.displayToken.length >= 32;
+
+/** The display token as a Bearer header. Never the admin token: a screen's credential and the operator's stay apart. */
+export function displayAuthorized(headers) {
+  const m = /^Bearer\s+(\S+)$/.exec(headers.authorization ?? '');
+  return Boolean(m && displayOn() && same(m[1], cfg.displayToken));
+}
+
 /** The admin token as a Bearer header, or the trusted proxy's header (ADMIN_PROXY_HEADER). */
 export function adminAuthorized(headers) {
   const m = /^Bearer\s+(\S+)$/.exec(headers.authorization ?? '');
