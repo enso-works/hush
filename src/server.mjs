@@ -20,7 +20,8 @@ import { pool, q } from './db.mjs';
 import { adminConfig, appExists, checkOverridesAtBoot, configAnswer, history, matchesRevision, preview, revertOverride, setOverride } from './remote-config.mjs';
 import { clientKey, dailyLimiter, failureLimiter, isUuid, json, rateLimiter, readJson, router, str } from './http.mjs';
 import { isCrawler, MAX_EVENTS, parseBatch, store } from './ingest.mjs';
-import { adminAuthorized, resolveKey } from './keys.mjs';
+import { adminAuthorized, displayAuthorized, displayOn, resolveKey } from './keys.mjs';
+import { displayApp, displayDays, displayOverview } from './display.mjs';
 import { createPairing, deviceAuthorized, listDevices, pair, revokeDevice } from './devices.mjs';
 import { pushConfigured, pushVia, register as registerPush, testPush, unregister as unregisterPush } from './push.mjs';
 import { countRelay, parseRegistration, parseSend, passFor, relay, relayOn } from './relay.mjs';
@@ -53,6 +54,10 @@ const pairLimit = rateLimiter(10);
 // Wrong admin or phone tokens, per address: a page that lost its token asks
 // a handful of times, a guesser thousands.
 const adminFailures = failureLimiter(20);
+// A screen asks every few minutes. The failures limit is low because the
+// display token is the only lock on a route that may face the internet.
+const displayLimit = rateLimiter(30);
+const displayFailures = failureLimiter(5);
 // The push relay's, per address and per phone: a server notifies about
 // feedback, which comes minutes apart, not many a second.
 const relayRegisterLimit = rateLimiter(20);
@@ -290,6 +295,13 @@ const channelOf = (url) => {
 
 // What the dashboard asks first, without a token: 401 means sign in, and a
 // 200 means it is a demo or a proxy added the token (ops does).
+r.get('/display/v1/overview', async (_req, res, { url }) => json(res, 200, await displayOverview(displayDays(url))));
+
+r.get('/display/v1/apps/:app', async (_req, res, { url, params }) => {
+  const view = await displayApp(params.app, displayDays(url));
+  return view ? json(res, 200, view) : json(res, 404, { error: 'not found' });
+});
+
 r.get('/admin/session', async (_req, res) => json(res, 200, { demo: cfg.demo }));
 
 // How long an install row outlives its last batch (null: kept), so the
@@ -629,6 +641,20 @@ const server = http.createServer(async (req, res) => {
   }
 
   try {
+    if (url.pathname.startsWith('/display/')) {
+      if (!displayOn()) return json(res, 404, { error: 'not found' });
+      const caller = clientKey(req);
+      // Failures are counted apart from the limit below, so the right token
+      // still gets in from an address someone else is guessing from.
+      if (!displayAuthorized(req.headers)) {
+        if (displayFailures.over(caller)) return json(res, 429, { error: 'rate limited' });
+        displayFailures.fail(caller);
+        return json(res, 401, { error: 'unauthorized' });
+      }
+      if (!displayLimit(caller)) return json(res, 429, { error: 'rate limited' });
+      res.setHeader('Cache-Control', 'no-store');
+      return await route.handler(req, res, { url, params: route.params });
+    }
     if (cfg.demo) {
       // The showcase reads without a token and writes nothing, and no app
       // may send it data.
@@ -725,6 +751,9 @@ if (installRetention !== null && installRetention < cfg.retentionDays) {
 const proxySignIn = Boolean(cfg.adminProxyHeader && cfg.adminProxySecret.length >= 16);
 if ((cfg.adminProxyHeader || cfg.adminProxySecret) && !proxySignIn) {
   log.warn('proxy sign-in is off: ADMIN_PROXY_HEADER needs ADMIN_PROXY_SECRET of at least 16 characters');
+}
+if (cfg.displayToken && !displayOn()) {
+  log.warn('/display is off: DISPLAY_TOKEN is shorter than 32 characters: make one with openssl rand -hex 32');
 }
 // The failed sign-in limit slows guessing; only length makes it hopeless.
 if (cfg.adminToken && cfg.adminToken.length < 32) {

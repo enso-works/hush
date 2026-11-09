@@ -14,6 +14,9 @@ export const cfg = {
   // proxy overwrites the header, or anyone who learns the secret is admin.
   adminProxyHeader: env('ADMIN_PROXY_HEADER').toLowerCase(),
   adminProxySecret: env('ADMIN_PROXY_SECRET'),
+  // Opens /display/*: read-only numbers for a screen, and nothing else. Unset,
+  // or shorter than 32 characters: those routes do not exist.
+  displayToken: env('DISPLAY_TOKEN'),
   // Apps to register at boot, "slug=Display Name,other=Other". Idempotent:
   // an existing app keeps its row. Apps can also be added with the CLI.
   apps: env('APPS'),

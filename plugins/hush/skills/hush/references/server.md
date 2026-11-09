@@ -61,6 +61,7 @@ what its `environment:` block lists.
 | `RC_API_KEY` | RevenueCat v2 secret key with read-only scopes, for the revenue panel. |
 | `RC_PROJECTS`, `RC_CURRENCY`, `RC_STALE_MINUTES`, `RC_FLOOR_SECONDS`, `RC_RATE_PER_MINUTE` | Project mapping (`myapp=projabc`) when names differ; currency (USD); cache and rate settings (10 min, 60 s, 20 a minute). |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16 characters or more), accepted on `/admin/*` in place of the token. Both or neither. |
+| `DISPLAY_TOKEN` | Opens `/display/v1/*`, read-only counts for a screen (32 characters or more). Unset: those routes do not exist. |
 | `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_KEY_P8` or `APNS_KEY_P8_BASE64`, `APNS_TOPIC` | An APNs auth key, for push to the hush iOS app on new feedback and users' replies. One key serves every app of the team that signs the app; `APNS_TOPIC` is the app's bundle id (default `com.bavrk.hush`). |
 | `PUSH_RELAY` | Without an APNs key, pushes to the App Store hush app go through bavrk's relay (default `https://hush.bavrk.com/push`), sealed with a key only the phone has: the relay sees a token and an opaque blob. Used only for phones that turned notifications on. `off` turns it off. `PUSH_RELAY_SECRET` (32 characters or more, with an APNs key) runs a server as such a relay. |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` or `ASC_PRIVATE_KEY_FILE`, `ASC_API_BASE` | App Store Connect API key for campaign reports; see [attribution.md](attribution.md). `ASC_PRIVATE_KEY_FILE` is a path inside the container: mount the `.p8` there. `ASC_APPS` (slugs, comma-separated) limits the imports to those apps. |
@@ -102,6 +103,8 @@ server. Never commit them or print them.
   `Authorization: Bearer <ADMIN_TOKEN>` or `<ADMIN_PROXY_HEADER>: <secret>` on
   `/admin/*`. Admin writes are accepted only as same-origin
   `Content-Type: application/json`.
+- **May be public** when `DISPLAY_TOKEN` is set: `/display/v1/*`, counts only,
+  for a screen. Its token opens nothing else.
 - Set `CLIENT_IP_HEADER` and `COUNTRY_HEADER` only when the proxy overwrites
   those headers; otherwise any client can pick its own values.
 - Run one instance: rate limits live in memory and reset on restart.

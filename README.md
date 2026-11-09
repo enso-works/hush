@@ -246,6 +246,16 @@ users, by adding `Authorization: Bearer <ADMIN_TOKEN>` or
 opens without a sign-in, and admin writes stay safe because the server
 accepts only same-origin JSON for them.
 
+To show the numbers on a screen outside that network, set `DISPLAY_TOKEN` and
+expose `/display/v1/*`. `GET /display/v1/overview` has every app's numbers and
+the revenue cards, and `GET /display/v1/apps/<slug>` has one app's charts, both
+with `?days=1`, `7`, `30` or `90` and production data only. They carry counts
+and never a ticket's text, an email or anything about one install. The token
+goes in `Authorization: Bearer`, opens nothing else, and the admin token does
+not open these. Answers are cached for a minute, RevenueCat is asked at most
+once an hour, each address gets 30 requests a minute, and five wrong tokens in
+a minute get 429.
+
 ## With an AI coding agent
 
 The [hush plugin](plugins/hush/) for Claude Code:
@@ -397,6 +407,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `DATABASE_URL` | Postgres. Migrations run at every boot, before listening. |
 | `ADMIN_TOKEN` | Guards `/admin/*` and the dashboard's data. `openssl rand -hex 32`. The old name `TELEMETRY_ADMIN_TOKEN` still works. |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header a trusted proxy sets, and its secret (16+ characters), accepted on `/admin/*` instead of the token. Only when the proxy overwrites that header. |
+| `DISPLAY_TOKEN` | Opens `/display/v1/*`: read-only numbers for a screen (32+ characters, `openssl rand -hex 32`). Unset: those routes do not exist. |
 | `APPS` | Register apps at boot: `myapp=My App,other=Other`. |
 | `CATALOG_FILE` | Each app's known events, highlight metric, funnels and remote config keys, as JSON (below). |
 | `CLIENT_IP_HEADER` | Header a trusted proxy sets with the caller's address (`cf-connecting-ip`, `x-forwarded-for`), for rate limits. Unset: the socket address. Behind a proxy, set it: otherwise every caller has the proxy's address and shares its limits, and an app takes five tickets with an email a day from all its users together. The server warns once when a request comes from a private address and it is unset. |

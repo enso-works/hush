@@ -521,6 +521,7 @@ Only `DATABASE_URL` and `ADMIN_TOKEN` are required.
 | `PUSH_RELAY` | Without an APNs key, pushes to the App Store hush app go through bavrk's relay (default `https://hush.bavrk.com/push`), sealed with a key only the phone has: the relay sees a token and an opaque blob. Used only for phones that turned notifications on. `off` turns it off. `PUSH_RELAY_SECRET` (32 characters or more, with an APNs key) runs a server as such a relay. |
 | `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_PRIVATE_KEY` | An App Store Connect API key, for App Store campaign reports. The Admin role once; Sales and Reports after. Or `ASC_PRIVATE_KEY_FILE`, a path inside the container, in place of `ASC_PRIVATE_KEY`. `ASC_APPS` (slugs, comma-separated) limits the imports to those apps. |
 | `ADMIN_PROXY_HEADER`, `ADMIN_PROXY_SECRET` | A header and secret a trusted proxy sets instead of the token, so the dashboard opens signed in on a private network. |
+| `DISPLAY_TOKEN` | Opens `/display/v1/overview` and `/display/v1/apps/<slug>`: read-only counts for a screen, with no ticket text, emails or single installs. 32 characters or more. Unset: those routes do not exist. |
 
 ### The event catalog
 
